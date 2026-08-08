@@ -1,0 +1,14 @@
+{
+  "name": "Colmena - Sistema de Movilizaci\u00f3n",
+  "short_name": "Colmena",
+  "description": "CRM de movilizaci\u00f3n pol\u00edtica con geocercas, rutas y captura ciudadana",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1a2e",
+  "theme_color": "#e53935",
+  "icons": [
+    { "src": "/img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/img/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

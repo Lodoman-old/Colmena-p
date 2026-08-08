@@ -1,0 +1,24 @@
+{
+  "appId": "com.colmena.app",
+  "appName": "Colmena",
+  "webDir": "src/web",
+  "bundledWebRuntime": false,
+  "server": {
+    "hostname": "localhost",
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "android": {
+    "buildOptions": {
+      "keystorePath": null,
+      "keystoreAlias": null
+    },
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": false
+    }
+  }
+}

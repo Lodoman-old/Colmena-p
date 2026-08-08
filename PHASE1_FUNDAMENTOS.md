@@ -1,0 +1,229 @@
+# Sistema Colmena - Fase 1: Fundamentos
+
+## Resumen de la Etapa
+
+Implementación de la infraestructura básica, configuración inicial de base de datos, bases de usuarios esenciales y sincronización móvil crítica para System Colmena.
+
+## 📋 Requisitos del Proyecto
+
+### Base de Datos e Infraestructura
+- **PostgreSQL 15+ con PostGIS** (10GB inicial)
+- **Redis Cache** (para sesiones y sync de missiones)
+- **Docker Swarm/K3s** para contenedores
+
+### Navegación Web
+- **Panel Admin**: Gestión de usuarios, configuración del sistema
+- **Configuración de sectores** (básico, sin georreferenciación completa)
+- **Reportes simples** (conteo de usuarios, actividad)
+
+### Sincronización Móvil Esencial
+- **API Gateway** con autenticación JWT
+- **WebSocket** para sync en tiempo real
+- **Sincronización App-Servidor** con modo offline
+
+## 📁 Estructura del Proyecto
+
+```
+/colmena
+├── /infrastructure
+│   ├── docker-compose.yml
+│   └── k8s/
+├── /src
+│   ├── /api (Node.js/Express)
+│   │   ├── /health.js
+│   │   ├── /auth.js
+│   │   ├── /users.js
+│   │   └── /sync.js
+│   ├── /app (React Native/Flutter)
+│   │   ├── /screens (Inicial, Login, Sync)
+│   │   └── /services (gps, auth, sync)
+│   └── /services
+│       ├── /whatsapp.js (Twilio)
+│       └── /routing.js (OSRM)
+├── /db
+│   ├── /sql (Migraciones SQL)
+│   └── /seeds (Datos iniciales)
+├── /config
+│   ├── environment.dev.json
+│   └── environment.prod.json
+└── /docs
+    └── API.md
+```
+
+## 🚀 Base de Datos
+
+### Migración Inicial
+
+```sql
+-- Usuarios
+CREATE TABLE usuarios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20),
+    email VARCHAR(255) UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    rol VARCHAR(20) CHECK (rol IN ('admin', 'coordinador', 'enlace')),
+    sector_asignado UUID,
+    activo BOOLEAN DEFAULT TRUE,
+    creado_en TIMESTAMP DEFAULT NOW()
+);
+
+-- Sectores (Mínimo básico)
+CREATE TABLE sectores (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre VARCHAR(100) UNIQUE NOT NULL,
+    municipio VARCHAR(100) NOT NULL,
+    estado VARCHAR(50) NOT NULL,
+    poblacion_estimada INTEGER,
+    metadata JSONB,
+    creado_en TIMESTAMP DEFAULT NOW()
+);
+
+-- Alertas Opt-In de WhatsApp
+CREATE TABLE opt_in_consent (
+    ciudadano_id UUID PRIMARY KEY,
+    telefono VARCHAR(20) UNIQUE NOT NULL,
+    opt_in_timestamp TIMESTAMP DEFAULT NOW(),
+    canal VARCHAR(20) CHECK (canal IN ('sms', 'whatsapp'))
+);
+
+-- Usuarios App Móvil Esenciales
+CREATE TABLE usuarios_movil (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    usuario_id UUID REFERENCES usuarios(id),
+    token_dispositivo VARCHAR(255),
+    app_version VARCHAR(20),
+    ultima_sincronizacion TIMESTAMP,
+    modo_offline BOOLEAN DEFAULT FALSE
+);
+```
+
+### Seeds Iniciales
+
+```sql
+-- Admin
+INSERT INTO usuarios (nombre, apellido, telefono, email, password_hash, rol)
+VALUES ('Administrador', 'Sistema', '5551234567', 'admin@colmena PRI.org', '$2b$12$hash', 'admin');
+
+-- Coordinador
+INSERT INTO usuarios (nombre, apellido, telefono, email, password_hash, rol, sector_asignado)
+SELECT 'Coordinador', 'Zona Norte', '5559876543', 'coordinador@colmena PRI.org', '$2b$12$hash', 'coordinador', id
+FROM sectores WHERE nombre = 'Zona Norte';
+```
+
+## 🔐 Autenticación
+
+### JWT Configuration
+```javascript
+// config/jwt.js
+const jwtConfig = {
+    secret: process.env.JWT_SECRET,
+    expiresIn: '24h',
+    issuer: 'colmena PRI',
+    audience: 'app_movil'
+};
+```
+
+### Endpoints de Auth
+- `POST /api/auth/login` (Email/Telefono + Password)
+- `POST /api/auth/logout` (Token Blacklist)
+- `GET /api/auth/me` (Valida JWT + carga usuario)
+
+## 📱 Sincronización Móvil
+
+### Evento de Sincronización
+```javascript
+// api/sync.js
+captureMiembroEquipo: {
+    usuario_id: 'user_uuid',
+    timestamp: '2024-01-01T12:00:00Z',
+    data: {
+        hogares: [],
+        eventos: [],
+        estado: 'activo'
+    }
+}
+```
+
+### Estados del Dispositivo
+- **Activo**: Sincronizado dentro de ventana (5 minutos)
+- **Inactivo**: Fuera de ventana, bandera offline
+- **Solo lectura**: Sin conexión >24 horas
+
+## 🎨 Componentes Web Iniciales
+
+### Login (Admin)
+- Email/Password + OTP
+- Rate limit (5/minutos)
+- ReCAPTCHA v3
+
+### Dashboard
+- Estadísticas de usuarios
+- Lista de coordinación
+- Badge de estado del sistema
+
+## 📲 Módulo App Móvil
+
+### Screens Iniciales
+1. **Bienvenida** (Splash + Tutorial)
+2. **Login** (Email/Telefono + Password)
+3. **Dashboard Principal** (Tu área asignada)
+4. **Sync Status** (Estado de datos, progreso)
+
+### Funciones Móviles
+- **Registro de GPS**: Captura si disponible
+- **Optimización básica**: Ruta simple a hogares cercanos
+- **Envio de misión**: Lista de visitas diarias (sin optimización completa)
+- **Envios push**: Aprobación de datos
+
+## 🔧 Configuración del Sistema
+
+### Config Iniciales
+```json
+{
+    "timezone_default": "America/Mexico_City",
+    "gps_precision_min": 3,
+    "mision_max_distancia": 25,
+    "configuracion_mensaje_bienvenida": {
+        "texto_base": "Bienvenido a System Colmena...",
+        "incluir_primer_hogar": true
+    }
+}
+```
+
+## 📊 Métricas de Operación
+
+### KPIs Iniciales
+- **Usuarios activos (Web/Móvil)**
+- **Tasa de sync >95%**
+- **Sin errores críticos**
+- **Latencia app <500ms**
+
+### Alertas (PagerDuty)
+- Caída de sincronización >10 minutos
+- Error de base de datos >5 minutos
+- Falla de API Gateway >30 segundos
+
+## 🎯 Entregables
+
+1. **Infrastructure as Code**: Docker + K8s manifests
+2. **Base de datos en producción**: Validadación de integridad de datos
+3. **Administrador activo** con grupo de coordinación completo
+4. **App móvil desplegada** con sync funcional
+5. **Monitoreo operativo**: Health checks + alertas
+
+## ⏰ Cronograma
+
+- **Semana 1**: Configuración básica DB, API Gateway, sync App-Servidor
+- **Semana 2**: Auth JWT, servicios móviles esenciales
+- **Semana 3**: Configuration del sistema, dashboard admin
+- **Semana 4**: Pruebas E2E, monitoreo, pruebas de carga
+
+## 🎯 Éxito de la Fase 1
+
+✅ Sistema completamente operativo
+✅ BD con datos iniciales esenciales
+✅ Flujo móvil esencial funcionando
+✅ Admin y coordinador pueden acceder
+✅ Métricas básicas de operación dashboard

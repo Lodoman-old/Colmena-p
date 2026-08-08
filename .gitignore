@@ -1,0 +1,42 @@
+# ── Secretos ──
+.env
+*.env
+android/colmena-release.keystore
+android/keystore.properties
+*.keystore
+*.jks
+
+# ── Dependencias ──
+node_modules/
+src/api/node_modules/
+src/app/node_modules/
+
+# ── Datos pesados descargados/generados ──
+osrm-data/
+src/tiles-server/
+src/api/uploads/
+src/api/db/
+
+# ── APK compiladas ──
+builds/
+/web/
+*.apk
+
+# ── Android / Gradle ──
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/.cxx/
+*.log
+
+# ── Builds de la web ──
+src/web/dist/
+
+# ── Sistema ──
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log

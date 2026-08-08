@@ -1,0 +1,49 @@
+diff --git a/node_modules/capacitor-native-biometric/android/src/main/java/com/epicshaggy/biometric/NativeBiometric.java b/node_modules/capacitor-native-biometric/android/src/main/java/com/epicshaggy/biometric/NativeBiometric.java
+index 16e42b2..080f786 100644
+--- a/node_modules/capacitor-native-biometric/android/src/main/java/com/epicshaggy/biometric/NativeBiometric.java
++++ b/node_modules/capacitor-native-biometric/android/src/main/java/com/epicshaggy/biometric/NativeBiometric.java
+@@ -36,6 +36,7 @@ import java.security.KeyStore;
+ import java.security.KeyStoreException;
+ import java.security.NoSuchAlgorithmException;
+ import java.security.NoSuchProviderException;
++import java.security.ProviderException;
+ import java.security.SecureRandom;
+ import java.security.UnrecoverableEntryException;
+ import java.security.cert.CertificateException;
+@@ -182,6 +183,9 @@ public class NativeBiometric extends Plugin {
+             } catch (GeneralSecurityException | IOException e) {
+                 call.reject("Failed to save credentials", e);
+                 e.printStackTrace();
++            } catch (RuntimeException e) {
++                call.reject("Failed to save credentials (keystore unavailable)", e);
++                e.printStackTrace();
+             }
+         } else {
+             call.reject("Missing properties");
+@@ -310,7 +314,25 @@ public class NativeBiometric extends Plugin {
+             }
+ 
+             generator.init(paramBuilder.build());
+-            return generator.generateKey();
++            try {
++                return generator.generateKey();
++            } catch (RuntimeException e1) {
++                // Some devices (keystore2 UNIMPLEMENTED) reject UNLOCKED_DEVICE_REQUIRED /
++                // strongbox key generation. Retry with progressively weaker requirements so
++                // the app degrades gracefully instead of crashing the process.
++                KeyGenParameterSpec fallbackSpec = new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
++                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
++                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
++                        .setRandomizedEncryptionRequired(false)
++                        .build();
++                KeyGenerator fallback = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEY_STORE);
++                fallback.init(fallbackSpec);
++                try {
++                    return fallback.generateKey();
++                } catch (RuntimeException e2) {
++                    throw new ProviderException("Keystore key generation failed on this device", e2);
++                }
++            }
+         } else {
+             return getAESKey(KEY_ALIAS);
+         }
