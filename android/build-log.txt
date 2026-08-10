@@ -1,0 +1,311 @@
+Picked up JAVA_TOOL_OPTIONS: -Duser.country=US -Duser.language=en
+
+> Configure project :app
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+
+> Configure project :capacitor-cordova-android-plugins
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :capacitor-android:preBuild UP-TO-DATE
+> Task :capacitor-android:preReleaseBuild UP-TO-DATE
+> Task :capacitor-android:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :capacitor-android:mergeReleaseNativeLibs NO-SOURCE
+> Task :capacitor-android:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:preBuild UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:preReleaseBuild UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:mergeReleaseJniLibFolders
+> Task :capacitor-cordova-android-plugins:mergeReleaseNativeLibs NO-SOURCE
+> Task :capacitor-geolocation:preBuild UP-TO-DATE
+> Task :capacitor-geolocation:preReleaseBuild UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:copyReleaseJniLibsProjectOnly
+> Task :capacitor-geolocation:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :capacitor-geolocation:mergeReleaseNativeLibs NO-SOURCE
+> Task :capacitor-geolocation:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :capacitor-native-biometric:preBuild UP-TO-DATE
+> Task :capacitor-native-biometric:preReleaseBuild UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseNativeLibs NO-SOURCE
+> Task :capacitor-native-biometric:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :capacitor-push-notifications:preBuild UP-TO-DATE
+> Task :capacitor-push-notifications:preReleaseBuild UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseNativeLibs NO-SOURCE
+> Task :capacitor-push-notifications:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :app:mergeReleaseNativeLibs UP-TO-DATE
+> Task :app:stripReleaseDebugSymbols UP-TO-DATE
+> Task :app:extractReleaseNativeSymbolTables UP-TO-DATE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :capacitor-android:generateReleaseResValues UP-TO-DATE
+> Task :capacitor-android:generateReleaseResources UP-TO-DATE
+> Task :capacitor-android:packageReleaseResources UP-TO-DATE
+> Task :capacitor-android:processReleaseNavigationResources UP-TO-DATE
+> Task :capacitor-android:parseReleaseLocalResources UP-TO-DATE
+> Task :capacitor-android:generateReleaseRFile UP-TO-DATE
+> Task :capacitor-android:javaPreCompileRelease UP-TO-DATE
+> Task :capacitor-android:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :capacitor-android:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :capacitor-geolocation:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :capacitor-geolocation:generateReleaseResValues UP-TO-DATE
+> Task :capacitor-geolocation:generateReleaseResources UP-TO-DATE
+> Task :capacitor-geolocation:packageReleaseResources UP-TO-DATE
+> Task :capacitor-geolocation:processReleaseNavigationResources UP-TO-DATE
+> Task :capacitor-geolocation:parseReleaseLocalResources UP-TO-DATE
+> Task :capacitor-geolocation:generateReleaseRFile UP-TO-DATE
+> Task :capacitor-geolocation:compileReleaseKotlin UP-TO-DATE
+> Task :capacitor-geolocation:javaPreCompileRelease UP-TO-DATE
+> Task :capacitor-geolocation:compileReleaseJavaWithJavac NO-SOURCE
+> Task :capacitor-geolocation:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :capacitor-geolocation:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-push-notifications:generateReleaseResValues UP-TO-DATE
+> Task :capacitor-push-notifications:generateReleaseResources UP-TO-DATE
+> Task :capacitor-push-notifications:packageReleaseResources UP-TO-DATE
+> Task :capacitor-push-notifications:processReleaseNavigationResources UP-TO-DATE
+> Task :capacitor-push-notifications:parseReleaseLocalResources UP-TO-DATE
+> Task :capacitor-push-notifications:generateReleaseRFile UP-TO-DATE
+> Task :capacitor-push-notifications:javaPreCompileRelease UP-TO-DATE
+> Task :capacitor-push-notifications:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :capacitor-push-notifications:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-native-biometric:generateReleaseResValues UP-TO-DATE
+> Task :capacitor-native-biometric:generateReleaseResources UP-TO-DATE
+> Task :capacitor-native-biometric:packageReleaseResources UP-TO-DATE
+> Task :capacitor-native-biometric:processReleaseNavigationResources UP-TO-DATE
+> Task :capacitor-native-biometric:parseReleaseLocalResources UP-TO-DATE
+> Task :capacitor-native-biometric:generateReleaseRFile UP-TO-DATE
+> Task :capacitor-native-biometric:javaPreCompileRelease UP-TO-DATE
+> Task :capacitor-native-biometric:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :capacitor-native-biometric:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-android:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :capacitor-android:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:generateReleaseResValues
+> Task :capacitor-cordova-android-plugins:generateReleaseResources
+> Task :capacitor-cordova-android-plugins:packageReleaseResources
+> Task :capacitor-cordova-android-plugins:processReleaseNavigationResources
+> Task :capacitor-cordova-android-plugins:javaPreCompileRelease
+> Task :app:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :app:javaPreCompileRelease UP-TO-DATE
+> Task :capacitor-android:writeReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:parseReleaseLocalResources
+> Task :capacitor-geolocation:writeReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:writeReleaseAarMetadata
+> Task :capacitor-native-biometric:writeReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-push-notifications:writeReleaseAarMetadata UP-TO-DATE
+> Task :app:checkReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:generateReleaseRFile
+> Task :app:processReleaseNavigationResources UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:compileReleaseJavaWithJavac NO-SOURCE
+> Task :capacitor-cordova-android-plugins:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :app:compileReleaseNavigationResources UP-TO-DATE
+> Task :app:generateReleaseResValues UP-TO-DATE
+> Task :app:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :app:generateReleaseResources UP-TO-DATE
+> Task :app:mergeReleaseResources UP-TO-DATE
+> Task :app:packageReleaseResources UP-TO-DATE
+> Task :app:parseReleaseLocalResources UP-TO-DATE
+> Task :app:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksRelease UP-TO-DATE
+> Task :capacitor-android:extractDeepLinksRelease UP-TO-DATE
+> Task :capacitor-android:processReleaseManifest UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:extractDeepLinksRelease
+> Task :capacitor-geolocation:extractDeepLinksRelease UP-TO-DATE
+> Task :capacitor-geolocation:processReleaseManifest UP-TO-DATE
+> Task :capacitor-native-biometric:extractDeepLinksRelease UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:processReleaseManifest
+> Task :capacitor-native-biometric:processReleaseManifest UP-TO-DATE
+> Task :capacitor-push-notifications:extractDeepLinksRelease UP-TO-DATE
+> Task :capacitor-push-notifications:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseMainManifest UP-TO-DATE
+> Task :app:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseManifestForPackage UP-TO-DATE
+> Task :app:processReleaseResources UP-TO-DATE
+> Task :capacitor-geolocation:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:bundleLibCompileToJarRelease
+> Task :capacitor-native-biometric:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :capacitor-push-notifications:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :app:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :capacitor-android:prepareReleaseArtProfile UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:prepareReleaseArtProfile UP-TO-DATE
+> Task :capacitor-geolocation:prepareReleaseArtProfile UP-TO-DATE
+> Task :capacitor-native-biometric:prepareReleaseArtProfile UP-TO-DATE
+> Task :capacitor-push-notifications:prepareReleaseArtProfile UP-TO-DATE
+> Task :app:mergeReleaseArtProfile UP-TO-DATE
+> Task :capacitor-android:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :capacitor-geolocation:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:bundleLibRuntimeToJarRelease
+> Task :capacitor-native-biometric:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :capacitor-push-notifications:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :app:expandReleaseArtProfileWildcards UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :capacitor-android:processReleaseJavaRes NO-SOURCE
+> Task :capacitor-cordova-android-plugins:processReleaseJavaRes NO-SOURCE
+> Task :capacitor-geolocation:processReleaseJavaRes UP-TO-DATE
+> Task :capacitor-native-biometric:processReleaseJavaRes NO-SOURCE
+> Task :capacitor-push-notifications:processReleaseJavaRes NO-SOURCE
+> Task :app:mergeReleaseJavaResource UP-TO-DATE
+> Task :app:mergeReleaseStartupProfile UP-TO-DATE
+> Task :app:minifyReleaseWithR8 UP-TO-DATE
+> Task :app:compileReleaseArtProfile UP-TO-DATE
+> Task :app:mergeReleaseShaders UP-TO-DATE
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :capacitor-android:mergeReleaseShaders UP-TO-DATE
+> Task :capacitor-android:compileReleaseShaders NO-SOURCE
+> Task :capacitor-android:generateReleaseAssets UP-TO-DATE
+> Task :capacitor-android:mergeReleaseAssets UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:mergeReleaseShaders
+> Task :capacitor-cordova-android-plugins:compileReleaseShaders NO-SOURCE
+> Task :capacitor-cordova-android-plugins:generateReleaseAssets UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:mergeReleaseAssets
+> Task :capacitor-geolocation:mergeReleaseShaders UP-TO-DATE
+> Task :capacitor-geolocation:compileReleaseShaders NO-SOURCE
+> Task :capacitor-geolocation:generateReleaseAssets UP-TO-DATE
+> Task :capacitor-geolocation:mergeReleaseAssets UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseShaders UP-TO-DATE
+> Task :capacitor-native-biometric:compileReleaseShaders NO-SOURCE
+> Task :capacitor-native-biometric:generateReleaseAssets UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseAssets UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseShaders UP-TO-DATE
+> Task :capacitor-push-notifications:compileReleaseShaders NO-SOURCE
+> Task :capacitor-push-notifications:generateReleaseAssets UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:extractReleaseVersionControlInfo UP-TO-DATE
+> Task :capacitor-android:createFullJarRelease UP-TO-DATE
+> Task :capacitor-android:extractProguardFiles UP-TO-DATE
+> Task :capacitor-android:generateReleaseLintModel UP-TO-DATE
+> Task :app:compressReleaseAssets
+> Task :capacitor-android:prepareLintJarForPublish UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:createFullJarRelease
+> Task :capacitor-cordova-android-plugins:extractProguardFiles
+> Task :capacitor-cordova-android-plugins:generateReleaseLintModel
+> Task :capacitor-cordova-android-plugins:prepareLintJarForPublish UP-TO-DATE
+> Task :capacitor-geolocation:createFullJarRelease UP-TO-DATE
+> Task :capacitor-geolocation:extractProguardFiles UP-TO-DATE
+> Task :capacitor-geolocation:generateReleaseLintModel UP-TO-DATE
+> Task :capacitor-geolocation:prepareLintJarForPublish UP-TO-DATE
+> Task :capacitor-native-biometric:createFullJarRelease UP-TO-DATE
+> Task :capacitor-native-biometric:extractProguardFiles UP-TO-DATE
+> Task :capacitor-native-biometric:generateReleaseLintModel UP-TO-DATE
+> Task :capacitor-native-biometric:prepareLintJarForPublish UP-TO-DATE
+> Task :capacitor-push-notifications:createFullJarRelease UP-TO-DATE
+> Task :capacitor-push-notifications:extractProguardFiles UP-TO-DATE
+> Task :capacitor-push-notifications:generateReleaseLintModel UP-TO-DATE
+> Task :capacitor-push-notifications:prepareLintJarForPublish UP-TO-DATE
+> Task :app:generateReleaseLintVitalReportModel
+> Task :capacitor-geolocation:checkReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-geolocation:stripReleaseDebugSymbols NO-SOURCE
+> Task :capacitor-geolocation:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :capacitor-geolocation:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :capacitor-geolocation:extractReleaseAnnotations UP-TO-DATE
+> Task :capacitor-geolocation:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-geolocation:mergeReleaseJavaResource UP-TO-DATE
+> Task :capacitor-geolocation:syncReleaseLibJars UP-TO-DATE
+> Task :capacitor-geolocation:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :capacitor-push-notifications:checkReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-push-notifications:stripReleaseDebugSymbols NO-SOURCE
+> Task :capacitor-push-notifications:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :capacitor-push-notifications:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :capacitor-push-notifications:extractReleaseAnnotations UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseJavaResource UP-TO-DATE
+> Task :capacitor-push-notifications:syncReleaseLibJars UP-TO-DATE
+> Task :capacitor-push-notifications:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :capacitor-native-biometric:checkReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-native-biometric:stripReleaseDebugSymbols NO-SOURCE
+> Task :capacitor-native-biometric:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :capacitor-native-biometric:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :capacitor-native-biometric:extractReleaseAnnotations UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseJavaResource UP-TO-DATE
+> Task :capacitor-native-biometric:syncReleaseLibJars UP-TO-DATE
+> Task :capacitor-native-biometric:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :capacitor-android:checkReleaseAarMetadata UP-TO-DATE
+> Task :capacitor-android:stripReleaseDebugSymbols NO-SOURCE
+> Task :capacitor-android:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :capacitor-android:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :capacitor-android:extractReleaseAnnotations UP-TO-DATE
+> Task :capacitor-android:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-android:mergeReleaseJavaResource UP-TO-DATE
+> Task :capacitor-android:syncReleaseLibJars UP-TO-DATE
+> Task :capacitor-android:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:stripReleaseDebugSymbols NO-SOURCE
+> Task :capacitor-cordova-android-plugins:copyReleaseJniLibsProjectAndLocalJars
+> Task :capacitor-cordova-android-plugins:checkReleaseAarMetadata
+> Task :capacitor-cordova-android-plugins:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:extractReleaseAnnotations
+> Task :capacitor-cordova-android-plugins:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:mergeReleaseJavaResource
+> Task :capacitor-android:lintVitalAnalyzeRelease UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:syncReleaseLibJars
+> Task :capacitor-cordova-android-plugins:bundleReleaseLocalLintAar
+> Task :capacitor-android:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:writeReleaseLintModelMetadata
+> Task :capacitor-geolocation:lintVitalAnalyzeRelease UP-TO-DATE
+> Task :capacitor-geolocation:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :capacitor-native-biometric:lintVitalAnalyzeRelease UP-TO-DATE
+> Task :capacitor-native-biometric:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :capacitor-push-notifications:lintVitalAnalyzeRelease UP-TO-DATE
+> Task :capacitor-push-notifications:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :capacitor-android:generateReleaseLintVitalModel UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:generateReleaseLintVitalModel
+> Task :capacitor-geolocation:generateReleaseLintVitalModel UP-TO-DATE
+> Task :capacitor-native-biometric:generateReleaseLintVitalModel UP-TO-DATE
+> Task :capacitor-push-notifications:generateReleaseLintVitalModel UP-TO-DATE
+> Task :app:convertShrunkResourcesToBinaryRelease UP-TO-DATE
+> Task :app:optimizeReleaseResources UP-TO-DATE
+> Task :app:collectReleaseDependencies UP-TO-DATE
+> Task :app:sdkReleaseDependencyData UP-TO-DATE
+> Task :app:validateSigningRelease UP-TO-DATE
+> Task :app:writeReleaseAppMetadata UP-TO-DATE
+> Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :capacitor-android:bundleReleaseAar UP-TO-DATE
+> Task :capacitor-android:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :capacitor-android:mergeReleaseResources UP-TO-DATE
+> Task :capacitor-android:verifyReleaseResources UP-TO-DATE
+> Task :capacitor-android:assembleRelease UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:bundleReleaseAar
+> Task :capacitor-cordova-android-plugins:mapReleaseSourceSetPaths
+> Task :capacitor-cordova-android-plugins:lintVitalAnalyzeRelease
+> Task :capacitor-cordova-android-plugins:mergeReleaseResources
+> Task :capacitor-geolocation:bundleReleaseAar UP-TO-DATE
+> Task :capacitor-android:compileReleaseLibraryResources UP-TO-DATE
+> Task :capacitor-geolocation:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :capacitor-geolocation:mergeReleaseResources UP-TO-DATE
+> Task :capacitor-geolocation:verifyReleaseResources UP-TO-DATE
+> Task :capacitor-geolocation:assembleRelease UP-TO-DATE
+> Task :capacitor-native-biometric:bundleReleaseAar UP-TO-DATE
+> Task :capacitor-native-biometric:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :capacitor-native-biometric:mergeReleaseResources UP-TO-DATE
+> Task :capacitor-native-biometric:verifyReleaseResources UP-TO-DATE
+> Task :capacitor-native-biometric:assembleRelease UP-TO-DATE
+> Task :capacitor-push-notifications:bundleReleaseAar UP-TO-DATE
+> Task :capacitor-push-notifications:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :capacitor-push-notifications:mergeReleaseResources UP-TO-DATE
+> Task :capacitor-push-notifications:verifyReleaseResources UP-TO-DATE
+> Task :capacitor-push-notifications:assembleRelease UP-TO-DATE
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease UP-TO-DATE
+> Task :app:lintVitalRelease
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleRelease
+> Task :capacitor-cordova-android-plugins:verifyReleaseResources
+> Task :capacitor-cordova-android-plugins:assembleRelease
+
+[Incubating] Problems report is available at: file:///C:/Users/lodo1/Desktop/PROYECTOS/PROYECTOS/Personal/Colmena/android/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 14s
+243 actionable tasks: 38 executed, 205 up-to-date

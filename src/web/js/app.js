@@ -2736,8 +2736,8 @@
     try {
       const pdfBtn = document.getElementById('btn-pdf-votantes');
       if (pdfBtn) pdfBtn.style.display = (API.getUser()?.rol === 'admin') ? '' : 'none';
-      const [partidos, ciudadanos, secciones, resultados, resultadosDip, casillas] = await Promise.all([
-        API.getPartidos(), API.getCiudadanos(), API.getSecciones(), API.getResultados(null, null, 'presidente_municipal'), API.getResultados(null, null, 'diputado_local'), API.getCasillas()
+      const [partidos, ciudadanos, secciones, resultados, resultadosDip, casillas, comprometidos] = await Promise.all([
+        API.getPartidos(), API.getCiudadanos(), API.getSecciones(), API.getResultados(null, null, 'presidente_municipal'), API.getResultados(null, null, 'diputado_local'), API.getCasillas(), API.getComprometidos().catch(() => [])
       ]);
       const filtroSec = document.getElementById('rep-filtro-seccion');
       const filtroCas = document.getElementById('rep-filtro-casilla');
@@ -2782,6 +2782,19 @@
       const indecisosDip = ciudadanosFiltrados.filter(c => !c.partido_diputado?.nombre).length;
       if (indecisosDip > 0) intMapDip['Indeciso'] = indecisosDip;
 
+      // Seguros (comprometidos con voto seguro)
+      const segurosFiltrados = secId
+        ? (casId ? comprometidos.filter(c => c.casilla_id === casId) : comprometidos.filter(c => c.seccion_id === secId))
+        : comprometidos;
+      const segMapPres = {};
+      const segMapDip = {};
+      segurosFiltrados.forEach(c => {
+        const keyP = c.partido_presidente ? (c.partido_presidente.abreviatura || c.partido_presidente.nombre) : null;
+        if (keyP) segMapPres[keyP] = (segMapPres[keyP] || 0) + 1;
+        const keyD = c.partido_diputado ? (c.partido_diputado.abreviatura || c.partido_diputado.nombre) : null;
+        if (keyD) segMapDip[keyD] = (segMapDip[keyD] || 0) + 1;
+      });
+
       // Resultados reales
       const resMapPres = {};
       const resMapDip = {};
@@ -2805,7 +2818,7 @@
       function realColor(c) { return expandHex(c) + '80'; }
       const chartOpts = { responsive: true, maintainAspectRatio: true, aspectRatio: 2, resizeDelay: 200, plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } };
 
-      const presCombined = [...new Set([...Object.keys(intMapPres), ...Object.keys(resMapPres)])];
+      const presCombined = [...new Set([...Object.keys(intMapPres), ...Object.keys(resMapPres), ...Object.keys(segMapPres)])];
       const presIntData = presCombined.map(l => intMapPres[l] || 0);
       const presRealData = presCombined.map(l => resMapPres[l] || 0);
       const presColors = presCombined.map(l => colorMap[l] || '#999999');
@@ -2817,13 +2830,14 @@
           labels: presCombined,
           datasets: [
             { label: 'Esperado (Intención)', data: presIntData, backgroundColor: presColors },
-            { label: 'Real (Votos)', data: presRealData, backgroundColor: presColors.map(realColor), borderColor: presColors, borderWidth: 2 }
+            { label: 'Real (Votos)', data: presRealData, backgroundColor: presColors.map(realColor), borderColor: presColors, borderWidth: 2 },
+            ...(Object.keys(segMapPres).length ? [{ label: 'Seguros (Comprometidos)', data: presCombined.map(l => segMapPres[l] || 0), backgroundColor: presColors.map(c => expandHex(c) + '55'), borderColor: presColors, borderWidth: 2, borderDash: [5, 5] }] : [])
           ]
         },
         options: chartOpts
       });
 
-      const dipCombined = [...new Set([...Object.keys(intMapDip), ...Object.keys(resMapDip)])];
+      const dipCombined = [...new Set([...Object.keys(intMapDip), ...Object.keys(resMapDip), ...Object.keys(segMapDip)])];
       const dipIntData = dipCombined.map(l => intMapDip[l] || 0);
       const dipRealData = dipCombined.map(l => resMapDip[l] || 0);
       const dipColors = dipCombined.map(l => colorMap[l] || '#999999');
@@ -2835,7 +2849,8 @@
           labels: dipCombined,
           datasets: [
             { label: 'Esperado (Intención)', data: dipIntData, backgroundColor: dipColors },
-            { label: 'Real (Votos)', data: dipRealData, backgroundColor: dipColors.map(realColor), borderColor: dipColors, borderWidth: 2 }
+            { label: 'Real (Votos)', data: dipRealData, backgroundColor: dipColors.map(realColor), borderColor: dipColors, borderWidth: 2 },
+            ...(Object.keys(segMapDip).length ? [{ label: 'Seguros (Comprometidos)', data: dipCombined.map(l => segMapDip[l] || 0), backgroundColor: dipColors.map(c => expandHex(c) + '55'), borderColor: dipColors, borderWidth: 2, borderDash: [5, 5] }] : [])
           ]
         },
         options: chartOpts
