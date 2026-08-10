@@ -1591,6 +1591,7 @@
   }
 
   function loadView(view) {
+    if (view !== 'reportes' && reportesTimer) { clearInterval(reportesTimer); reportesTimer = null; }
     const loaders = {
       dashboard: loadDashboard,
       usuarios: loadUsuarios,
@@ -1602,7 +1603,7 @@
       geocercas: loadGeocercas,
       rutas: loadRutas,
       'mi-ruta': loadMiRuta,
-      reportes: loadReportes,
+      reportes: iniciarReportes,
       'reportes-encuesta': loadReportesEncuesta,
       partidos: loadPartidos,
       resultados: loadResultados,
@@ -2731,6 +2732,7 @@
   };
 
   async function loadReportes() {
+    reportesCargando = true;
     try {
       const pdfBtn = document.getElementById('btn-pdf-votantes');
       if (pdfBtn) pdfBtn.style.display = (API.getUser()?.rol === 'admin') ? '' : 'none';
@@ -2859,9 +2861,9 @@
             ).join('')}</div></div>`;
         }).join('');
       }
-      let votacionHtml = '';
+      let votacion = null, votacionHtml = '';
       try {
-        const votacion = await API.getReporteVotacion(secId || null);
+        votacion = await API.getReporteVotacion(secId || null);
         const secRows = (votacion.por_seccion || []).map(s => `
           <tr><td>Sec. ${s.seccion_id}</td><td>${s.casillas}</td><td>${s.meta}</td><td>${s.votos}</td><td>${s.votos_favorito}</td>
           <td>${s.meta ? Math.round((s.votos / s.meta) * 100) : 0}%</td></tr>`).join('');
@@ -2870,13 +2872,47 @@
           <td>${c.meta_votos ? Math.round((c.votos / c.meta_votos) * 100) : 0}%</td></tr>`).join('');
         const favoritoNombre = ((await API.getPartidos()).find(p => p.es_favorito) || {}).abreviatura || 'favorito';
         votacionHtml = `
-          <h3 style="margin:0 0 8px">Seguimiento de votación (meta vs ya votaron)</h3>
           <table class="compact"><thead><tr><th>Sección</th><th>Casillas</th><th>Meta</th><th>Ya votaron</th><th>Votos ${favoritoNombre}</th><th>% avance</th></tr></thead>
           <tbody>${secRows || '<tr><td colspan="6" style="text-align:center;color:#999">Sin casillas registradas</td></tr>'}</tbody></table>
           <table class="compact" style="margin-top:8px"><thead><tr><th>Sección</th><th>Casilla</th><th>Meta</th><th>Ya votaron</th><th>Votos ${favoritoNombre}</th><th>% avance</th></tr></thead>
           <tbody>${casRows || '<tr><td colspan="6" style="text-align:center;color:#999">Sin casillas</td></tr>'}</tbody></table>`;
       } catch (e) { votacionHtml = '<p style="font-size:12px;color:#999">Métricas de votación no disponibles</p>'; }
       document.getElementById('rep-votacion').innerHTML = votacionHtml;
+
+      // Barra del partido favorito vs meta (seccion / casilla / todas)
+      const favPartido = partidos.find(p => p.es_favorito) || {};
+      const favAbrev = favPartido.abreviatura || favPartido.nombre || 'favorito';
+      const favColor = favPartido.color && favPartido.color[0] === '#' ? favPartido.color : '#' + (favPartido.color || '009639');
+      let metaFav = 0, votosFav = 0, detalleFav = 'Todas las secciones (suma de metas)';
+      if (votacion) {
+        if (casId) {
+          const ent = (votacion.por_casilla || []).find(c => c.casilla_id === casId);
+          const casSel = casillasMostrar.find(c => c.id === casId);
+          metaFav = ent?.meta_votos || 0;
+          votosFav = ent?.votos_favorito || 0;
+          detalleFav = `Casilla: ${casSel?.nombre || ''}`;
+        } else {
+          (votacion.por_seccion || []).forEach(s => { metaFav += s.meta || 0; votosFav += s.votos_favorito || 0; });
+          if (secId) detalleFav = `Sección ${secId}`;
+        }
+      }
+      const pctFav = metaFav > 0 ? Math.round((votosFav / metaFav) * 100) : 0;
+      const barFav = document.getElementById('rep-meta-favorito');
+      if (barFav) {
+        barFav.innerHTML = `<div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+            <strong style="font-size:13px">🎯 Partido favorito: ${favAbrev}</strong>
+            <span style="font-size:12px;color:#555">${votosFav} de ${metaFav} votos <strong>(${pctFav}%)</strong></span>
+          </div>
+          <div style="height:16px;background:#eee;border-radius:8px;overflow:hidden">
+            <div style="width:${Math.min(pctFav,100)}%;height:100%;background:${favColor};transition:width 0.6s"></div>
+          </div>
+          <div style="font-size:10px;color:#888;margin-top:4px">${detalleFav} · votos del partido preferido contra la meta ${metaFav > 0 ? '(100%)' : '(sin meta registrada)'}</div>
+        </div>`;
+      }
+
+      const updTxt = document.getElementById('rep-ultima-actualizacion');
+      if (updTxt) updTxt.textContent = '🔄 Actualizado ' + new Date().toLocaleTimeString();
 
       document.getElementById('rep-detalle').innerHTML = `
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
@@ -2889,11 +2925,25 @@
       console.error(err);
       var repDet = document.getElementById('rep-detalle');
       if (repDet) repDet.innerHTML = `<div style="color:var(--pri-red);font-size:13px;padding:12px;border:1px solid var(--pri-red);border-radius:8px">Error al cargar reportes: ${err?.message || err}</div>`;
+    } finally {
+      reportesCargando = false;
     }
   }
 
   function loadReportesEncuesta() {
     cargarSelectEncuestasReporte();
+  }
+
+  let reportesTimer = null;
+  let reportesCargando = false;
+  function iniciarReportes() {
+    loadReportes();
+    if (reportesTimer) clearInterval(reportesTimer);
+    reportesTimer = setInterval(() => {
+      if (!document.getElementById('view-reportes')?.classList.contains('active')) { clearInterval(reportesTimer); reportesTimer = null; return; }
+      if (reportesCargando) return;
+      loadReportes();
+    }, 30000);
   }
 
   // ============ Pantalla Representante de Casilla (con modo offline) ============

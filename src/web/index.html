@@ -686,13 +686,18 @@
             <select id="rep-filtro-seccion"><option value="">Todas las secciones</option></select>
             <select id="rep-filtro-casilla"><option value="">Todas las casillas</option></select>
             <button class="btn-small btn-primary" id="btn-pdf-votantes" onclick="descargarPdfVotantes()" title="PDF con casillas para palomear en papel (solo admin)">⬇ PDF votantes</button>
+            <span id="rep-ultima-actualizacion" style="font-size:10px;color:#888;align-self:center"></span>
           </div>
-          <div id="rep-votacion" style="margin:10px 0;padding:10px;border:1px solid var(--border);border-radius:var(--radius)"></div>
+          <div id="rep-meta-favorito" style="margin:10px 0"></div>
           <div style="display:flex;gap:36px;flex-wrap:wrap">
             <div style="flex:1;min-width:320px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)"><h3 style="margin:0 0 8px">Presidente Municipal</h3><canvas id="chart-presidente" style="max-height:280px;width:100%"></canvas></div>
             <div style="flex:1;min-width:320px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)"><h3 style="margin:0 0 8px">Diputado Local</h3><canvas id="chart-diputado" style="max-height:280px;width:100%"></canvas></div>
           </div>
           <div id="rep-detalle" style="margin-top:16px"></div>
+          <details style="margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px">
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#666">📊 Seguimiento de votación (meta vs ya votaron)</summary>
+            <div id="rep-votacion" style="margin-top:8px"></div>
+          </details>
         </div>
 
         <div id="view-reportes-encuesta" class="view">
@@ -1031,6 +1036,6 @@
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
   <script src="js/api.js?v=98"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=154"></script>
+  <script src="js/app.js?v=155"></script>
 </body>
 </html>
