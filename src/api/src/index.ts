@@ -586,8 +586,8 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
       for (const v of votantes_casa_list.slice(0, 20)) {
         if (!v) continue;
         await pool.query(
-          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, pendiente) VALUES ($1,$2,$3,$4)',
-          [id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.pendiente !== false]
+          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente) VALUES ($1,$2,$3,$4,$5)',
+          [id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.partido_diputado_id || null, v.pendiente !== false]
         );
       }
     }
@@ -636,8 +636,8 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
       for (const v of votantes_casa_list.slice(0, 20)) {
         if (!v) continue;
         await pool.query(
-          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, pendiente) VALUES ($1,$2,$3,$4)',
-          [req.params.id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.pendiente !== false]
+          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente) VALUES ($1,$2,$3,$4,$5)',
+          [req.params.id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.partido_diputado_id || null, v.pendiente !== false]
         );
       }
     }
@@ -734,7 +734,7 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
     let votantesCasa: any[] = [];
     if (result.rows.length) {
       const ids = result.rows.map((r: any) => r.id);
-      const vc = await pool.query('SELECT ciudadano_id, nombre, partido_id, pendiente FROM votantes_casa WHERE ciudadano_id = ANY($1)', [ids]);
+      const vc = await pool.query('SELECT ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente FROM votantes_casa WHERE ciudadano_id = ANY($1)', [ids]);
       votantesCasa = vc.rows;
     }
     res.json(result.rows.map((r: any) => ({
@@ -1608,8 +1608,28 @@ app.delete('/api/resultados/:id', authenticateToken, async (req, res) => {
 });
 
 // ---- Votos (ya votaron) ----
+async function votacionActiva(): Promise<{ fecha: string | null; activa: boolean }> {
+  const cfg = await pool.query("SELECT valor FROM configuracion WHERE clave='fecha_eleccion'");
+  const valor = cfg.rows[0]?.valor;
+  if (!valor || !/^\d{4}-\d{2}-\d{2}$/.test(valor)) return { fecha: null, activa: false };
+  const hoy = await pool.query("SELECT (NOW() AT TIME ZONE 'America/Mexico_City')::date::text AS d");
+  return { fecha: valor, activa: String(hoy.rows[0].d) === valor };
+}
+
+app.get('/api/reportes/votacion-estado', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const st = await votacionActiva();
+    res.json(st);
+  } catch (e: any) { console.error('GET /api/reportes/votacion-estado error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
 app.post('/api/votos', authenticateToken, async (req, res) => {
   try {
+    const st = await votacionActiva();
+    if (!st.activa) {
+      res.status(403).json({ error: st.fecha ? `La votación solo se registra el día de la elección (${st.fecha})` : 'Configura el día de la elección para habilitar el registro de votos' });
+      return;
+    }
     const { ciudadano_id, comprometido_id } = req.body;
     if (!ciudadano_id && !comprometido_id) { res.status(400).json({ error: 'ciudadano_id o comprometido_id requerido' }); return; }
     const ref = ciudadano_id ? { tabla: 'ciudadanos', col: 'ciudadano_id', id: ciudadano_id } : { tabla: 'ciudadanos_comprometidos', col: 'comprometido_id', id: comprometido_id };
@@ -1629,6 +1649,8 @@ app.post('/api/votos', authenticateToken, async (req, res) => {
 
 app.delete('/api/votos/:tipo/:id', authenticateToken, async (req, res) => {
   try {
+    const st = await votacionActiva();
+    if (!st.activa) { res.status(403).json({ error: st.fecha ? `La votación solo se registra el día de la elección (${st.fecha})` : 'Configura el día de la elección para habilitar el registro de votos' }); return; }
     const { tipo, id } = req.params;
     if (tipo !== 'ciudadano' && tipo !== 'comprometido') { res.status(400).json({ error: 'tipo inválido' }); return; }
     const col = tipo === 'ciudadano' ? 'ciudadano_id' : 'comprometido_id';
@@ -2214,6 +2236,8 @@ setInterval(async () => {
 // Alertas de votación: 80%, 100% de meta y secciones estancadas (una vez por día por sección/tipo)
 async function chequearAlertasVotacion() {
   try {
+    const st = await votacionActiva();
+    if (!st.activa) return;
     const info = await pool.query(`
       SELECT s.seccion_id AS id, sum(s.meta_votos) AS meta,
              count(v.id)::int AS votos, max(v.created_at) AS ultimo_voto

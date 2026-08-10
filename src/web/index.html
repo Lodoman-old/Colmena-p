@@ -371,6 +371,20 @@
               </div>
             </div>
           </div>
+
+          <div id="vc-casa-modal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:660px">
+              <div class="modal-header">
+                <span>Votantes de la casa (además del entrevistado)</span>
+                <button class="modal-close" onclick="cerrarModal('vc')">X</button>
+              </div>
+              <div class="modal-body">
+                <div style="font-size:12px;color:#666;margin-bottom:10px">Indica por quién votaría cada persona de la casa, <b>excluyendo</b> a quien respondió la encuesta. Si no conseguiste la información, déjalo en "Sin definir".</div>
+                <div id="vc-body"></div>
+                <button class="btn btn-primary" style="width:100%" onclick="guardarVotantesCasa()">Guardar votantes de la casa</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="view-plantillas" class="view">
@@ -576,6 +590,11 @@
                   <button id="bf-btn-camara" type="button" onclick="capturarEvidenciaBarrido()" style="background:none;border:1px solid var(--border);border-radius:4px;padding:3px 6px;cursor:pointer;font-size:12px" title="Tomar foto de evidencia">📷</button>
                   <button id="btn-guardar-barrido" class="btn-small btn-primary" disabled style="width:auto;padding:6px 12px;font-size:12px;opacity:0.4;cursor:not-allowed">Guardar</button>
                   <span id="bf-status" style="font-size:11px;color:var(--color-secondary)"></span>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+                  <label style="font-size:12px;white-space:nowrap" title="Además del entrevistado">Votantes extra</label>
+                  <input type="number" id="bf-votantes_casa" min="0" max="20" value="0" style="width:60px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
+                  <button type="button" id="bf-btn-vc" class="btn-small btn-secondary" onclick="abrirModalVotantesCasa('bf')" style="font-size:11px">👥 Votantes de la casa</button>
                 </div>
                 <div id="bf-evidencia-preview" style="display:none;margin-top:6px;position:relative">
                   <img id="bf-evidencia-img" style="height:60px;border-radius:4px;border:1px solid #ddd;object-fit:cover">
@@ -835,6 +854,11 @@
             </div>
             <p style="font-size:11px;color:#999;margin:0 0 12px">La app se actualiza descargando e instalando el APK en el celular (Android). En iPhone la web se actualiza sola al abrir la app.</p>
             <div style="border-top:1px solid #eee;padding-top:12px">
+              <div style="font-size:13px;font-weight:600;margin-bottom:8px">Elección</div>
+              <div class="form-group" style="max-width:420px"><label for="cfg-fecha_eleccion">Día de la elección</label><input type="date" id="cfg-fecha_eleccion" class="cfg-input"></div>
+              <p style="font-size:11px;color:#999;margin:0 0 12px">Solo ese día se pueden marcar votos en la app ("Ya votó") y se activan las alertas de avance (80%, 100% y secciones estancadas).</p>
+            </div>
+            <div style="border-top:1px solid #eee;padding-top:12px">
               <div style="font-size:13px;font-weight:600;margin-bottom:8px">Encuestas públicas</div>
               <div class="form-group" style="max-width:420px"><label for="cfg-url_publica">URL pública del sistema</label><input type="text" id="cfg-url_publica" class="cfg-input" placeholder="http://192.168.0.12"></div>
               <p style="font-size:11px;color:#999;margin:0 0 12px">Es la dirección con la que se construyen los enlaces de encuesta que reciben los ciudadanos. Cámbiala sin tocar el código cuando uses un dominio (ej: https://colmena.mx).</p>
@@ -1086,6 +1110,6 @@
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
   <script src="js/api.js?v=98"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=159"></script>
+  <script src="js/app.js?v=161"></script>
 </body>
 </html>

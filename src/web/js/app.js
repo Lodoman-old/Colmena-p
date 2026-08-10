@@ -1349,16 +1349,12 @@
           intencion_voto_presidente: parseInt(document.getElementById('f-intencion_voto_presidente').value) || null,
           intencion_voto_diputado: parseInt(document.getElementById('f-intencion_voto_diputado').value) || null,
           casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null,
-          votantes_casa: parseInt(document.getElementById('f-votantes_casa').value) || 1,
+          votantes_casa: (parseInt(document.getElementById('f-votantes_casa').value) || 0) + 1,
           no_abrio: document.getElementById('f-no_abrio').checked
         };
-        const extraRows = document.querySelectorAll('#f-votantes-extra .votante-extra');
-        if (extraRows.length) {
-          data.votantes_casa_list = [...extraRows].map(r => ({
-            nombre: r.querySelector('.vc-nombre').value,
-            partido_id: r.querySelector('.vc-partido').value ? parseInt(r.querySelector('.vc-partido').value) : null,
-            pendiente: !r.querySelector('.vc-partido').value
-          }));
+        const vcDef = Array.isArray(window._vcList) ? window._vcList.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
+        if (vcDef.length) {
+          data.votantes_casa_list = vcDef.map(v => ({ ...v, pendiente: !v.partido_id && !v.partido_diputado_id }));
         }
         const errTel = validarTelefono(data.telefono);
         if (errTel) { msg.textContent = errTel; msg.style.color = 'var(--pri-red)'; return; }
@@ -3082,22 +3078,34 @@
     const fav = data.partido_favorito;
     const favCount = votantes.filter(v => v.ya_voto && v.partido_id === (fav ? fav.id : null)).length;
     const meta = data.casilla.meta_votos || 0;
+    const ev = await obtenerEstadoVotacion();
+    const bannerOff = ev && !ev.activa ? `<div style="padding:8px 14px;border-radius:8px;background:#fff3cd;font-size:12px;grid-column:1/-1">🔒 El registro de votos solo se activa el día de la elección${ev.fecha ? ` (${ev.fecha})` : ''}</div>` : '';
     resumen.innerHTML = `
+      ${bannerOff}
       <div style="padding:8px 14px;border-radius:8px;background:#f0f4ff"><strong>${votantes.length}</strong> votantes esperados</div>
       <div style="padding:8px 14px;border-radius:8px;background:#e8f5e9"><strong>${votados}</strong> ya votaron${meta ? ` <span style="color:#666">/ meta ${meta}</span>` : ''}</div>
       <div style="padding:8px 14px;border-radius:8px;background:#fff3e0"><strong>${favCount}</strong> votos ${fav ? fav.abreviatura : ''}</div>
       ${cola.length ? `<div style="padding:8px 14px;border-radius:8px;background:#fff3cd;font-size:11px">${cola.length} cambio(s) pendiente(s) de sincronizar <button class="btn-small btn-secondary" onclick="csaSyncOffline()" style="font-size:10px">Sincronizar</button></div>` : ''}`;
+    const votActiva = ev?.activa;
     body.innerHTML = votantes.length ? votantes.map(v => {
       const favTxt = (v.partido_id === (fav ? fav.id : null)) ? ' ⭐' : '';
       const extra = v.tipo === 'comprometido' && v.nivel_compromiso ? ` <span style="font-size:10px;color:#888">[${v.nivel_compromiso}]</span>` : '';
+      const votoBtn = votActiva
+        ? `<button class="btn-small" style="min-width:110px;${v.ya_voto ? 'background:var(--pri-green);color:#fff;border:none' : 'background:#eee'}" onclick="csaToggleVoto('${v.tipo}','${v.id}',${v.ya_voto})">${v.ya_voto ? '✓ Ya votó' : 'Aún no'}</button>`
+        : `<button class="btn-small" style="min-width:110px;background:#f3f3f3;color:#bbb;border:none;cursor:not-allowed" disabled>${v.ya_voto ? '✓ Ya votó' : '🔒 Aún no'}</button>`;
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:${v.ya_voto ? '#e8f5e9' : '#fff'}">
-        <button class="btn-small" style="min-width:110px;${v.ya_voto ? 'background:var(--pri-green);color:#fff;border:none' : 'background:#eee'}" onclick="csaToggleVoto('${v.tipo}','${v.id}',${v.ya_voto})">${v.ya_voto ? '✓ Ya votó' : 'Aún no'}</button>
+        ${votoBtn}
         <div style="flex:1"><strong>${v.nombre}</strong>${extra}<div style="font-size:11px;color:#666">${v.abreviatura ? 'Vota: ' + v.abreviatura + favTxt : 'Sin partido definido'}${v.telefono ? ' — ' + v.telefono : ''}</div></div>
       </div>`;
     }).join('') : '<p style="font-size:13px;color:#999;text-align:center">Sin votantes asignados a esta casilla</p>';
   };
 
   window.csaToggleVoto = async function(tipo, id, actualVotado) {
+    const ev = await obtenerEstadoVotacion();
+    if (!ev?.activa) {
+      alert(ev?.fecha ? `La votación solo se registra el día de la elección (${ev.fecha})` : 'Configura el día de la elección para habilitar el registro de votos');
+      return;
+    }
     const nuevo = !actualVotado;
     const cola = csaLeerCola();
     const k = tipo + ':' + id;
@@ -3568,6 +3576,9 @@
   });
 
   function limpiarFormularioBarrido() {
+    const bfVc = document.getElementById('bf-votantes_casa'); if (bfVc) bfVc.value = '0';
+    window._vcList = [];
+    actualizarBtnVotantesCasa();
     document.getElementById('bf-nombre').value = '';
     document.getElementById('bf-telefono').value = '';
     document.getElementById('bf-calle').value = '';
@@ -3910,6 +3921,10 @@
     const gpsText = document.getElementById('bf-gps-text');
     const status = document.getElementById('bf-status');
     const data = { nombre, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, simpatizante, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado };
+    const bfExtras = parseInt(document.getElementById('bf-votantes_casa').value) || 0;
+    if (bfExtras > 0) data.votantes_casa = bfExtras + 1;
+    const bfVcDef = Array.isArray(window._vcList) ? window._vcList.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
+    if (bfVcDef.length) data.votantes_casa_list = bfVcDef.map(v => ({ ...v, pendiente: !v.partido_id && !v.partido_diputado_id }));
     // Capture photo evidence (base64) and GPS first, without API calls
     const evidenciaImg = document.getElementById('bf-evidencia-img');
     const tieneFoto = evidenciaImg.src && evidenciaImg.src.startsWith('data:');
@@ -4500,6 +4515,15 @@
   let rutaActivaId = null;
   let rutaReadOnly = false;
   let rutaFull = null;
+  let votacionEstado = null;
+
+  async function obtenerEstadoVotacion() {
+    if (!window._votacionEstado || Date.now() - (window._votacionEstado_t || 0) > 60000) {
+      window._votacionEstado = await API.request('GET', '/api/reportes/votacion-estado').catch(() => ({ fecha: null, activa: false }));
+      window._votacionEstado_t = Date.now();
+    }
+    return window._votacionEstado;
+  }
 
   let rutaPrefix = 'ruta';
 
@@ -4508,6 +4532,7 @@
     rutaPrefix = prefix || 'ruta';
     rutaFull = ruta;
     rutaData = { paradas: ruta.paradas || [], distancia_total_km: ruta.distancia_total_km, tiempo_total_minutos: ruta.tiempo_total_minutos };
+    votacionEstado = await obtenerEstadoVotacion();
     if (ruta.estado === 'completada' && !(ruta.paradas || []).some(p => p.visitado)) {
       (ruta.paradas || []).forEach(p => p.visitado = true);
     }
@@ -4778,6 +4803,10 @@
 
   window.marcarParadaVoto = async function(id) {
     if (!rutaFull) return;
+    if (!(votacionEstado?.activa)) {
+      const msg = votacionEstado?.fecha ? `Solo se registran votos el día de la elección (${votacionEstado.fecha})` : 'Configura el día de la elección para habilitar este botón';
+      alert(msg); return;
+    }
     if (rutaVotados.has(id)) { alert('Esta persona ya está registrada como votante. Si fue un error, quita el toque en Casilla (Representante).'); return; }
     const tipo = rutaFull.tipo === 'seguros' ? 'comprometido' : 'ciudadano';
     try {
@@ -4880,7 +4909,15 @@
         const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id && rutaFull.encuesta_lanzada;
         const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px" onclick="event.stopPropagation();abrirEncuestaCiudadano('${s.id}','${(s.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}')" title="Responder encuesta de esta parada">📋 Encuesta</button>` : '';
         const yaVoto = s.ya_voto || rutaVotados.has(s.id);
-        const votoBtn = !rutaReadOnly ? `<button class="btn-small ${yaVoto?'btn-primary':'btn-secondary'}" style="padding:2px 6px;font-size:9px;margin-top:2px;background:${yaVoto?'var(--pri-green)':'#eee'};color:${yaVoto?'#fff':'#333'};border:none" onclick="event.stopPropagation();marcarParadaVoto('${s.id}')" title="Registrar voto en tiempo real">${yaVoto?'🗳 Ya votó':'🗳 Ya votó?'}</button>` : '';
+        const votoTxt = yaVoto ? '🗳 Ya votó' : '🗳 Ya votó?';
+        let votoBtn = '';
+        if (!rutaReadOnly) {
+          if (votacionEstado?.activa) {
+            votoBtn = `<button class="btn-small" style="padding:2px 6px;font-size:9px;margin-top:2px;background:${yaVoto?'var(--pri-green)':'#eee'};color:${yaVoto?'#fff':'#333'};border:none" onclick="event.stopPropagation();marcarParadaVoto('${s.id}')" title="Registrar voto en tiempo real">${votoTxt}</button>`;
+          } else if (votacionEstado?.fecha) {
+            votoBtn = `<button class="btn-small" style="padding:2px 6px;font-size:9px;margin-top:2px;background:#f3f3f3;color:#bbb;border:none;cursor:not-allowed" onclick="event.stopPropagation()" title="Solo se registran votos el día de la elección (${votacionEstado.fecha})">🗳 Elección ${votacionEstado.fecha.slice(5)}</button>`;
+          }
+        }
         return `<div class="ruta-parada-card ${visit?'ruta-parada-visitada':''}" onclick="irAParada(${i})">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="width:24px;height:24px;border-radius:50%;background:${s.es_simpatizante?C_SECONDARY:C_PRIMARY};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">${i+1}</div>
@@ -5119,6 +5156,50 @@
     resizeTimeout = setTimeout(() => { if (rutaMap) rutaMap.invalidateSize(); }, 300);
   });
 
+  window._vcList = [];
+
+  function actualizarBtnVotantesCasa() {
+    const n = Array.isArray(window._vcList) ? window._vcList.length : 0;
+    const suf = n ? ` (${n})` : '';
+    const fb = document.getElementById('f-btn-vc'); if (fb) fb.textContent = `👥 Votantes de la casa${suf}`;
+    const bb = document.getElementById('bf-btn-vc'); if (bb) bb.textContent = `👥 Votantes de la casa${suf}`;
+  }
+
+  function initVotantesCasaModal(list, extras) {
+    const l = Array.isArray(list) ? list : [];
+    window._vcList = l.length
+      ? l.map(v => ({ nombre: v.nombre || '', partido_id: v.partido_id || null, partido_diputado_id: v.partido_diputado_id || null }))
+      : Array.from({ length: extras }, () => ({ nombre: '', partido_id: null, partido_diputado_id: null }));
+    actualizarBtnVotantesCasa();
+  }
+
+  window.abrirModalVotantesCasa = async function(prefix) {
+    const input = document.getElementById(prefix + '-votantes_casa');
+    const extras = Math.max(0, parseInt(input.value) || 0);
+    const cur = Array.isArray(window._vcList) ? window._vcList : [];
+    window._vcList = Array.from({ length: extras }, (_, i) => cur[i] || { nombre: '', partido_id: null, partido_diputado_id: null });
+    const partidos = await API.getPartidos();
+    const rows = window._vcList.map((v, i) => `
+      <div class="vc-row" style="display:flex;gap:6px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:bold;width:64px;flex:none">Votante ${i + 1}</span>
+        <input class="vc-nombre" placeholder="Nombre (opcional)" value="${(v.nombre || '').replace(/"/g, '&quot;')}" style="flex:1;min-width:90px;font-size:12px">
+        <select class="vc-p" style="flex:1;min-width:80px;font-size:12px"><option value="">Presidente: Sin definir</option>${partidos.map(p => `<option value="${p.id}" ${v.partido_id == p.id ? 'selected' : ''}>${p.abreviatura}</option>`).join('')}</select>
+        <select class="vc-d" style="flex:1;min-width:80px;font-size:12px"><option value="">Diputado: Sin definir</option>${partidos.map(p => `<option value="${p.id}" ${v.partido_diputado_id == p.id ? 'selected' : ''}>${p.abreviatura}</option>`).join('')}</select>
+      </div>`).join('');
+    document.getElementById('vc-body').innerHTML = rows.length ? rows : '<p style="font-size:12px;color:#999;text-align:center">Aumenta "Votantes extra" para registrar a las demás personas de la casa</p>';
+    document.getElementById('vc-casa-modal').classList.remove('hidden');
+  };
+
+  window.guardarVotantesCasa = function() {
+    window._vcList = [...document.querySelectorAll('#vc-body .vc-row')].map(r => ({
+      nombre: (r.querySelector('.vc-nombre').value || '').trim(),
+      partido_id: r.querySelector('.vc-p').value ? parseInt(r.querySelector('.vc-p').value) : null,
+      partido_diputado_id: r.querySelector('.vc-d').value ? parseInt(r.querySelector('.vc-d').value) : null
+    }));
+    actualizarBtnVotantesCasa();
+    cerrarModal('vc');
+  };
+
   window.abrirModal = async function(tipo, id) {
     if (tipo === 'ciudadano' || tipo === 'comprometido') _gpsUsed = false;
     const overlay = document.getElementById('modal-overlay');
@@ -5316,6 +5397,8 @@
       document.getElementById('filtro-modal')?.classList.add('hidden');
     } else if (tipo === 'inc') {
       document.getElementById('inc-modal')?.classList.add('hidden');
+    } else if (tipo === 'vc') {
+      document.getElementById('vc-casa-modal')?.classList.add('hidden');
     } else {
       document.getElementById('modal-overlay')?.classList.add('hidden');
       // Cleanup draggable map in ciudadano modal
@@ -5477,26 +5560,11 @@
       if (casLng) casLng.addEventListener('change', cargarCasillasModal);
       cargarCasillasModal();
 
-      // Votantes extra en la casa (solo encuesta)
+      // Votantes extra en la casa: se capturan en modal dedicado (además del entrevistado)
       const vcInput = document.getElementById('f-votantes_casa');
       if (vcInput) {
-        const vcList = Array.isArray(data.votantes_casa_list) ? data.votantes_casa_list : [];
-        function renderVotantesExtra() {
-          const cont = document.getElementById('f-votantes-extra');
-          const total = Math.max(1, parseInt(vcInput.value) || 1);
-          const rows = [];
-          for (let i = 0; i < total - 1; i++) {
-            const v = vcList[i] || {};
-            rows.push(`<div class="votante-extra form-row" style="align-items:center;gap:6px;margin-top:4px">
-              <span style="font-size:11px;color:#666;width:70px">Votante ${i + 2}</span>
-              <input class="vc-nombre" placeholder="Nombre (opcional)" value="${v.nombre || ''}" style="flex:2;font-size:12px">
-              <select class="vc-partido" style="flex:2;font-size:12px"><option value="">Pendiente / No sabe</option>${partidos.map(p => `<option value="${p.id}" ${v.partido_id == p.id ? 'selected' : ''}>${p.abreviatura}</option>`).join('')}</select>
-            </div>`);
-          }
-          cont.innerHTML = rows.join('');
-        }
-        vcInput.addEventListener('change', renderVotantesExtra);
-        renderVotantesExtra();
+        const extras = Math.max(0, parseInt(vcInput.value) || 0);
+        initVotantesCasaModal(data.votantes_casa_list, extras);
       }
 
       // CP → colonia auto-suggest
@@ -5687,11 +5755,14 @@
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:center"><label style="flex:1;font-size:11px">Casilla (auto por cercanía, ajustable)</label><select id="f-casilla" style="flex:3;box-sizing:border-box"><option value="">Auto-detectar</option></select></div>
-      <label class="checkbox-line" style="font-size:12px"><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''}> No abrió (no se pudo entrevistar)</label>
-      <label style="font-size:11px">Votantes en la casa <span style="color:#999">(incluye al entrevistado)</span></label>
-      <input type="number" id="f-votantes_casa" min="1" max="20" value="${data.votantes_casa || 1}" style="width:80px">
-      <div id="f-votantes-extra" style="margin-top:4px"></div>
+      <div class="form-row" style="align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;flex:none">Casilla</label>
+        <select id="f-casilla" style="flex:2;min-width:120px;box-sizing:border-box"><option value="">Auto-detectar</option></select>
+        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0"><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''}> No abrió</label>
+        <label style="font-size:11px;flex:none" title="Además del entrevistado">Votantes extra</label>
+        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="width:55px">
+        <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
+      </div>
       <div class="form-row" style="align-items:stretch"><label style="flex:0.3;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;cursor:pointer;text-align:center"><span>Simpatizante</span><input type="checkbox" id="f-simpatizante" ${data.simpatizante?'checked':''} style="margin:0;width:auto"></label>
       <label style="flex:0.4;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%"></select></label>
