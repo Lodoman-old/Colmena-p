@@ -90,8 +90,10 @@ export class RoutingService {
                ST_Y(c.ubicacion::geometry) as lat,
                c.simpatizante as es_simpatizante,
                c.prioridad,
-               c.calle, c.numero, c.colonia
+               c.calle, c.numero, c.colonia,
+               (v.id IS NOT NULL) AS ya_voto
         FROM ciudadanos_comprometidos c
+        LEFT JOIN votos v ON v.comprometido_id = c.id
         WHERE c.seccion_id = $1
           AND c.ubicacion IS NOT NULL
       `;
@@ -102,8 +104,10 @@ export class RoutingService {
                ST_Y(c.ubicacion::geometry) as lat,
                c.simpatizante as es_simpatizante,
                c.prioridad,
-               c.calle, c.numero, c.colonia
+               c.calle, c.numero, c.colonia,
+               (v.id IS NOT NULL) AS ya_voto
         FROM ciudadanos c
+        LEFT JOIN votos v ON v.ciudadano_id = c.id
         WHERE c.seccion_id = $1
           AND c.ubicacion IS NOT NULL
       `;
@@ -123,6 +127,7 @@ export class RoutingService {
       ubicacion: { lat: row.lat, lng: row.lng },
       es_simpatizante: row.es_simpatizante,
       prioridad: row.prioridad,
+      ya_voto: !!row.ya_voto,
       direccion: [row.calle, row.numero].filter(Boolean).join(' '),
       colonia: row.colonia
     }));

@@ -83,6 +83,7 @@
               <button class="dropdown-item" data-view="rutas">Rutas</button>
               <button class="dropdown-item" data-view="mi-ruta">Mi Ruta</button>
               <button class="dropdown-item" data-view="casilla">Casilla (Representante)</button>
+              <button class="dropdown-item" data-view="incidencias">⚠️ Incidencias</button>
             </div>
           </div>
           <div class="nav-dropdown">
@@ -328,6 +329,47 @@
             <div id="csa-resumen" style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 10px;font-size:12px"></div>
             <div id="csa-body"></div>
             <p style="font-size:11px;color:#999;margin:10px 0 0">Modo offline: la lista queda guardada en este dispositivo y los toques de "Ya votó" se sincronizan cuando haya conexión (funciona aunque falle el servidor).</p>
+          </div>
+        </div>
+
+        <div id="view-incidencias" class="view">
+          <h2>⚠️ Incidencias de casilla</h2>
+          <div class="toolbar">
+            <select id="inc-filtro-seccion"><option value="">Todas las secciones</option></select>
+            <select id="inc-filtro-estado">
+              <option value="">Todos los estados</option>
+              <option value="abierta">Abiertas</option>
+              <option value="en_proceso">En proceso</option>
+              <option value="resuelta">Resueltas</option>
+            </select>
+            <button class="btn-small btn-primary" id="btn-inc-nueva">➕ Reportar incidencia</button>
+            <span style="font-size:11px;color:#888;align-self:center" id="inc-version"></span>
+          </div>
+          <div id="inc-lista"></div>
+          <div id="inc-modal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:520px">
+              <div class="modal-header">
+                <span>Reportar incidencia</span>
+                <button class="modal-close" onclick="cerrarModal('inc')">X</button>
+              </div>
+              <div class="modal-body">
+                <div class="form-group"><label for="inc-casilla">Casilla</label><select id="inc-casilla"></select></div>
+                <div class="form-group"><label for="inc-tipo">Tipo de incidencia</label>
+                  <select id="inc-tipo">
+                    <option value="material">Falta material electoral</option>
+                    <option value="instalacion">Casilla no instaló / tardó en instalar</option>
+                    <option value="presencia">Presencia de otro partido / provocaciones</option>
+                    <option value="larga_fila">Filas largas / lentitud</option>
+                    <option value="seguridad">Problema de seguridad</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+                <div class="form-group"><label for="inc-descripcion">Descripción</label>
+                  <textarea id="inc-descripcion" rows="3" placeholder="Describe qué pasó en la casilla..."></textarea>
+                </div>
+                <button class="btn btn-primary" style="width:100%" onclick="guardarIncidencia()">Enviar incidencia</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -693,9 +735,17 @@
             <div style="flex:1;min-width:320px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)"><h3 style="margin:0 0 8px">Presidente Municipal</h3><canvas id="chart-presidente" style="max-height:280px;width:100%"></canvas></div>
             <div style="flex:1;min-width:320px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)"><h3 style="margin:0 0 8px">Diputado Local</h3><canvas id="chart-diputado" style="max-height:280px;width:100%"></canvas></div>
           </div>
+          <div style="margin-top:16px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)">
+            <h3 style="margin:0 0 8px">Votación por hora <span style="font-size:11px;color:#888;font-weight:400">(últimas 48 h)</span></h3>
+            <canvas id="chart-horaria" style="max-height:240px;width:100%"></canvas>
+          </div>
           <div id="rep-detalle" style="margin-top:16px"></div>
           <details style="margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px">
             <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#666">📊 Seguimiento de votación (meta vs ya votaron)</summary>
+            <div style="display:flex;gap:6px;margin:8px 0">
+              <button class="btn-small btn-secondary" id="btn-csv-secciones">⬇ CSV por sección</button>
+              <button class="btn-small btn-secondary" id="btn-csv-casillas">⬇ CSV por casilla</button>
+            </div>
             <div id="rep-votacion" style="margin-top:8px"></div>
           </details>
         </div>
@@ -1036,6 +1086,6 @@
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
   <script src="js/api.js?v=98"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=158"></script>
+  <script src="js/app.js?v=159"></script>
 </body>
 </html>

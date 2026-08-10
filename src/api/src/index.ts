@@ -1388,7 +1388,15 @@ app.get('/api/rutas/:id', authenticateToken, async (req: Request, res: Response)
   try {
     const r = await pool.query(`SELECT r.*, u.nombre as enlace_nombre, c.nombre as encuesta_campana_nombre, c.encuesta_lanzada FROM rutas r JOIN usuarios u ON u.id = r.enlace_id LEFT JOIN campanas c ON c.id = r.encuesta_campana_id WHERE r.id=$1`, [req.params.id]);
     if (!r.rows.length) { res.status(404).json({ error: 'No encontrada' }); return; }
-    res.json(r.rows[0]);
+    const ruta = r.rows[0];
+    if (ruta.paradas?.length && ruta.seccion_id) {
+      const v = await pool.query(
+        `SELECT ciudadano_id, comprometido_id FROM votos
+         WHERE casilla_id IN (SELECT id FROM casillas WHERE seccion_id=$1)`, [ruta.seccion_id]);
+      const votIds = new Set(v.rows.flatMap((rw: any) => [rw.ciudadano_id, rw.comprometido_id].filter(Boolean)));
+      ruta.paradas.forEach((p: any) => { p.ya_voto = votIds.has(p.id); });
+    }
+    res.json(ruta);
   } catch { res.status(500).json({ error: 'Error' }); }
 });
 
@@ -1698,6 +1706,92 @@ app.get('/api/reportes/votacion', authenticateToken, async (req, res) => {
     }
     res.json({ por_casilla: result.rows, por_seccion: Object.values(porSeccion) });
   } catch (e: any) { console.error('GET /api/reportes/votacion error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
+// Votación por hora (últimas 48 h) para gráfica histórica
+app.get('/api/reportes/votacion-horaria', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { seccion_id, casilla_id } = req.query;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (seccion_id) { params.push(seccion_id); conds.push(`cas.seccion_id = $${params.length}`); }
+    if (casilla_id) { params.push(casilla_id); conds.push(`v.casilla_id = $${params.length}`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const result = await pool.query(`
+      SELECT to_char(date_trunc('hour', v.created_at), 'YYYY-MM-DD HH24:00') AS hora,
+             count(*)::int AS votos
+      FROM votos v JOIN casillas cas ON cas.id = v.casilla_id
+      ${where}
+      GROUP BY 1 ORDER BY 1 DESC LIMIT 48`, params);
+    const rows = result.rows.reverse();
+    let acum = 0;
+    res.json(rows.map((r: any) => { acum += Number(r.votos || 0); return { hora: r.hora, votos: Number(r.votos || 0), acumulado: acum }; }));
+  } catch (e: any) { console.error('GET /api/reportes/votacion-horaria error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
+// ---- Incidencias de casilla ----
+app.post('/api/incidencias', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { casilla_id, tipo, descripcion } = req.body || {};
+    if (!casilla_id || !tipo) { res.status(400).json({ error: 'casilla_id y tipo son requeridos' }); return; }
+    if (!descripcion || !String(descripcion).trim()) { res.status(400).json({ error: 'Describe la incidencia' }); return; }
+    if (user.rol === 'enlace') {
+      const sec = await pool.query('SELECT seccion_id FROM casillas WHERE id=$1', [casilla_id]);
+      const sId = sec.rows[0]?.seccion_id;
+      if (!sId) { res.status(404).json({ error: 'Casilla no encontrada' }); return; }
+      const perm = await pool.query('SELECT 1 FROM usuarios_secciones WHERE usuario_id=$1 AND seccion_id=$2', [user.userId, sId]);
+      if (!perm.rows.length) { res.status(403).json({ error: 'No tienes permiso sobre esa casilla' }); return; }
+    }
+    const r = await pool.query(
+      `INSERT INTO incidencias (casilla_id, tipo, descripcion, creado_por) VALUES ($1,$2,$3,$4) RETURNING id`,
+      [casilla_id, tipo, String(descripcion).trim(), user.userId]);
+    res.status(201).json({ id: r.rows[0].id });
+  } catch (e: any) { console.error('POST /api/incidencias error:', e?.message || e); res.status(500).json({ error: 'Error al registrar incidencia' }); }
+});
+
+app.get('/api/incidencias', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { seccion_id, estado } = req.query;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (user.rol === 'enlace') {
+      params.push(user.userId);
+      conds.push(`cas.seccion_id IN (SELECT seccion_id FROM usuarios_secciones WHERE usuario_id = $${params.length})`);
+    }
+    if (seccion_id) { params.push(seccion_id); conds.push(`cas.seccion_id = $${params.length}`); }
+    if (estado) { params.push(estado); conds.push(`i.estado = $${params.length}`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const result = await pool.query(`
+      SELECT i.id, i.casilla_id, i.tipo, i.descripcion, i.estado, i.respuesta,
+             i.created_at, u.nombre as creado_por_nombre, ur.nombre as resuelto_por_nombre,
+             cas.nombre as casilla_nombre, cas.seccion_id
+      FROM incidencias i
+      JOIN casillas cas ON cas.id = i.casilla_id
+      LEFT JOIN usuarios u ON u.id = i.creado_por
+      LEFT JOIN usuarios ur ON ur.id = i.resuelto_por
+      ${where} ORDER BY i.created_at DESC LIMIT 300`, params);
+    res.json(result.rows);
+  } catch (e: any) { console.error('GET /api/incidencias error:', e?.message || e); res.status(500).json({ error: 'Error al listar incidencias' }); }
+});
+
+app.patch('/api/incidencias/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (user.rol !== 'admin' && user.rol !== 'coordinador') { res.status(403).json({ error: 'Solo administradores y coordinadores' }); return; }
+    const { estado, respuesta } = req.body || {};
+    const r = await pool.query(
+      `UPDATE incidencias SET
+         estado = COALESCE($2::varchar, estado),
+         respuesta = COALESCE($3::text, respuesta),
+         resuelto_por = CASE WHEN $2 = 'resuelta' THEN $4 ELSE resuelto_por END,
+         resuelto_en = CASE WHEN $2 = 'resuelta' THEN NOW() ELSE resuelto_en END
+       WHERE id = $1 RETURNING id`,
+      [req.params.id, estado || null, respuesta ?? null, user.userId]);
+    if (!r.rows.length) { res.status(404).json({ error: 'No encontrada' }); return; }
+    res.json({ ok: true });
+  } catch (e: any) { console.error('PATCH /api/incidencias error:', e?.message || e); res.status(500).json({ error: 'Error al actualizar incidencia' }); }
 });
 
 // PDF votantes por sección/casilla (solo admin) para palomear en papel
@@ -2116,6 +2210,37 @@ setInterval(async () => {
     }
   } catch (e) { console.error('Worker notificado_proximo error:', e); }
 }, 300000);
+
+// Alertas de votación: 80%, 100% de meta y secciones estancadas (una vez por día por sección/tipo)
+async function chequearAlertasVotacion() {
+  try {
+    const info = await pool.query(`
+      SELECT s.seccion_id AS id, sum(s.meta_votos) AS meta,
+             count(v.id)::int AS votos, max(v.created_at) AS ultimo_voto
+      FROM casillas s
+      LEFT JOIN votos v ON v.casilla_id = s.id
+      GROUP BY s.seccion_id`);
+    const ahora = new Date();
+    for (const r of info.rows) {
+      const meta = Number(r.meta || 0);
+      if (meta <= 0) continue;
+      const pct = Math.round((Number(r.votos || 0) / meta) * 100);
+      let tipo = null, mensaje = null;
+      if (pct >= 100) { tipo = 'meta-100'; mensaje = `La sección ${r.id} alcanzó el 100% de su meta (${r.votos}/${meta} votos). ¡Excelente! 📣`; }
+      else if (pct >= 80) { tipo = 'meta-80'; mensaje = `La sección ${r.id} va al ${pct}% de su meta (${r.votos}/${meta} votos). ¡Casi!`; }
+      else if (r.votos > 0 && ahora.getHours() >= 12 && r.ultimo_voto && (ahora.getTime() - new Date(r.ultimo_voto).getTime()) > 2 * 3600 * 1000) {
+        tipo = 'estancada'; mensaje = `La sección ${r.id} lleva ${pct}% de su meta sin nuevos votos en 2 horas (${r.votos}/${meta}). ¡Avisa a tu brigada!`;
+      }
+      if (!tipo || !mensaje) continue;
+      const ins = await pool.query(
+        `INSERT INTO alertas_votacion (seccion_id, tipo, mensaje) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING id`,
+        [r.id, tipo, mensaje]);
+      if (ins.rows.length) await sendPushToRole('admin', '⚠️ Alerta de votación', mensaje, '/reportes');
+    }
+  } catch (e: any) { console.warn('chequearAlertasVotacion error:', e?.message || e); }
+}
+setInterval(chequearAlertasVotacion, 300000);
+chequearAlertasVotacion();
 
 // Process pending WhatsApp alerts every 30 seconds
 setInterval(async () => {

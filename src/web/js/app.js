@@ -1216,6 +1216,11 @@
     document.getElementById('cpr-filtro-seccion')?.addEventListener('change', loadComprometidos);
     document.getElementById('rep-filtro-seccion').addEventListener('change', () => { document.getElementById('rep-filtro-casilla').value = ''; loadReportes(); });
     document.getElementById('rep-filtro-casilla').addEventListener('change', loadReportes);
+    document.getElementById('btn-csv-secciones')?.addEventListener('click', () => exportarSeguimientoCsv('secciones'));
+    document.getElementById('btn-csv-casillas')?.addEventListener('click', () => exportarSeguimientoCsv('casillas'));
+    document.getElementById('inc-filtro-seccion')?.addEventListener('change', loadIncidencias);
+    document.getElementById('inc-filtro-estado')?.addEventListener('change', loadIncidencias);
+    document.getElementById('btn-inc-nueva')?.addEventListener('click', abrirModalIncidencia);
     document.getElementById('cas-filtro-seccion').addEventListener('change', loadCasillas);
     document.getElementById('res-filtro-seccion').addEventListener('change', () => { document.getElementById('res-filtro-casilla').value = ''; loadResultados(); });
     document.getElementById('res-filtro-casilla').addEventListener('change', loadResultados);
@@ -1555,7 +1560,7 @@
       const operacionItems = document.querySelectorAll('.nav-dropdown:first-of-type .dropdown-item');
       operacionItems.forEach(item => {
         const v = item.dataset.view;
-        if (v && v !== 'mi-ruta' && v !== 'ciudadanos' && v !== 'casilla') item.style.display = 'none';
+        if (v && v !== 'mi-ruta' && v !== 'ciudadanos' && v !== 'casilla' && v !== 'incidencias') item.style.display = 'none';
       });
       document.querySelectorAll('.nav-btn[data-view="reportes"]').forEach(b => b.style.display = 'none');
       document.querySelectorAll('.nav-dropdown').forEach(d => {
@@ -1609,6 +1614,7 @@
       resultados: loadResultados,
       casillas: loadCasillas,
       casilla: loadCasillaRep,
+      incidencias: loadIncidencias,
       plantillas: loadPlantillas,
       campanas: loadCampanas,
       filtros: loadFiltrosCampana,
@@ -2856,6 +2862,29 @@
         options: chartOpts
       });
 
+      // Votación por hora (histórico)
+      if (window.horariaChart) window.horariaChart.destroy();
+      try {
+        const qs = new URLSearchParams();
+        if (casId) qs.set('casilla_id', casId); else if (secId) qs.set('seccion_id', secId);
+        const horaria = await API.request('GET', '/api/reportes/votacion-horaria' + (qs.toString() ? '?' + qs.toString() : ''));
+        if (horaria.length) {
+          const hrs = horaria.map(h => String(h.hora).slice(5).replace(' ', ' '));
+          const ctxHor = document.getElementById('chart-horaria').getContext('2d');
+          window.horariaChart = new Chart(ctxHor, {
+            type: 'bar',
+            data: {
+              labels: hrs,
+              datasets: [
+                { type: 'bar', label: 'Votos por hora', data: horaria.map(h => h.votos), backgroundColor: '#90a4ae', borderRadius: 3 },
+                { type: 'line', label: 'Acumulado', data: horaria.map(h => h.acumulado), borderColor: '#CC0000', backgroundColor: '#CC0000', borderWidth: 2, pointRadius: 3, tension: 0.3 }
+              ]
+            },
+            options: chartOpts
+          });
+        }
+      } catch (e) { console.warn('Horaria no disponible:', e?.message || e); }
+
       let casillasHtml = '';
       const casillasMostrar = casId ? casillasSec.filter(c => c.id === casId) : (secId ? casillasSec : casillas);
       if (secId) {
@@ -2879,12 +2908,18 @@
       let votacion = null, votacionHtml = '';
       try {
         votacion = await API.getReporteVotacion(secId || null);
-        const secRows = (votacion.por_seccion || []).map(s => `
-          <tr><td>Sec. ${s.seccion_id}</td><td>${s.casillas}</td><td>${s.meta}</td><td>${s.votos}</td><td>${s.votos_favorito}</td>
-          <td>${s.meta ? Math.round((s.votos / s.meta) * 100) : 0}%</td></tr>`).join('');
-        const casRows = (votacion.por_casilla || []).map(c => `
-          <tr><td>Sec. ${c.seccion_id}</td><td><strong>${c.casilla}</strong></td><td>${c.meta_votos}</td><td>${c.votos}</td><td>${c.votos_favorito}</td>
-          <td>${c.meta_votos ? Math.round((c.votos / c.meta_votos) * 100) : 0}%</td></tr>`).join('');
+        const pctColor = p => p == null ? '#999' : (p >= 100 ? '#1b8a3a' : (p >= 50 ? '#b58900' : '#c62828'));
+        const rowBg = p => p == null ? '' : (p >= 100 ? 'background:#e8f5e9' : (p >= 50 ? 'background:#fff8e1' : 'background:#ffebee'));
+        const secRows = (votacion.por_seccion || []).map(s => {
+          const p = s.meta ? Math.round((s.votos / s.meta) * 100) : null;
+          return `<tr style="${rowBg(p)}"><td>Sec. ${s.seccion_id}</td><td>${s.casillas}</td><td>${s.meta}</td><td>${s.votos}</td><td>${s.votos_favorito}</td>
+          <td style="font-weight:600;color:${pctColor(p)}">${p == null ? 0 : p}%</td></tr>`;
+        }).join('');
+        const casRows = (votacion.por_casilla || []).map(c => {
+          const p = c.meta_votos ? Math.round((c.votos / c.meta_votos) * 100) : null;
+          return `<tr style="${rowBg(p)}"><td>Sec. ${c.seccion_id}</td><td><strong>${c.casilla}</strong></td><td>${c.meta_votos}</td><td>${c.votos}</td><td>${c.votos_favorito}</td>
+          <td style="font-weight:600;color:${pctColor(p)}">${p == null ? 0 : p}%</td></tr>`;
+        }).join('');
         const favoritoNombre = ((await API.getPartidos()).find(p => p.es_favorito) || {}).abreviatura || 'favorito';
         votacionHtml = `
           <table class="compact"><thead><tr><th>Sección</th><th>Casillas</th><th>Meta</th><th>Ya votaron</th><th>Votos ${favoritoNombre}</th><th>% avance</th></tr></thead>
@@ -3114,6 +3149,131 @@
       URL.revokeObjectURL(url);
     } catch (err) { alert('Error al generar PDF (solo admin): ' + (err?.message || err)); }
   };
+
+  function descargarCsv(nombre, filas, columnas) {
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = '\ufeff' + [columnas.map(esc), ...filas.map(f => f.map(esc))].map(r => r.join(',')).join('\r\n');
+    if (window.Capacitor?.isNativePlatform?.()) {
+      navigator.clipboard?.writeText(csv).then(() => alert('CSV copiado al portapapeles: ' + nombre)).catch(() => alert('No se pudo copiar'));
+      return;
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  window.exportarSeguimientoCsv = async function(tipo) {
+    const secId = document.getElementById('rep-filtro-seccion').value || null;
+    const filtroTexto = secId ? `-seccion-${secId}` : '';
+    try {
+      const v = await API.getReporteVotacion(secId);
+      if (tipo === 'secciones') {
+        const filas = (v.por_seccion || []).map(s => [s.seccion_id, s.casillas, s.meta, s.votos, s.votos_favorito, s.meta ? Math.round((s.votos / s.meta) * 100) : 0]);
+        descargarCsv(`seguimiento-secciones${filtroTexto}.csv`, filas, ['Seccion', 'Casillas', 'Meta', 'Ya votaron', 'Votos favorito', '% avance']);
+      } else {
+        const filas = (v.por_casilla || []).map(c => [c.seccion_id, c.casilla, c.meta_votos, c.votos, c.votos_favorito, c.meta_votos ? Math.round((c.votos / c.meta_votos) * 100) : 0]);
+        descargarCsv(`seguimiento-casillas${filtroTexto}.csv`, filas, ['Seccion', 'Casilla', 'Meta', 'Ya votaron', 'Votos favorito', '% avance']);
+      }
+    } catch (err) { alert('Error al exportar CSV: ' + (err?.message || err)); }
+  };
+
+  const INC_TIPOS = { material: 'Falta material', instalacion: 'No instaló / tardó', presencia: 'Presencia o provocaciones', larga_fila: 'Filas largas', seguridad: 'Problema de seguridad', otro: 'Otro' };
+  const INC_ESTADOS = { abierta: { label: 'Abierta', color: '#c62828' }, en_proceso: { label: 'En proceso', color: '#b58900' }, resuelta: { label: 'Resuelta', color: '#1b8a3a' } };
+
+  function incBadge(estado) {
+    const e = INC_ESTADOS[estado] || INC_ESTADOS.abierta;
+    return `<span style="font-size:11px;font-weight:600;color:#fff;background:${e.color};padding:2px 8px;border-radius:10px">${e.label}</span>`;
+  }
+
+  async function cargarCasillasInc() {
+    const sel = document.getElementById('inc-casilla');
+    const secSel = document.getElementById('inc-filtro-seccion').value;
+    const casillas = await API.getCasillas();
+    const grupos = {};
+    casillas.forEach(c => { (grupos[c.seccion_id] = grupos[c.seccion_id] || []).push(c); });
+    sel.innerHTML = Object.entries(grupos)
+      .filter(([sid]) => !secSel || String(sid) === String(secSel))
+      .map(([sid, cs]) => `<optgroup label="Sección ${sid}">${cs.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}</optgroup>`)
+      .join('');
+  }
+
+  window.abrirModalIncidencia = async function() {
+    document.getElementById('inc-descripcion').value = '';
+    document.getElementById('inc-tipo').value = 'material';
+    await cargarCasillasInc();
+    document.getElementById('inc-modal').classList.remove('hidden');
+  };
+
+  window.guardarIncidencia = async function() {
+    const casillaId = document.getElementById('inc-casilla').value;
+    const tipo = document.getElementById('inc-tipo').value;
+    const descripcion = document.getElementById('inc-descripcion').value.trim();
+    if (!casillaId) { alert('Selecciona una casilla'); return; }
+    if (!descripcion) { alert('Describe la incidencia'); return; }
+    try {
+      await API.request('POST', '/api/incidencias', { casilla_id: casillaId, tipo, descripcion });
+      document.getElementById('inc-modal').classList.add('hidden');
+      alert('Incidencia registrada, ¡gracias!');
+      loadIncidencias();
+    } catch (err) { alert('Error: ' + (err?.message || err)); }
+  };
+
+  window.cambiarEstadoIncidencia = async function(id, estado) {
+    try {
+      await API.request('PATCH', '/api/incidencias/' + id, { estado });
+      loadIncidencias();
+    } catch (err) { alert('Error: ' + (err?.message || err)); }
+  };
+
+  async function loadIncidencias() {
+    const cont = document.getElementById('inc-lista');
+    cont.innerHTML = '<p style="text-align:center;color:#999;font-size:13px">Cargando...</p>';
+    const secId = document.getElementById('inc-filtro-seccion').value || null;
+    const estado = document.getElementById('inc-filtro-estado').value || null;
+    const qs = new URLSearchParams();
+    if (secId) qs.set('seccion_id', secId);
+    if (estado) qs.set('estado', estado);
+    try {
+      const [incidencias, secciones] = await Promise.all([
+        API.request('GET', '/api/incidencias' + (qs.toString() ? '?' + qs.toString() : '')),
+        API.getSecciones()
+      ]);
+      const secSel = document.getElementById('inc-filtro-seccion');
+      if (secSel.options.length <= 1) {
+        secSel.innerHTML = '<option value="">Todas las secciones</option>' + secciones.map(s => `<option value="${s.id}">Sec. ${s.id} - ${s.municipio}</option>`).join('');
+      }
+      const puedeGestionar = ['admin', 'coordinador'].includes(API.getUser()?.rol);
+      if (!incidencias.length) {
+        cont.innerHTML = '<p style="text-align:center;color:#999;font-size:13px">No hay incidencias con esos filtros 🎉</p>';
+        return;
+      }
+      cont.innerHTML = `<div class="table-container"><table class="compact">
+        <thead><tr><th>Fecha</th><th>Sec.</th><th>Casilla</th><th>Tipo</th><th>Descripción</th><th>Reportó</th><th>Estado</th></tr></thead>
+        <tbody>${incidencias.map(i => {
+          const fecha = new Date(i.created_at).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+          const estadoSelect = `<select class="inc-estado" onchange="cambiarEstadoIncidencia(${i.id}, this.value)" style="font-size:11px;padding:3px;border-radius:6px;border:1px solid var(--border)">
+            ${Object.entries(INC_ESTADOS).map(([k, e]) => `<option value="${k}" ${i.estado === k ? 'selected' : ''}>${e.label}</option>`).join('')}</select>`;
+          return `<tr>
+            <td style="white-space:nowrap">${fecha}</td>
+            <td>${i.seccion_id}</td>
+            <td><strong>${i.casilla_nombre}</strong></td>
+            <td>${INC_TIPOS[i.tipo] || i.tipo}</td>
+            <td style="max-width:300px">${i.descripcion}${i.respuesta ? `<div style="font-size:11px;color:#1b8a3a;margin-top:2px">↩ ${i.respuesta}</div>` : ''}</td>
+            <td>${i.creado_por_nombre || '-'}</td>
+            <td>${puedeGestionar ? estadoSelect : incBadge(i.estado)}</td>
+          </tr>`;
+        }).join('')}</tbody></table></div>`;
+      document.getElementById('inc-version').textContent = `Total: ${incidencias.length}`;
+    } catch (err) {
+      cont.innerHTML = `<p style="text-align:center;color:#c62828;font-size:13px">Error: ${err?.message || err}</p>`;
+    }
+  }
 
   window.cargarReporteEncuesta = async function() {
     const campanaId = document.getElementById('rep-encuesta-campana').value;
@@ -4124,6 +4284,7 @@
 
   let rutaData = null;
   let rutaVisitados = new Set();
+  let rutaVotados = new Set();
   let rutaIndiceActual = -1;
   let rutaMarkers = [];
   let rutaFlechas = [];
@@ -4351,6 +4512,7 @@
       (ruta.paradas || []).forEach(p => p.visitado = true);
     }
     rutaVisitados = new Set((ruta.paradas || []).filter(p => p.visitado).map(p => p.id));
+    rutaVotados = new Set((ruta.paradas || []).filter(p => p.ya_voto).map(p => p.id));
     rutaIndiceActual = -1;
     if (!readOnly) {
       try {
@@ -4614,6 +4776,18 @@
     );
   };
 
+  window.marcarParadaVoto = async function(id) {
+    if (!rutaFull) return;
+    if (rutaVotados.has(id)) { alert('Esta persona ya está registrada como votante. Si fue un error, quita el toque en Casilla (Representante).'); return; }
+    const tipo = rutaFull.tipo === 'seguros' ? 'comprometido' : 'ciudadano';
+    try {
+      if (tipo === 'seguros') await API.marcarVoto(null, id);
+      else await API.marcarVoto(id, null);
+      rutaVotados.add(id);
+      renderParadas();
+    } catch (err) { alert('Error al registrar el voto: ' + (err?.message || err)); }
+  };
+
   async function completarRuta() {
     if (!rutaActivaId) return;
     try { await API.request('PATCH', '/api/rutas/' + rutaActivaId + '/estado', { estado: 'completada' }); } catch (e) {
@@ -4705,6 +4879,8 @@
         const visitLabel = visit ? 'Visitado' : 'Pendiente';
         const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id && rutaFull.encuesta_lanzada;
         const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px" onclick="event.stopPropagation();abrirEncuestaCiudadano('${s.id}','${(s.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}')" title="Responder encuesta de esta parada">📋 Encuesta</button>` : '';
+        const yaVoto = s.ya_voto || rutaVotados.has(s.id);
+        const votoBtn = !rutaReadOnly ? `<button class="btn-small ${yaVoto?'btn-primary':'btn-secondary'}" style="padding:2px 6px;font-size:9px;margin-top:2px;background:${yaVoto?'var(--pri-green)':'#eee'};color:${yaVoto?'#fff':'#333'};border:none" onclick="event.stopPropagation();marcarParadaVoto('${s.id}')" title="Registrar voto en tiempo real">${yaVoto?'🗳 Ya votó':'🗳 Ya votó?'}</button>` : '';
         return `<div class="ruta-parada-card ${visit?'ruta-parada-visitada':''}" onclick="irAParada(${i})">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="width:24px;height:24px;border-radius:50%;background:${s.es_simpatizante?C_SECONDARY:C_PRIMARY};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">${i+1}</div>
@@ -4713,6 +4889,7 @@
               <div style="font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dir} · ${s.telefono||'-'}</div>
               ${evThumb}
               ${encBtn}
+              ${votoBtn}
             </div>
             <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
               <span class="badge ${s.es_simpatizante?'badge-yes':'badge-no'}" style="font-size:9px">${simpLabel}</span>
@@ -4896,7 +5073,7 @@
   });
 
   document.getElementById('btn-cerrar-ruta')?.addEventListener('click', () => {
-    rutaActivaId = null; rutaData = null; rutaVisitados = new Set();
+    rutaActivaId = null; rutaData = null; rutaVisitados = new Set(); rutaVotados = new Set();
     if (rutaMap) rutaMap.remove();
     document.getElementById('ruta-enlace-detalle').classList.add('hidden');
     loadRutasEnlace();
@@ -5137,6 +5314,8 @@
       renderCarritoCampana();
     } else if (tipo === 'filtro') {
       document.getElementById('filtro-modal')?.classList.add('hidden');
+    } else if (tipo === 'inc') {
+      document.getElementById('inc-modal')?.classList.add('hidden');
     } else {
       document.getElementById('modal-overlay')?.classList.add('hidden');
       // Cleanup draggable map in ciudadano modal
