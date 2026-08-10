@@ -1,5 +1,6 @@
 (function() {
   let dashboardMap = null;
+  let _dashLoadSeq = 0;
   let dashboardClusterGroup = null;
   let dashboardGeoLayer = null;
   let dashboardEnlacesLayer = null;
@@ -1625,6 +1626,7 @@
   }
 
   async function loadDashboard(opts) {
+    const seq = ++_dashLoadSeq;
     try {
       mostrarSyncStatus('Actualizando...', true);
       const user = API.getUser();
@@ -1820,6 +1822,7 @@
       }
 
       requestAnimationFrame(() => {
+        if (seq !== _dashLoadSeq) return;
         if (!dashboardMap) {
           const el = document.getElementById('dashboard-map');
           if (!el) return;
