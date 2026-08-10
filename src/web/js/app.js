@@ -2831,7 +2831,7 @@
           datasets: [
             { label: 'Esperado (Intención)', data: presIntData, backgroundColor: presColors },
             { label: 'Real (Votos)', data: presRealData, backgroundColor: presColors.map(realColor), borderColor: presColors, borderWidth: 2 },
-            ...(Object.keys(segMapPres).length ? [{ label: 'Seguros (Comprometidos)', data: presCombined.map(l => segMapPres[l] || 0), backgroundColor: presColors.map(c => expandHex(c) + '55'), borderColor: presColors, borderWidth: 2, borderDash: [5, 5] }] : [])
+            ...(Object.keys(segMapPres).length ? [{ label: 'Seguros (Comprometidos)', data: presCombined.map(l => segMapPres[l] || 0), backgroundColor: '#CC0000', borderColor: '#CC0000', borderWidth: 2, borderDash: [5, 5] }] : [])
           ]
         },
         options: chartOpts
@@ -2850,7 +2850,7 @@
           datasets: [
             { label: 'Esperado (Intención)', data: dipIntData, backgroundColor: dipColors },
             { label: 'Real (Votos)', data: dipRealData, backgroundColor: dipColors.map(realColor), borderColor: dipColors, borderWidth: 2 },
-            ...(Object.keys(segMapDip).length ? [{ label: 'Seguros (Comprometidos)', data: dipCombined.map(l => segMapDip[l] || 0), backgroundColor: dipColors.map(c => expandHex(c) + '55'), borderColor: dipColors, borderWidth: 2, borderDash: [5, 5] }] : [])
+            ...(Object.keys(segMapDip).length ? [{ label: 'Seguros (Comprometidos)', data: dipCombined.map(l => segMapDip[l] || 0), backgroundColor: '#CC0000', borderColor: '#CC0000', borderWidth: 2, borderDash: [5, 5] }] : [])
           ]
         },
         options: chartOpts
