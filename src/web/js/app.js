@@ -3576,7 +3576,7 @@
 
   function limpiarFormularioBarrido() {
     const bfVc = document.getElementById('bf-votantes_casa'); if (bfVc) bfVc.value = '0';
-    window._vcList = [];
+    window._vcListBf = [];
     actualizarBtnVotantesCasa();
     document.getElementById('bf-nombre').value = '';
     document.getElementById('bf-telefono').value = '';
@@ -3922,7 +3922,7 @@
     const data = { nombre, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, simpatizante, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado };
     const bfExtras = parseInt(document.getElementById('bf-votantes_casa').value) || 0;
     if (bfExtras > 0) data.votantes_casa = bfExtras + 1;
-    const bfVcDef = Array.isArray(window._vcList) ? window._vcList.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
+    const bfVcDef = Array.isArray(window._vcListBf) ? window._vcListBf.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
     if (bfVcDef.length) data.votantes_casa_list = bfVcDef.map(v => ({ ...v, pendiente: !v.partido_id && !v.partido_diputado_id }));
     // Capture photo evidence (base64) and GPS first, without API calls
     const evidenciaImg = document.getElementById('bf-evidencia-img');
@@ -5156,12 +5156,14 @@
   });
 
   window._vcList = [];
+  window._vcListBf = [];
+  let _vcPrefix = 'f';
 
   function actualizarBtnVotantesCasa() {
-    const n = Array.isArray(window._vcList) ? window._vcList.length : 0;
-    const suf = n ? ` (${n})` : '';
-    const fb = document.getElementById('f-btn-vc'); if (fb) fb.textContent = `👥 Votantes de la casa${suf}`;
-    const bb = document.getElementById('bf-btn-vc'); if (bb) bb.textContent = `👥 Votantes de la casa${suf}`;
+    const nf = Array.isArray(window._vcList) ? window._vcList.length : 0;
+    const nb = Array.isArray(window._vcListBf) ? window._vcListBf.length : 0;
+    const fb = document.getElementById('f-btn-vc'); if (fb) fb.textContent = `👥 Votantes de la casa${nf ? ` (${nf})` : ''}`;
+    const bb = document.getElementById('bf-btn-vc'); if (bb) bb.textContent = `👥 Votantes de la casa${nb ? ` (${nb})` : ''}`;
   }
 
   function initVotantesCasaModal(list, extras) {
@@ -5173,12 +5175,14 @@
   }
 
   window.abrirModalVotantesCasa = async function(prefix) {
+    _vcPrefix = prefix || 'f';
+    const cur = _vcPrefix === 'bf' ? (Array.isArray(window._vcListBf) ? window._vcListBf : []) : (Array.isArray(window._vcList) ? window._vcList : []);
     const input = document.getElementById(prefix + '-votantes_casa');
     const extras = Math.max(0, parseInt(input.value) || 0);
-    const cur = Array.isArray(window._vcList) ? window._vcList : [];
-    window._vcList = Array.from({ length: extras }, (_, i) => cur[i] || { nombre: '', partido_id: null, partido_diputado_id: null });
+    const rowsArr = Array.from({ length: extras }, (_, i) => cur[i] || { nombre: '', partido_id: null, partido_diputado_id: null });
+    if (_vcPrefix === 'bf') window._vcListBf = rowsArr; else window._vcList = rowsArr;
     const partidos = await API.getPartidos();
-    const rows = window._vcList.map((v, i) => `
+    const rows = rowsArr.map((v, i) => `
       <div class="vc-row" style="display:flex;gap:6px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:bold;width:64px;flex:none">Votante ${i + 1}</span>
         <input class="vc-nombre" placeholder="Nombre (opcional)" value="${(v.nombre || '').replace(/"/g, '&quot;')}" style="flex:1;min-width:90px;font-size:12px">
@@ -5190,11 +5194,12 @@
   };
 
   window.guardarVotantesCasa = function() {
-    window._vcList = [...document.querySelectorAll('#vc-body .vc-row')].map(r => ({
+    const arr = [...document.querySelectorAll('#vc-body .vc-row')].map(r => ({
       nombre: (r.querySelector('.vc-nombre').value || '').trim(),
       partido_id: r.querySelector('.vc-p').value ? parseInt(r.querySelector('.vc-p').value) : null,
       partido_diputado_id: r.querySelector('.vc-d').value ? parseInt(r.querySelector('.vc-d').value) : null
     }));
+    if (_vcPrefix === 'bf') window._vcListBf = arr; else window._vcList = arr;
     actualizarBtnVotantesCasa();
     cerrarModal('vc');
   };
@@ -5754,13 +5759,13 @@
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:flex-end;gap:8px;flex-wrap:wrap">
+      <div class="form-row" style="align-items:center;gap:8px;flex-wrap:wrap">
         <label style="flex:2;min-width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
-        <select id="f-casilla" style="width:100%;box-sizing:border-box"><option value="">Auto-detectar</option></select></label>
-        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:5px"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:0"></label>
+        <select id="f-casilla" style="width:100%;box-sizing:border-box;height:32px;padding:0 8px"><option value="">Auto-detectar</option></select></label>
+        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:5px;justify-content:flex-end"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:-4px 0 0 0;width:18px;height:18px;flex:none"></label>
         <label style="flex:none;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
-        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="width:55px"></label>
-        <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;padding:6px 8px" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
+        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="width:55px;height:32px;box-sizing:border-box;text-align:center"></label>
+        <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:32px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin-top:12px" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
       </div>
       <div class="form-row" style="align-items:stretch"><label style="flex:0.3;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;cursor:pointer;text-align:center"><span>Simpatizante</span><input type="checkbox" id="f-simpatizante" ${data.simpatizante?'checked':''} style="margin:0;width:auto"></label>
       <label style="flex:0.4;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>

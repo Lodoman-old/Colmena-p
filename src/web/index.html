@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.markercluster.css" />
   <link rel="stylesheet" href="vendor/leaflet.markercluster.default.css" />
-  <link rel="stylesheet" href="css/styles.css?v=164">
+  <link rel="stylesheet" href="css/styles.css?v=167">
 </head>
 <body>
   <div id="app">
@@ -346,45 +346,6 @@
             <span style="font-size:11px;color:#888;align-self:center" id="inc-version"></span>
           </div>
           <div id="inc-lista"></div>
-          <div id="inc-modal" class="modal-overlay hidden">
-            <div class="modal" style="max-width:520px">
-              <div class="modal-header">
-                <span>Reportar incidencia</span>
-                <button class="modal-close" onclick="cerrarModal('inc')">X</button>
-              </div>
-              <div class="modal-body">
-                <div class="form-group"><label for="inc-casilla">Casilla</label><select id="inc-casilla"></select></div>
-                <div class="form-group"><label for="inc-tipo">Tipo de incidencia</label>
-                  <select id="inc-tipo">
-                    <option value="material">Falta material electoral</option>
-                    <option value="instalacion">Casilla no instaló / tardó en instalar</option>
-                    <option value="presencia">Presencia de otro partido / provocaciones</option>
-                    <option value="larga_fila">Filas largas / lentitud</option>
-                    <option value="seguridad">Problema de seguridad</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-                <div class="form-group"><label for="inc-descripcion">Descripción</label>
-                  <textarea id="inc-descripcion" rows="3" placeholder="Describe qué pasó en la casilla..."></textarea>
-                </div>
-                <button class="btn btn-primary" style="width:100%" onclick="guardarIncidencia()">Enviar incidencia</button>
-              </div>
-            </div>
-          </div>
-
-          <div id="vc-casa-modal" class="modal-overlay hidden">
-            <div class="modal" style="max-width:660px">
-              <div class="modal-header">
-                <span>Votantes de la casa (además del entrevistado)</span>
-                <button class="modal-close" onclick="cerrarModal('vc')">X</button>
-              </div>
-              <div class="modal-body">
-                <div style="font-size:12px;color:#666;margin-bottom:10px">Indica por quién votaría cada persona de la casa, <b>excluyendo</b> a quien respondió la encuesta. Si no conseguiste la información, déjalo en "Sin definir".</div>
-                <div id="vc-body"></div>
-                <button class="btn btn-primary" style="width:100%" onclick="guardarVotantesCasa()">Guardar votantes de la casa</button>
-              </div>
-            </div>
-          </div>
         </div>
 
         <div id="view-plantillas" class="view">
@@ -967,6 +928,46 @@
       </div>
     </div>
 
+    <div id="inc-modal" class="modal-overlay hidden">
+      <div class="modal" style="max-width:520px">
+        <div class="modal-header">
+          <span>Reportar incidencia</span>
+          <button class="modal-close" onclick="cerrarModal('inc')">X</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group"><label for="inc-casilla">Casilla</label><select id="inc-casilla"></select></div>
+          <div class="form-group"><label for="inc-tipo">Tipo de incidencia</label>
+            <select id="inc-tipo">
+              <option value="material">Falta material electoral</option>
+              <option value="instalacion">Casilla no instaló / tardó en instalar</option>
+              <option value="presencia">Presencia de otro partido / provocaciones</option>
+              <option value="larga_fila">Filas largas / lentitud</option>
+              <option value="seguridad">Problema de seguridad</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div class="form-group"><label for="inc-descripcion">Descripción</label>
+            <textarea id="inc-descripcion" rows="3" placeholder="Describe qué pasó en la casilla..."></textarea>
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="guardarIncidencia()">Enviar incidencia</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="vc-casa-modal" class="modal-overlay hidden">
+      <div class="modal" style="max-width:660px">
+        <div class="modal-header">
+          <span>Votantes de la casa (además del entrevistado)</span>
+          <button class="modal-close" onclick="cerrarModal('vc')">X</button>
+        </div>
+        <div class="modal-body">
+          <div style="font-size:12px;color:#666;margin-bottom:10px">Indica por quién votaría cada persona de la casa, <b>excluyendo</b> a quien respondió la encuesta. Si no conseguiste la información, déjalo en "Sin definir".</div>
+          <div id="vc-body"></div>
+          <button class="btn btn-primary" style="width:100%" onclick="guardarVotantesCasa()">Guardar votantes de la casa</button>
+        </div>
+      </div>
+    </div>
+
     <div id="encuesta-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2100;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.classList.add('hidden')">
       <div style="background:#fff;border-radius:12px;padding:20px;max-width:520px;width:94%;max-height:88vh;overflow-y:auto">
         <h3 style="margin:0 0 4px;font-size:15px" id="encuesta-title">Encuesta</h3>
@@ -1110,6 +1111,6 @@
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
   <script src="js/api.js?v=98"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=164"></script>
+  <script src="js/app.js?v=168"></script>
 </body>
 </html>
