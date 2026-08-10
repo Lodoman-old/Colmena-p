@@ -18,6 +18,8 @@ import { EventService } from './Eventos';
 import { NotificacionService } from './Notificaciones';
 import webpush from 'web-push';
 import axios from 'axios';
+// @ts-ignore pdfkit no tiene tipos completos en runtime con commonjs
+import PDFDocument from 'pdfkit';
 
 dotenv.config();
 
@@ -562,8 +564,9 @@ app.post('/api/upload', authenticateToken, async (req: Request, res: Response) =
 
 app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key } = req.body;
+    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, votantes_casa_list } = req.body;
     if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
+    const casillaAuto = await asignarCasillaAutomatica(seccion_id, lat, lng, casilla_id);
     // Idempotency check: if key provided and already processed, return existing record
     if (idempotency_key) {
       const existing = await pool.query('SELECT id FROM ciudadanos WHERE idempotency_key=$1', [idempotency_key]);
@@ -575,10 +578,19 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
     }
     const id = crypto.randomUUID();
     await pool.query(
-      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,ST_SetSRID(ST_MakePoint($10,$11),4326),$12,$13,$14,$15,$16,$17,$18)`,
-      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, lng||-100.9929, lat||20.6434, !!simpatizante, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, idempotency_key||null]
+      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,ST_SetSRID(ST_MakePoint($10,$11),4326),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, lng||-100.9929, lat||20.6434, !!simpatizante, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, idempotency_key||null, casillaAuto, votantes_casa ? parseInt(votantes_casa) : 1, !!no_abrio]
     );
+    if (Array.isArray(votantes_casa_list) && votantes_casa_list.length) {
+      for (const v of votantes_casa_list.slice(0, 20)) {
+        if (!v) continue;
+        await pool.query(
+          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, pendiente) VALUES ($1,$2,$3,$4)',
+          [id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.pendiente !== false]
+        );
+      }
+    }
     try {
       await pool.query(
         'INSERT INTO visitas (id, ciudadano_id, usuario_id, tipo, lat, lng) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -602,7 +614,8 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
 
 app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad } = req.body;
+    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, casilla_id, votantes_casa, no_abrio, votantes_casa_list } = req.body;
+    const casillaAuto = casilla_id ? parseInt(casilla_id) : (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : undefined;
     const parts: string[] = [];
     const params: any[] = [];
     const p = (v: any) => { params.push(v); return '$' + params.length; };
@@ -612,11 +625,22 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
     if (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) {
       parts.push('ubicacion=ST_SetSRID(ST_MakePoint(' + p(+lng) + ',' + p(+lat) + '),4326)');
     }
-    const cols2 = ['simpatizante', 'prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad'];
-    const vals2 = [simpatizante!=null?!!simpatizante:null, prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null];
+    if (casillaAuto !== undefined) parts.push('casilla_id=' + p(casillaAuto));
+    const cols2 = ['simpatizante', 'prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'votantes_casa', 'no_abrio'];
+    const vals2 = [simpatizante!=null?!!simpatizante:null, prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null, votantes_casa ? parseInt(votantes_casa) : null, no_abrio!=null?!!no_abrio:null];
     parts.push(cols2.map((c,i) => c + '=COALESCE(' + p(vals2[i]) + ',' + c + ')').join(','));
     params.push(req.params.id);
     await pool.query('UPDATE ciudadanos SET ' + parts.join(',') + ' WHERE id=$' + params.length, params);
+    await pool.query('DELETE FROM votantes_casa WHERE ciudadano_id=$1', [req.params.id]);
+    if (Array.isArray(votantes_casa_list)) {
+      for (const v of votantes_casa_list.slice(0, 20)) {
+        if (!v) continue;
+        await pool.query(
+          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, pendiente) VALUES ($1,$2,$3,$4)',
+          [req.params.id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.pendiente !== false]
+        );
+      }
+    }
     res.json({ message: 'Ciudadano actualizado' });
     try { io.emit('actualizar-ciudadano', { id: req.params.id, seccion_id, lat, lng }); } catch (e) { console.warn('io.emit error:', e); }
     try {
@@ -681,13 +705,17 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
                   c.simpatizante, c.prioridad, c.timestamp_registro,
                   c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
                   c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
+                  c.casilla_id, cs.nombre as casilla_nombre, c.votantes_casa, c.no_abrio,
+                  (v.ciudadano_id IS NOT NULL) as ya_voto,
                   s.id as seccion_num, m.nombre as municipio, e.nombre as estado
                 FROM ciudadanos c
                 JOIN secciones_electorales s ON s.id = c.seccion_id
                 JOIN municipios m ON m.id = s.municipio_id
                 JOIN estados e ON e.id = m.estado_id
                 LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
-                LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado`;
+                LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
+                LEFT JOIN casillas cs ON cs.id = c.casilla_id
+                LEFT JOIN votos v ON v.ciudadano_id = c.id`;
     const params: any[] = [];
     const conds: string[] = [];
     if (user.rol === 'enlace') {
@@ -703,10 +731,17 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
     if (conds.length) query += ' WHERE ' + conds.join(' AND ');
     query += ' ORDER BY c.timestamp_registro DESC';
     const result = await pool.query(query, params);
+    let votantesCasa: any[] = [];
+    if (result.rows.length) {
+      const ids = result.rows.map((r: any) => r.id);
+      const vc = await pool.query('SELECT ciudadano_id, nombre, partido_id, pendiente FROM votantes_casa WHERE ciudadano_id = ANY($1)', [ids]);
+      votantesCasa = vc.rows;
+    }
     res.json(result.rows.map((r: any) => ({
       ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
       partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
-      partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null
+      partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null,
+      votantes_casa_list: votantesCasa.filter((v: any) => v.ciudadano_id === r.id)
     })));
   } catch { res.status(500).json({ error: 'Error al listar ciudadanos' }); }
 });
@@ -790,6 +825,341 @@ app.get('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
       partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null
     });
   } catch { res.status(500).json({ error: 'Error' }); }
+});
+
+// ── Ciudadanos comprometidos (voto seguro) — tabla separada de ciudadanos, solo coord/admin ──
+function esAdminOCoordinador(user: any): boolean {
+  return user && (user.rol === 'admin' || user.rol === 'coordinador');
+}
+
+function validarCurp(curp: string): boolean {
+  return /^[A-Z][AEIOUX][A-Z]{2}\d{6}[HM][A-Z]{5}[0-9A-Z]\d$/.test(curp);
+}
+
+function normalizarCurp(curp: any): string | null {
+  if (!curp || !String(curp).trim()) return null;
+  const c = String(curp).trim().toUpperCase();
+  return c;
+}
+
+// Asigna la casilla más cercana dentro de la sección según lat/lng.
+// Si la sección tiene una sola casilla, se asigna esa. Devuelve null si no hay casillas o coordenadas.
+async function asignarCasillaAutomatica(seccionId: any, lat: any, lng: any, casillaId?: any): Promise<number | null> {
+  if (casillaId) return parseInt(casillaId);
+  const casillas = await pool.query('SELECT id, lat, lng FROM casillas WHERE seccion_id=$1 ORDER BY id', [seccionId]);
+  if (!casillas.rows.length) return null;
+  if (casillas.rows.length === 1) return casillas.rows[0].id;
+  const lats = parseFloat(lat), lngs = parseFloat(lng);
+  if (!Number.isNaN(lats) && !Number.isNaN(lngs)) {
+    let mejor: number | null = null;
+    let mejorDist = Infinity;
+    for (const c of casillas.rows) {
+      if (c.lat == null || c.lng == null) continue;
+      const d = Math.hypot(c.lat - lats, c.lng - lngs);
+      if (d < mejorDist) { mejorDist = d; mejor = c.id; }
+    }
+    if (mejor) return mejor;
+  }
+  // Sin coordenadas útiles: asignar la primera casilla de la sección para que
+  // el votante sea visible y ajustable desde la pantalla de representante.
+  return casillas.rows[0].id;
+}
+
+// Valida coherencia semántica: inicial del nombre (pos 4) y fecha de nacimiento (pos 5-10)
+// Regla SEGOB: si el primer nombre es María/José y hay segundo nombre, se usa la inicial del segundo.
+function validarCurpSemantica(curp: string, nombre: any, fechaNacimiento: any): string | null {
+  const palabras = String(nombre || '').toUpperCase()
+    .replace(/[ÁÉÍÓÚ]/g, c => ({ 'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U' }[c] as string))
+    .replace(/Ñ/g, 'X')
+    .replace(/[^A-Z0-9 ]/g, '')
+    .split(/\s+/).filter(Boolean);
+  if (palabras.length >= 2) {
+    const curpInicial = curp[3];
+    const primera = palabras[0];
+    const esCompuesto = (primera === 'MARIA' || primera === 'JOSE');
+    if (esCompuesto) {
+      // Se usa la inicial del segundo nombre (o el nombre único aplica criterios internos SEGOB)
+      const inicialEsperada = palabras[1][0];
+      if (curpInicial === inicialEsperada) return null;
+      // Tolerancia: si el orden capturado es apellidos primero, acepta si coincide con cualquier palabra
+      if (palabras.some(p => p[0] === curpInicial && p !== 'MARIA' && p !== 'JOSE')) return null;
+      return 'CURP no coincide con el nombre: con María/José como primer nombre se usa la inicial del segundo nombre';
+    }
+    if (curpInicial !== primera[0] && !palabras.some(p => p[0] === curpInicial)) {
+      return 'CURP no coincide con el nombre capturado';
+    }
+  }
+  if (fechaNacimiento) {
+    const d = new Date(String(fechaNacimiento).slice(0, 10));
+    if (!Number.isNaN(d.getTime())) {
+      const aa = String(d.getFullYear()).slice(-2);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const curpFecha = curp.slice(4, 10);
+      if (curpFecha !== aa + mm + dd) return 'CURP no coincide con la fecha de nacimiento (la CURP indica ' + curpFecha + ', la fecha capturada es ' + aa + mm + dd + ')';
+    }
+  }
+  return null;
+}
+
+app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const seccionId = req.query.seccion_id;
+    let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.fecha_nacimiento, c.notas,
+                  ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
+                  c.simpatizante, c.prioridad, c.timestamp_registro,
+                  c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
+                  c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
+                  c.correo, c.curp, c.ine, c.nivel_compromiso,
+                  c.casilla_id, cs.nombre as casilla_nombre,
+                  (v.comprometido_id IS NOT NULL) as ya_voto,
+                  s.id as seccion_num, m.nombre as municipio, e.nombre as estado
+                FROM ciudadanos_comprometidos c
+                JOIN secciones_electorales s ON s.id = c.seccion_id
+                JOIN municipios m ON m.id = s.municipio_id
+                JOIN estados e ON e.id = m.estado_id
+                LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
+                LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
+                LEFT JOIN casillas cs ON cs.id = c.casilla_id
+                LEFT JOIN votos v ON v.comprometido_id = c.id`;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (user.rol === 'coordinador') {
+      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
+      const muniId = mRes.rows[0]?.municipio_id;
+      if (muniId) { params.push(muniId); conds.push(`s.municipio_id = $${params.length}`); }
+    }
+    if (seccionId) { params.push(seccionId); conds.push(`c.seccion_id = $${params.length}`); }
+    if (conds.length) query += ' WHERE ' + conds.join(' AND ');
+    query += ' ORDER BY c.timestamp_registro DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows.map((r: any) => ({
+      ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
+      partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
+      partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null
+    })));
+  } catch (e: any) { console.error('GET /api/comprometidos error:', e?.message || e); res.status(500).json({ error: 'Error al listar comprometidos' }); }
+});
+
+app.post('/api/comprometidos/importar', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const { base64 } = req.body;
+    if (!base64) { res.status(400).json({ error: 'Falta el archivo' }); return; }
+    const texto = Buffer.from(String(base64), 'base64').toString('utf8');
+    const lineas = texto.split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) { res.status(400).json({ error: 'Archivo vacío' }); return; }
+    const encabezado = lineas[0].split(',').map(h => h.trim().toLowerCase().replace(/^\ufeff/, ''));
+    const partidos = (await pool.query('SELECT id, abreviatura FROM partidos_politicos')).rows;
+    const partidoPorAbrev = new Map(partidos.map(p => [String(p.abreviatura || '').toLowerCase().trim(), p.id]));
+    let creados = 0, omitidos = 0;
+    const errores: string[] = [];
+    for (let i = 1; i < lineas.length; i++) {
+      const celdas = lineas[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+      if (!celdas[0]) continue;
+      const fila: Record<string, string> = {};
+      encabezado.forEach((h, idx) => fila[h] = celdas[idx] || '');
+      const nombre = fila['nombre'];
+      const seccionNum = fila['seccion'];
+      if (!nombre || !seccionNum) { errores.push(`Fila ${i + 1}: falta nombre o seccion`); continue; }
+      const secRes = await pool.query('SELECT id FROM secciones_electorales WHERE id=$1', [seccionNum]);
+      if (!secRes.rows.length) { errores.push(`Fila ${i + 1}: seccion ${seccionNum} no existe`); continue; }
+      const seccion_id = secRes.rows[0].id;
+      const abrev = String(fila['partido'] || '').toLowerCase().trim();
+      const partidoId = abrev ? partidoPorAbrev.get(abrev) || null : null;
+      const nivel = String(fila['nivel_compromiso'] || '').toLowerCase().trim();
+      const nivelOk = nivel && !['seguro', 'probable', 'dudoso', 'indefinido'].includes(nivel) ? 'indefinido' : nivel || null;
+      const curpImp = normalizarCurp(fila['curp']);
+      if (curpImp && !validarCurp(curpImp)) { errores.push(`Fila ${i + 1}: CURP inválida (${curpImp})`); continue; }
+      let fechaNacImp: string | null = null;
+      const fechaRaw = String(fila['fecha_nacimiento'] || '').trim();
+      if (fechaRaw) {
+        const m = fechaRaw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        const dmy = fechaRaw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+        if (m) fechaNacImp = `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+        else if (dmy) fechaNacImp = `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+        else { errores.push(`Fila ${i + 1}: fecha de nacimiento inválida (${fechaRaw})`); continue; }
+        if (Number.isNaN(new Date(fechaNacImp).getTime())) { errores.push(`Fila ${i + 1}: fecha de nacimiento inválida (${fechaRaw})`); continue; }
+      }
+      if (curpImp) {
+        const errSem = validarCurpSemantica(curpImp, nombre, fechaNacImp);
+        if (errSem) { errores.push(`Fila ${i + 1}: ${errSem}`); continue; }
+        const dupCurp = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE UPPER(curp)=$1', [curpImp]);
+        if (dupCurp.rows.length) { errores.push(`Fila ${i + 1}: CURP duplicada (${curpImp})`); continue; }
+      }
+      const key = 'imp-' + crypto.createHash('md5').update([seccion_id, nombre, fila['telefono'] || ''].join('|')).digest('hex');
+      const dup = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE idempotency_key=$1', [key]);
+      if (dup.rows.length) { omitidos++; continue; }
+      const id = crypto.randomUUID();
+      const casillaAuto = await asignarCasillaAutomatica(seccion_id, null, null);
+      await pool.query(
+        `INSERT INTO ciudadanos_comprometidos (id, seccion_id, nombre, telefono, edad, fecha_nacimiento, calle, numero, colonia, cp, correo, curp, ine, nivel_compromiso, intencion_voto_presidente, casilla_id, capturado_por, idempotency_key)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        [id, seccion_id, nombre, fila['telefono'] || null, fila['edad'] ? parseInt(fila['edad']) || null : null, fechaNacImp,
+         fila['calle'] || null, fila['numero'] || null, fila['colonia'] || null, fila['cp'] || null,
+         fila['correo'] || null, curpImp, fila['ine'] || null, nivelOk, partidoId, casillaAuto, user.userId, key]
+      );
+      creados++;
+      try { if (user?.nombre) await logAuditoria(user.userId, user.nombre, 'importar_comprometidos', 'ciudadanos_comprometidos', id, { nombre, seccion_id }); } catch { }
+    }
+    res.json({ creados, omitidos, errores: errores.slice(0, 10) });
+    try { io.emit('nuevo-comprometido', {}); } catch (e) { console.warn('io.emit error:', e); }
+  } catch (e: any) { console.error('POST /api/comprometidos/importar error:', e?.message || e); res.status(500).json({ error: 'Error al importar' }); }
+});
+
+app.get('/api/comprometidos/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const result = await pool.query(
+      `SELECT c.*, ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
+        c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
+        c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura
+       FROM ciudadanos_comprometidos c
+       LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
+       LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
+       WHERE c.id=$1`, [req.params.id]
+    );
+    if (!result.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
+    const r = result.rows[0];
+    res.json({ ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
+      partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
+      partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null
+    });
+  } catch { res.status(500).json({ error: 'Error' }); }
+});
+
+app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, nivel_compromiso, idempotency_key, casilla_id } = req.body;
+    if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
+    const casillaAuto = await asignarCasillaAutomatica(seccion_id, lat, lng, casilla_id);
+    const curpVal = normalizarCurp(curp);
+    if (curpVal && !validarCurp(curpVal)) { res.status(400).json({ error: 'CURP inválida: debe tener 18 caracteres con el formato oficial (ej. GODE561231HDFRRN09)' }); return; }
+    let fechaNacVal: string | null = null;
+    if (fecha_nacimiento) {
+      fechaNacVal = String(fecha_nacimiento).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNacVal) || Number.isNaN(new Date(fechaNacVal).getTime())) { res.status(400).json({ error: 'Fecha de nacimiento inválida' }); return; }
+    }
+    if (curpVal) {
+      const errSem = validarCurpSemantica(curpVal, nombre, fechaNacVal);
+      if (errSem) { res.status(400).json({ error: errSem }); return; }
+      const dup = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE UPPER(curp)=$1', [curpVal]);
+      if (dup.rows.length) { res.status(400).json({ error: 'La CURP ya está registrada en ciudadanos seguros' }); return; }
+    }
+    if (idempotency_key) {
+      const existing = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE idempotency_key=$1', [idempotency_key]);
+      if (existing.rows.length) { res.status(200).json({ id: existing.rows[0].id, message: 'Ya existe (idempotente)' }); return; }
+    }
+    const id = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO ciudadanos_comprometidos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, nivel_compromiso, capturado_por, idempotency_key, casilla_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,ST_SetSRID(ST_MakePoint($10,$11),4326),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, lng||-100.9929, lat||20.6434, !!simpatizante, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, fechaNacVal, correo||null, curpVal, ine||null, nivel_compromiso||null, user.userId, idempotency_key||null, casillaAuto]
+    );
+    res.status(201).json({ id, message: 'Ciudadano comprometido creado' });
+    try { io.emit('nuevo-comprometido', { id, seccion_id }); } catch (e) { console.warn('io.emit error:', e); }
+    try {
+      const u = (req as any).user;
+      if (u?.nombre) await logAuditoria(u.userId, u.nombre, 'alta_comprometido', 'ciudadanos_comprometidos', id, { nombre, seccion_id, telefono });
+    } catch (e) { console.warn('post-alta comprometido:', e); }
+  } catch (error: any) {
+    console.error('POST /api/comprometidos error:', error?.message || error);
+    res.status(500).json({ error: 'Error al crear comprometido' });
+  }
+});
+
+app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, nivel_compromiso, casilla_id } = req.body;
+    const curpVal = normalizarCurp(curp);
+    if (curpVal && !validarCurp(curpVal)) { res.status(400).json({ error: 'CURP inválida: debe tener 18 caracteres con el formato oficial (ej. GODE561231HDFRRN09)' }); return; }
+    let fechaNacVal: string | null = null;
+    if (fecha_nacimiento) {
+      fechaNacVal = String(fecha_nacimiento).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNacVal) || Number.isNaN(new Date(fechaNacVal).getTime())) { res.status(400).json({ error: 'Fecha de nacimiento inválida' }); return; }
+    }
+    if (curpVal) {
+      const errSem = validarCurpSemantica(curpVal, nombre, fechaNacVal);
+      if (errSem) { res.status(400).json({ error: errSem }); return; }
+      const dup = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE UPPER(curp)=$1 AND id<>$2', [curpVal, req.params.id]);
+      if (dup.rows.length) { res.status(400).json({ error: 'La CURP ya está registrada en ciudadanos seguros' }); return; }
+    }
+    const parts: string[] = [];
+    const params: any[] = [];
+    const p = (v: any) => { params.push(v); return '$' + params.length; };
+    const cols = ['nombre', 'telefono', 'seccion_id', 'calle', 'numero', 'colonia', 'cp', 'correo', 'curp', 'ine', 'nivel_compromiso'];
+    const vals = [nombre||null, telefono||null, seccion_id||null, calle||null, numero||null, colonia||null, cp||null, correo||null, curpVal, ine||null, nivel_compromiso||null];
+    parts.push(cols.map((c,i) => c + '=COALESCE(' + p(vals[i]) + ',' + c + ')').join(','));
+    if (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) {
+      parts.push('ubicacion=ST_SetSRID(ST_MakePoint(' + p(+lng) + ',' + p(+lat) + '),4326)');
+    }
+    if (casilla_id != null) parts.push('casilla_id=' + p(parseInt(casilla_id)));
+    else if (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) parts.push('casilla_id=' + p(await asignarCasillaAutomatica(seccion_id, lat, lng)));
+    const cols2 = ['simpatizante', 'prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'fecha_nacimiento'];
+    const vals2 = [simpatizante!=null?!!simpatizante:null, prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null, fechaNacVal];
+    parts.push(cols2.map((c,i) => c + '=COALESCE(' + p(vals2[i]) + ',' + c + ')').join(','));
+    params.push(req.params.id);
+    await pool.query('UPDATE ciudadanos_comprometidos SET ' + parts.join(',') + ' WHERE id=$' + params.length, params);
+    res.json({ message: 'Ciudadano comprometido actualizado' });
+    try { io.emit('actualizar-comprometido', { id: req.params.id }); } catch (e) { console.warn('io.emit error:', e); }
+    try {
+      const u = (req as any).user;
+      if (u?.nombre) await logAuditoria(u.userId, u.nombre, 'editar_comprometido', 'ciudadanos_comprometidos', req.params.id, { nombre });
+    } catch (e) { console.warn('post-edicion comprometido:', e); }
+  } catch (e: any) { console.error('PUT /api/comprometidos error:', e?.message || e); res.status(500).json({ error: 'Error al actualizar' }); }
+});
+
+app.delete('/api/comprometidos/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const rows = await pool.query('SELECT notas FROM ciudadanos_comprometidos WHERE id=$1', [req.params.id]);
+    if (rows.rows.length) {
+      const notas = rows.rows[0].notas || '';
+      if (notas.startsWith('📷 ')) {
+        const url = notas.replace('📷 ', '');
+        const idx = url.lastIndexOf('/');
+        if (idx >= 0) {
+          const fname = url.substring(idx + 1);
+          const fpath = path.join(__dirname, '../../uploads/evidencias', fname);
+          try { fs.unlinkSync(fpath); } catch (e) { /* file may not exist */ }
+        }
+      }
+    }
+    await pool.query('DELETE FROM ciudadanos_comprometidos WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Ciudadano comprometido eliminado' });
+    try { io.emit('eliminar-comprometido', { id: req.params.id }); } catch (e) { console.warn('io.emit error:', e); }
+  } catch { res.status(500).json({ error: 'Error al eliminar' }); }
+});
+
+app.delete('/api/comprometidos/:id/foto', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const rows = await pool.query('SELECT notas FROM ciudadanos_comprometidos WHERE id=$1', [req.params.id]);
+    if (rows.rows.length) {
+      const notas = rows.rows[0].notas || '';
+      if (notas.startsWith('📷 ')) {
+        const url = notas.replace('📷 ', '');
+        const idx = url.lastIndexOf('/');
+        if (idx >= 0) {
+          const fname = url.substring(idx + 1);
+          const fpath = path.join(__dirname, '../../uploads/evidencias', fname);
+          try { fs.unlinkSync(fpath); } catch (e) { /* file may not exist */ }
+        }
+      }
+      await pool.query('UPDATE ciudadanos_comprometidos SET notas=NULL WHERE id=$1', [req.params.id]);
+    }
+    res.json({ message: 'Foto eliminada' });
+  } catch { res.status(500).json({ error: 'Error al eliminar foto' }); }
 });
 
 app.post('/api/eventos', authenticateToken, async (req: Request, res: Response) => {
@@ -968,9 +1338,10 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
   try {
     const user = (req as any).user;
     if (user.rol !== 'admin' && user.rol !== 'coordinador') { res.status(403).json({ error: 'No autorizado' }); return; }
-    const { enlace_ids, seccion_id, solo_simpatizantes, encuesta_campana_id } = req.body;
+    const { enlace_ids, seccion_id, tipo, encuesta_campana_id } = req.body;
     if (!enlace_ids?.length || !seccion_id) { res.status(400).json({ error: 'enlace_ids[] y seccion_id requeridos' }); return; }
-    if (encuesta_campana_id) {
+    const tipoRuta = tipo === 'encuesta' ? 'encuesta' : 'seguros';
+    if (tipoRuta === 'encuesta' && encuesta_campana_id) {
       const ec = (await pool.query('SELECT tipo FROM campanas WHERE id=$1', [encuesta_campana_id])).rows[0];
       if (!ec || ec.tipo !== 'encuesta') { res.status(400).json({ error: 'La encuesta asignada no existe o no es tipo encuesta' }); return; }
     }
@@ -980,23 +1351,24 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
       const ok = (await pool.query('SELECT id FROM secciones_electorales WHERE id=$1 AND municipio_id=$2', [seccion_id, muniId])).rows.length > 0;
       if (!ok) { res.status(403).json({ error: 'La seccion no pertenece a tu municipio' }); return; }
     }
+    const tablaParadas = tipoRuta === 'seguros' ? 'ciudadanos_comprometidos' : 'ciudadanos';
     const countRes = await pool.query(
-      `SELECT COUNT(*) FROM ciudadanos WHERE seccion_id=$1${solo_simpatizantes ? ' AND simpatizante=true' : ''}`,
+      `SELECT COUNT(*) FROM ${tablaParadas} WHERE seccion_id=$1`,
       [seccion_id]
     );
     if (parseInt(countRes.rows[0].count) === 0) {
-      res.status(400).json({ error: `No hay ciudadanos${solo_simpatizantes ? ' simpatizantes' : ''} en esta seccion para asignar` });
+      res.status(400).json({ error: `No hay ${tipoRuta === 'seguros' ? 'seguros (voto seguro)' : 'ciudadanos'} en esta seccion para asignar` });
       return;
     }
-    const misiones = await routingService.repartirRutas(seccion_id.toString(), !!solo_simpatizantes, enlace_ids.length);
+    const misiones = await routingService.repartirRutas(seccion_id.toString(), tipoRuta, enlace_ids.length);
     const ids: string[] = [];
     for (let i = 0; i < enlace_ids.length; i++) {
       const mision = misiones[i] || { paradas: [], distancia_total_km: 0, tiempo_total_minutos: 0 };
       const r = await pool.query(
-        `INSERT INTO rutas (admin_id, enlace_id, seccion_id, solo_simpatizantes, paradas, distancia_total_km, tiempo_total_minutos, encuesta_campana_id, polyline)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-        [user.userId, enlace_ids[i], seccion_id, !!solo_simpatizantes, JSON.stringify(mision.paradas || []),
-         mision.distancia_total_km || 0, mision.tiempo_total_minutos || 0, encuesta_campana_id || null,
+        `INSERT INTO rutas (admin_id, enlace_id, seccion_id, tipo, solo_simpatizantes, paradas, distancia_total_km, tiempo_total_minutos, encuesta_campana_id, polyline)
+         VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7,$8,$9) RETURNING id`,
+        [user.userId, enlace_ids[i], seccion_id, tipoRuta, JSON.stringify(mision.paradas || []),
+         mision.distancia_total_km || 0, mision.tiempo_total_minutos || 0, (tipoRuta === 'encuesta' ? encuesta_campana_id : null) || null,
          mision.polyline ? JSON.stringify(mision.polyline) : null]
       );
       ids.push(r.rows[0].id);
@@ -1004,10 +1376,11 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
     const sockets = await io.fetchSockets();
     enlace_ids.forEach((eid: string) => sockets.forEach(s => { if ((s as any).userId === eid) s.emit('nueva-ruta', { ids }); }));
     // Send push notification to each enlace
+    const tipoLabel = tipoRuta === 'seguros' ? 'de seguros' : 'de encuesta';
     for (const eid of enlace_ids) {
-      await sendPushToUser(eid, 'Nueva ruta asignada', 'Se te ha asignado una ruta de cambaceo', '/mi-ruta');
+      await sendPushToUser(eid, 'Nueva ruta asignada', `Se te ha asignado una ruta ${tipoLabel}`, '/mi-ruta');
     }
-    res.status(201).json({ ids, message: `Rutas creadas para ${enlace_ids.length} enlace(s) con paradas distribuidas` });
+    res.status(201).json({ ids, message: `Rutas ${tipoLabel} creadas para ${enlace_ids.length} enlace(s) con paradas distribuidas` });
   } catch (e: any) { res.status(500).json({ error: 'Error al crear rutas: ' + (e.message || '') }); }
 });
 
@@ -1064,11 +1437,11 @@ app.patch('/api/rutas/:id/parada/:idx', authenticateToken, async (req: Request, 
 
 app.post('/api/rutas/mision', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { seccion_id, solo_simpatizantes } = req.body;
+    const { seccion_id, tipo } = req.body;
     if (!seccion_id) { res.status(400).json({ error: 'seccion_id requerido' }); return; }
     const centroid = await routingService.obtenerCentroideSeccion(seccion_id.toString());
     const mision = await routingService.calcularRutaOptima(
-      centroid || { lat: 20.6434, lng: -100.9929 }, seccion_id.toString(), solo_simpatizantes || false
+      centroid || { lat: 20.6434, lng: -100.9929 }, seccion_id.toString(), tipo === 'seguros' ? 'seguros' : 'encuesta'
     );
     res.json(mision);
   } catch (e: any) { res.status(500).json({ error: 'Error al calcular misión: ' + (e.message || '') }); }
@@ -1076,10 +1449,10 @@ app.post('/api/rutas/mision', authenticateToken, async (req: Request, res: Respo
 
 app.post('/api/rutas/optimizar', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { origen_lat, origen_lng, seccion_id, solo_simpatizantes } = req.body;
+    const { origen_lat, origen_lng, seccion_id, tipo } = req.body;
     if (!origen_lat || !origen_lng || !seccion_id) { res.status(400).json({ error: 'Faltan datos' }); return; }
     const ruta = await routingService.calcularRutaOptima(
-      { lat: origen_lat, lng: origen_lng }, seccion_id.toString(), solo_simpatizantes || false
+      { lat: origen_lat, lng: origen_lng }, seccion_id.toString(), tipo === 'seguros' ? 'seguros' : 'encuesta'
     );
     res.json(ruta);
   } catch { res.status(500).json({ error: 'Error' }); }
@@ -1087,7 +1460,8 @@ app.post('/api/rutas/optimizar', authenticateToken, async (req: Request, res: Re
 
 app.get('/api/rutas/paradas/:seccionId', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const paradas = await routingService['obtenerParadas'](req.params.seccionId, false);
+    const tipo = (req.query.tipo === 'seguros' ? 'seguros' : 'encuesta') as 'encuesta' | 'seguros';
+    const paradas = await routingService['obtenerParadas'](req.params.seccionId, tipo);
     res.json(paradas);
   } catch { res.status(500).json({ error: 'Error' }); }
 });
@@ -1123,19 +1497,35 @@ app.post('/api/geo/ubicacion', async (req: Request, res: Response) => {
 });
 
 app.get('/api/partidos', authenticateToken, async (_req, res) => {
-  const result = await pool.query('SELECT id, nombre, abreviatura, color FROM partidos_politicos ORDER BY nombre');
+  const result = await pool.query('SELECT id, nombre, abreviatura, color, es_favorito FROM partidos_politicos ORDER BY es_favorito DESC, nombre');
   res.json(result.rows);
 });
 
 app.post('/api/partidos', authenticateToken, requireAdmin, async (req, res) => {
-  const { nombre, abreviatura, color } = req.body;
-  await pool.query('INSERT INTO partidos_politicos (nombre, abreviatura, color) VALUES ($1,$2,$3)', [nombre, abreviatura, color||'#999999']);
+  const { nombre, abreviatura, color, es_favorito } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query('INSERT INTO partidos_politicos (nombre, abreviatura, color, es_favorito) VALUES ($1,$2,$3,$4) RETURNING id', [nombre, abreviatura, color||'#999999', !!es_favorito]);
+    if (es_favorito) await client.query('UPDATE partidos_politicos SET es_favorito = (id = $1)', [r.rows[0].id]);
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
   res.status(201).json({ message: 'Partido guardado' });
 });
 
 app.put('/api/partidos/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const { nombre, abreviatura, color } = req.body;
-  await pool.query('UPDATE partidos_politicos SET nombre=$1, abreviatura=$2, color=$3 WHERE id=$4', [nombre, abreviatura, color, req.params.id]);
+  const { nombre, abreviatura, color, es_favorito } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (es_favorito) {
+      await client.query('UPDATE partidos_politicos SET es_favorito = (id = $1)', [req.params.id]);
+    }
+    await client.query('UPDATE partidos_politicos SET nombre=$1, abreviatura=$2, color=$3 WHERE id=$4', [nombre, abreviatura, color, req.params.id]);
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
   res.json({ message: 'Partido actualizado' });
 });
 
@@ -1146,7 +1536,7 @@ app.delete('/api/partidos/:id', authenticateToken, requireAdmin, async (req, res
 
 app.get('/api/casillas', authenticateToken, async (req, res) => {
   const { seccion_id } = req.query;
-  let query = `SELECT c.id, c.seccion_id, c.nombre, c.direccion, m.nombre as municipio
+  let query = `SELECT c.id, c.seccion_id, c.nombre, c.direccion, c.lat, c.lng, c.meta_votos, m.nombre as municipio
                FROM casillas c
                JOIN secciones_electorales s ON s.id = c.seccion_id
                JOIN municipios m ON m.id = s.municipio_id`;
@@ -1158,15 +1548,15 @@ app.get('/api/casillas', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/casillas', authenticateToken, requireAdmin, async (req, res) => {
-  const { seccion_id, nombre, direccion } = req.body;
+  const { seccion_id, nombre, direccion, lat, lng, meta_votos } = req.body;
   if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
-  await pool.query('INSERT INTO casillas (seccion_id, nombre, direccion) VALUES ($1,$2,$3) ON CONFLICT (seccion_id,nombre) DO UPDATE SET direccion=$3', [seccion_id, nombre, direccion||'']);
+  await pool.query('INSERT INTO casillas (seccion_id, nombre, direccion, lat, lng, meta_votos) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (seccion_id,nombre) DO UPDATE SET direccion=$3, lat=$4, lng=$5, meta_votos=$6', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0]);
   res.status(201).json({ message: 'Casilla guardada' });
 });
 
 app.put('/api/casillas/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const { nombre, direccion, seccion_id } = req.body;
-  await pool.query('UPDATE casillas SET seccion_id=$1, nombre=$2, direccion=$3 WHERE id=$4', [seccion_id, nombre, direccion||'', req.params.id]);
+  const { nombre, direccion, seccion_id, lat, lng, meta_votos } = req.body;
+  await pool.query('UPDATE casillas SET seccion_id=$1, nombre=$2, direccion=$3, lat=$4, lng=$5, meta_votos=$6 WHERE id=$7', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0, req.params.id]);
   res.json({ message: 'Casilla actualizada' });
 });
 
@@ -1207,6 +1597,148 @@ app.post('/api/resultados', authenticateToken, async (req, res) => {
 app.delete('/api/resultados/:id', authenticateToken, async (req, res) => {
   await pool.query('DELETE FROM resultados_casilla WHERE id=$1', [req.params.id]);
   res.json({ message: 'Resultado eliminado' });
+});
+
+// ---- Votos (ya votaron) ----
+app.post('/api/votos', authenticateToken, async (req, res) => {
+  try {
+    const { ciudadano_id, comprometido_id } = req.body;
+    if (!ciudadano_id && !comprometido_id) { res.status(400).json({ error: 'ciudadano_id o comprometido_id requerido' }); return; }
+    const ref = ciudadano_id ? { tabla: 'ciudadanos', col: 'ciudadano_id', id: ciudadano_id } : { tabla: 'ciudadanos_comprometidos', col: 'comprometido_id', id: comprometido_id };
+    const per = await pool.query(
+      `SELECT c.intencion_voto_presidente as partido_id, c.casilla_id
+       FROM ${ref.tabla} c WHERE c.id=$1`, [ref.id]);
+    if (!per.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
+    await pool.query(
+      `INSERT INTO votos (ciudadano_id, comprometido_id, partido_id, casilla_id) VALUES ($1,$2,$3,$4)
+       ON CONFLICT DO NOTHING`,
+      [ciudadano_id || null, comprometido_id || null, per.rows[0].partido_id || null, per.rows[0].casilla_id || null]
+    );
+    res.status(201).json({ votado: true });
+    try { io.emit('actualizar-votos', { casilla_id: per.rows[0].casilla_id }); } catch (e) { console.warn('io.emit error:', e); }
+  } catch (e: any) { console.error('POST /api/votos error:', e?.message || e); res.status(500).json({ error: 'Error al marcar voto' }); }
+});
+
+app.delete('/api/votos/:tipo/:id', authenticateToken, async (req, res) => {
+  try {
+    const { tipo, id } = req.params;
+    if (tipo !== 'ciudadano' && tipo !== 'comprometido') { res.status(400).json({ error: 'tipo inválido' }); return; }
+    const col = tipo === 'ciudadano' ? 'ciudadano_id' : 'comprometido_id';
+    await pool.query(`DELETE FROM votos WHERE ${col}=$1`, [id]);
+    res.json({ votado: false });
+    try { io.emit('actualizar-votos', {}); } catch (e) { console.warn('io.emit error:', e); }
+  } catch (e: any) { console.error('DELETE /api/votos error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
+// Votantes esperados por casilla (ciudadanos + comprometidos asignados)
+app.get('/api/casillas/:id/votantes', authenticateToken, async (req, res) => {
+  try {
+    const casillaId = req.params.id;
+    const c = await pool.query('SELECT id, seccion_id, nombre, direccion, meta_votos FROM casillas WHERE id=$1', [casillaId]);
+    if (!c.rows.length) { res.status(404).json({ error: 'Casilla no encontrada' }); return; }
+    const [ciud, comp, fav] = await Promise.all([
+      pool.query(
+        `SELECT c.id, c.nombre, c.telefono, c.casilla_id, c.simpatizante, c.prioridad,
+                c.intencion_voto_presidente as partido_id, pp.nombre as partido_nombre, pp.abreviatura, pp.color,
+                (v.ciudadano_id IS NOT NULL) as ya_voto
+         FROM ciudadanos c
+         LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
+         LEFT JOIN votos v ON v.ciudadano_id = c.id
+         WHERE c.casilla_id = $1 ORDER BY c.nombre`, [casillaId]),
+      pool.query(
+        `SELECT c.id, c.nombre, c.telefono, c.casilla_id, c.simpatizante, c.prioridad, c.nivel_compromiso,
+                c.intencion_voto_presidente as partido_id, pp.nombre as partido_nombre, pp.abreviatura, pp.color,
+                (v.comprometido_id IS NOT NULL) as ya_voto
+         FROM ciudadanos_comprometidos c
+         LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
+         LEFT JOIN votos v ON v.comprometido_id = c.id
+         WHERE c.casilla_id = $1 ORDER BY c.nombre`, [casillaId]),
+      pool.query('SELECT id, nombre, abreviatura, color FROM partidos_politicos WHERE es_favorito LIMIT 1')
+    ]);
+    const votados = await pool.query('SELECT ciudadano_id, comprometido_id, partido_id FROM votos WHERE casilla_id=$1', [casillaId]);
+    const votosFavorito = fav.rows.length ? votados.rows.filter(v => v.partido_id === fav.rows[0].id).length : 0;
+    res.json({
+      casilla: c.rows[0],
+      partido_favorito: fav.rows[0] || null,
+      votantes: [...ciud.rows.map((r: any) => ({ ...r, tipo: 'ciudadano' })),
+                 ...comp.rows.map((r: any) => ({ ...r, tipo: 'comprometido' }))],
+      conteo: {
+        esperados: ciud.rows.length + comp.rows.length,
+        votados: votados.rows.length,
+        votos_favorito: votosFavorito,
+        meta: c.rows[0].meta_votos || 0
+      }
+    });
+  } catch (e: any) { console.error('GET /api/casillas/:id/votantes error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
+// Reporte de votación por sección/casilla
+app.get('/api/reportes/votacion', authenticateToken, async (req, res) => {
+  try {
+    const { seccion_id } = req.query;
+    let query = `SELECT c.id as seccion_id, cas.id as casilla_id, cas.nombre as casilla, cas.meta_votos,
+        COALESCE(v.cnt,0) as votos, COALESCE(v.fav,0) as votos_favorito
+      FROM casillas cas
+      JOIN secciones_electorales c ON c.id = cas.seccion_id
+      LEFT JOIN LATERAL (
+        SELECT count(*)::int cnt, count(*) FILTER (WHERE partido_id = (SELECT id FROM partidos_politicos WHERE es_favorito LIMIT 1))::int fav
+        FROM votos WHERE casilla_id = cas.id
+      ) v ON true`;
+    const params: any[] = [];
+    if (seccion_id) { query += ' WHERE c.id = $1'; params.push(seccion_id); }
+    query += ' ORDER BY c.id, cas.nombre';
+    const result = await pool.query(query, params);
+    const porSeccion: any = {};
+    for (const r of result.rows) {
+      if (!porSeccion[r.seccion_id]) porSeccion[r.seccion_id] = { seccion_id: r.seccion_id, casillas: 0, meta: 0, votos: 0, votos_favorito: 0 };
+      porSeccion[r.seccion_id].casillas++;
+      porSeccion[r.seccion_id].meta += r.meta_votos || 0;
+      porSeccion[r.seccion_id].votos += r.votos;
+      porSeccion[r.seccion_id].votos_favorito += r.votos_favorito;
+    }
+    res.json({ por_casilla: result.rows, por_seccion: Object.values(porSeccion) });
+  } catch (e: any) { console.error('GET /api/reportes/votacion error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
+// PDF votantes por sección/casilla (solo admin) para palomear en papel
+app.get('/api/reportes/pdf-votantes', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { seccion_id, casilla_id } = req.query;
+    let filter = '';
+    const params: any[] = [];
+    if (casilla_id) { params.push(casilla_id); filter = ` WHERE c.casilla_id = $${params.length}`; }
+    else if (seccion_id) { params.push(seccion_id); filter = ` WHERE c.seccion_id = $${params.length}`; }
+    const rows = (await pool.query(
+      `SELECT c.nombre, c.telefono, c.seccion_id, c.casilla_id, cs.nombre as casilla_nombre,
+              pp.nombre as partido_nombre, pp.abreviatura, c.simpatizante, c.prioridad, c.nivel_compromiso
+       FROM ciudadanos_comprometidos c
+       LEFT JOIN casillas cs ON cs.id = c.casilla_id
+       LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
+       ${filter} ORDER BY c.casilla_id, c.nombre`, params)).rows;
+    const doc = new PDFDocument({ margin: 36, size: 'LETTER' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=votantes.pdf');
+    doc.pipe(res);
+    doc.fontSize(15).text('Listado de votantes esperados', { align: 'center' });
+    doc.fontSize(9).text(new Date().toLocaleString('es-MX'), { align: 'center' });
+    doc.moveDown(0.6);
+    const y0 = doc.y;
+    for (const r of rows) {
+      if (doc.y > 720) { doc.addPage(); }
+      doc.fontSize(11);
+      doc.text('☐ ', { continued: false, width: 0 });
+      const nombre = (r.prioridad >= 2 ? '★ ' : '') + r.nombre + (r.nivel_compromiso ? ` [${r.nivel_compromiso}]` : '');
+      const line = `${nombre} — Sec ${r.seccion_id}${r.casilla_nombre ? ' / ' + r.casilla_nombre : ''}`;
+      const detalle = (r.abreviatura ? r.abreviatura : 'Sin partido') + (r.telefono ? ' — ' + r.telefono : '');
+      doc.text('☐ ' + line, { width: 480 });
+      doc.fontSize(8).fillColor('#777').text('   ' + detalle, { width: 480 }).fillColor('#000');
+      doc.moveDown(0.15);
+    }
+    if (rows.length === 0) doc.text('Sin votantes registrados.');
+    doc.end();
+    try { const u = (req as any).user; if (u?.nombre) await logAuditoria(u.userId, u.nombre, 'pdf_votantes', 'reportes', undefined, { seccion_id: seccion_id || null, casilla_id: casilla_id || null, total: rows.length }); } catch (e) { console.warn('auditoria pdf:', e); }
+    void y0;
+  } catch (e: any) { console.error('PDF error:', e?.message || e); if (!res.headersSent) res.status(500).json({ error: 'Error al generar PDF' }); }
 });
 
 // Plantillas de mensaje WhatsApp

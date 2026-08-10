@@ -18,7 +18,7 @@ export async function getMisionDiaria(sectorId, soloSimpatizantes = false) {
       },
       body: JSON.stringify({
         sector_id: sectorId,
-        solo_simpatizantes: soloSimpatizantes,
+        tipo: soloSimpatizantes ? 'seguros' : 'encuesta',
       }),
     });
 
@@ -45,7 +45,7 @@ export async function getRutaOptimizada(origen, sectorId, soloSimpatizantes = fa
         origen_lat: origen.latitude,
         origen_lng: origen.longitude,
         sector_id: sectorId,
-        solo_simpatizantes: soloSimpatizantes,
+        tipo: soloSimpatizantes ? 'seguros' : 'encuesta',
       }),
     });
 

@@ -180,6 +180,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .ruta-enlace-tab-btn.active { color:var(--color-primary); border-bottom-color:var(--color-primary); font-weight:600; }
 .ruta-enlace-tab-content { display:none; }
 .ruta-enlace-tab-content.active { display:block; }
+.ruta-tipo-btn { padding:5px 12px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:12px; color:var(--text-muted); border-radius:14px; transition:all 0.2s; }
+.ruta-tipo-btn:hover { color:var(--color-primary); border-color:var(--color-primary); }
+.ruta-tipo-btn.active { background:var(--color-primary); border-color:var(--color-primary); color:#fff; font-weight:600; }
 
 /* Tables */
 .table-container { background: var(--pri-white); border-radius: var(--radius); box-shadow: var(--shadow); overflow-x: auto; }
@@ -237,13 +240,15 @@ tr:hover { background: var(--bg-light); }
 .dash-sec-panel label:hover { color:var(--pri-green); }
 
 .geo-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-.geo-tab, .evt-tab {
+.geo-tab, .evt-tab, .ciu-tab {
   padding: 8px 14px; border: 2px solid var(--border); background: #fff;
   border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 500;
   color: var(--text-muted); transition: all 0.2s;
 }
-.geo-tab:hover, .evt-tab:hover { border-color: var(--pri-green); color: var(--pri-green); }
-.geo-tab.active, .evt-tab.active { background: var(--pri-green); color: #fff; border-color: var(--pri-green); }
+.geo-tab:hover, .evt-tab:hover, .ciu-tab:hover { border-color: var(--pri-green); color: var(--pri-green); }
+.geo-tab.active, .evt-tab.active, .ciu-tab.active { background: var(--pri-green); color: #fff; border-color: var(--pri-green); }
+.ciu-tab { display: inline-flex; align-items: center; gap: 6px; }
+.ciu-tab.active::before { content: '✓'; font-size: 11px; }
 .evt-culminado { opacity: 0.75; background: #fafafa; }
 .evt-culminado h3 { color: #666; }
 

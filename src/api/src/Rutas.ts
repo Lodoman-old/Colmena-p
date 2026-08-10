@@ -38,10 +38,10 @@ export class RoutingService {
   async calcularRutaOptima(
     origen: Coordenada,
     seccionId: string,
-    soloSimpatizantes: boolean = false,
+    tipo: 'encuesta' | 'seguros' = 'encuesta',
     maxDistanciaKm: number = 25
   ): Promise<RutaOptimizada> {
-    const paradas = await this.obtenerParadas(seccionId, soloSimpatizantes);
+    const paradas = await this.obtenerParadas(seccionId, tipo);
     const advertencias: string[] = [];
 
     if (paradas.length === 0) {
@@ -78,27 +78,42 @@ export class RoutingService {
 
   private async obtenerParadas(
     seccionId: string,
-    soloSimpatizantes: boolean
+    tipo: 'encuesta' | 'seguros'
   ): Promise<Parada[]> {
-    let query = `
-      SELECT c.id, c.nombre, c.telefono,
-             ST_X(c.ubicacion::geometry) as lng,
-             ST_Y(c.ubicacion::geometry) as lat,
-             c.simpatizante as es_simpatizante,
-             c.prioridad,
-             c.calle, c.numero, c.colonia
-      FROM ciudadanos c
-      WHERE c.seccion_id = $1
-        AND c.ubicacion IS NOT NULL
-    `;
-
+    let query: string;
     const params: any[] = [seccionId];
 
-    if (soloSimpatizantes) {
-      query += ` AND c.simpatizante = TRUE`;
+    if (tipo === 'seguros') {
+      query = `
+        SELECT c.id, c.nombre, c.telefono,
+               ST_X(c.ubicacion::geometry) as lng,
+               ST_Y(c.ubicacion::geometry) as lat,
+               c.simpatizante as es_simpatizante,
+               c.prioridad,
+               c.calle, c.numero, c.colonia
+        FROM ciudadanos_comprometidos c
+        WHERE c.seccion_id = $1
+          AND c.ubicacion IS NOT NULL
+      `;
+    } else {
+      query = `
+        SELECT c.id, c.nombre, c.telefono,
+               ST_X(c.ubicacion::geometry) as lng,
+               ST_Y(c.ubicacion::geometry) as lat,
+               c.simpatizante as es_simpatizante,
+               c.prioridad,
+               c.calle, c.numero, c.colonia
+        FROM ciudadanos c
+        WHERE c.seccion_id = $1
+          AND c.ubicacion IS NOT NULL
+      `;
     }
 
-    query += ` ORDER BY prioridad DESC, es_simpatizante DESC`;
+    if (tipo === 'seguros') {
+      query += ` ORDER BY c.prioridad DESC, c.simpatizante DESC`;
+    } else {
+      query += ` ORDER BY c.prioridad DESC, c.simpatizante DESC`;
+    }
 
     const result = await this.pool.query(query, params);
     return result.rows.map((row: any) => ({
@@ -148,10 +163,10 @@ export class RoutingService {
 
   async repartirRutas(
     seccionId: string,
-    soloSimpatizantes: boolean,
+    tipo: 'encuesta' | 'seguros',
     numGrupos: number
   ): Promise<RutaOptimizada[]> {
-    const paradas = await this.obtenerParadas(seccionId, soloSimpatizantes);
+    const paradas = await this.obtenerParadas(seccionId, tipo);
     if (!paradas.length || !numGrupos) return [];
 
     const centroid = await this.obtenerCentroideSeccion(seccionId);

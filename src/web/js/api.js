@@ -127,17 +127,23 @@ const API = (() => {
     actualizarCiudadano(id, data) { return request('PUT', `/api/ciudadanos/${id}`, data); },
     eliminarCiudadano(id) { return request('DELETE', `/api/ciudadanos/${id}`); },
 
+    getComprometidos(seccionId) { return request('GET', `/api/comprometidos${seccionId ? '?seccion_id='+seccionId : ''}`); },
+    getComprometido(id) { return request('GET', `/api/comprometidos/${id}`); },
+    crearComprometido(data) { return request('POST', '/api/comprometidos', data); },
+    actualizarComprometido(id, data) { return request('PUT', `/api/comprometidos/${id}`, data); },
+    eliminarComprometido(id) { return request('DELETE', `/api/comprometidos/${id}`); },
+
     getEventos() { return request('GET', '/api/eventos'); },
     crearEvento(data) { return request('POST', '/api/eventos', data); },
     actualizarEvento(id, data) { return request('PUT', `/api/eventos/${id}`, data); },
     eliminarEvento(id) { return request('DELETE', `/api/eventos/${id}`); },
 
     getMision(seccionId, soloSimpatizantes = false) {
-      return request('POST', '/api/rutas/mision', { seccion_id: seccionId, solo_simpatizantes: soloSimpatizantes });
+      return request('POST', '/api/rutas/mision', { seccion_id: seccionId, tipo: soloSimpatizantes ? 'seguros' : 'encuesta' });
     },
     optimizarRuta(origenLat, origenLng, seccionId, soloSimpatizantes = false) {
       return request('POST', '/api/rutas/optimizar', {
-        origen_lat: origenLat, origen_lng: origenLng, seccion_id: seccionId, solo_simpatizantes: soloSimpatizantes
+        origen_lat: origenLat, origen_lng: origenLng, seccion_id: seccionId, tipo: soloSimpatizantes ? 'seguros' : 'encuesta'
       });
     },
     getParadas(seccionId) { return request('GET', `/api/rutas/paradas/${seccionId}`); },
@@ -157,6 +163,16 @@ const API = (() => {
     crearCasilla(data) { return request('POST', '/api/casillas', data); },
     actualizarCasilla(id, data) { return request('PUT', `/api/casillas/${id}`, data); },
     eliminarCasilla(id) { return request('DELETE', `/api/casillas/${id}`); },
+    getVotantesCasilla(id) { return request('GET', `/api/casillas/${id}/votantes`); },
+    marcarVoto(ciudadanoId, comprometidoId) { return request('POST', '/api/votos', { ciudadano_id: ciudadanoId, comprometido_id: comprometidoId }); },
+    quitarVoto(tipo, id) { return request('DELETE', `/api/votos/${tipo}/${id}`); },
+    getReporteVotacion(seccionId) { return request('GET', `/api/reportes/votacion${seccionId ? '?seccion_id='+seccionId : ''}`); },
+    getPdfVotantes(seccionId, casillaId) {
+      let q = '';
+      if (casillaId) q += 'casilla_id=' + casillaId;
+      else if (seccionId) q += 'seccion_id=' + seccionId;
+      return requestBlob('GET', `/api/reportes/pdf-votantes${q ? '?' + q : ''}`);
+    },
     request(method, path, body) { return request(method, path, body); },
     requestBlob(method, path, body) { return requestBlob(method, path, body); },
     getGeometrias(municipioId) { return request('GET', `/api/secciones/${municipioId}/geometrias`); },
