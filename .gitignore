@@ -40,3 +40,6 @@ src/web/dist/
 Thumbs.db
 desktop.ini
 *.log
+
+# build logs
+build-log.txt
