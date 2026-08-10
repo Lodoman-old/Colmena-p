@@ -1812,12 +1812,9 @@
       if (filtroMuni) {
         try {
           const data = await API.getGeometrias(filtroMuni);
-          if (secCheckIds.size) {
-            data.features = data.features.filter(f => secCheckIds.has(Math.round(f.properties.seccion)));
-          } else {
-            data.features = [];
-          }
-          geojsonData = data;
+          geojsonData = (secCheckIds.size
+            ? { type: data.type, features: data.features.filter(f => secCheckIds.has(Math.round(f.properties.seccion))) }
+            : { type: data.type, features: [] });
         } catch (e) { console.warn(e); }
       }
 
