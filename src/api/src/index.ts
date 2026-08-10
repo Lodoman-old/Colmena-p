@@ -150,7 +150,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false, skipFailedRequests: true, message: { error: 'Demasiadas solicitudes, intente más tarde' } }));
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 4000, standardHeaders: true, legacyHeaders: false, skipFailedRequests: true, message: { error: 'Demasiadas solicitudes, intente más tarde' } }));
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err.type === 'entity.parse.failed') { res.status(400).json({ error: 'Formato JSON inválido' }); return; }
   console.error('Error no manejado:', err);

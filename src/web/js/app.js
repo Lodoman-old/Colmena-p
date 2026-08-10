@@ -1168,10 +1168,15 @@
       panel.classList.toggle('hidden');
       if (!panel.classList.contains('hidden')) loadDashboard();
     });
+    let _dashDebounce = null;
+    function cargarDashboardDebounced() {
+      if (_dashDebounce) clearTimeout(_dashDebounce);
+      _dashDebounce = setTimeout(() => { _dashDebounce = null; loadDashboard(); }, 300);
+    }
     document.getElementById('dash-sec-todas').addEventListener('change', function() {
       document.querySelectorAll('#dash-sec-list input[type=checkbox]').forEach(cb => cb.checked = this.checked);
       updateSecCount();
-      loadDashboard();
+      cargarDashboardDebounced();
     });
     document.getElementById('geo-filtro-evento').addEventListener('change', loadGeocercas);
     document.querySelectorAll('.evt-tab').forEach(tab => {
@@ -1240,7 +1245,7 @@
     document.getElementById('dash-sec-list').addEventListener('change', function(e) {
       if (e.target.type === 'checkbox') {
         updateSecCount();
-        loadDashboard();
+        cargarDashboardDebounced();
       }
     });
 
