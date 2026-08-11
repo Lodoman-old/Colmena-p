@@ -1544,12 +1544,25 @@ app.delete('/api/partidos/:id', authenticateToken, requireAdmin, async (req, res
 
 app.get('/api/casillas', authenticateToken, async (req, res) => {
   const { seccion_id } = req.query;
+  const user = (req as any).user;
   let query = `SELECT c.id, c.seccion_id, c.nombre, c.direccion, c.lat, c.lng, c.meta_votos, m.nombre as municipio
                FROM casillas c
                JOIN secciones_electorales s ON s.id = c.seccion_id
                JOIN municipios m ON m.id = s.municipio_id`;
   const params: any[] = [];
-  if (seccion_id) { query += ' WHERE c.seccion_id = $1'; params.push(seccion_id); }
+  const conds: string[] = [];
+  if (user.rol === 'enlace') {
+    const secs = await getUserSecciones(user.userId);
+    if (!secs.length) { res.json([]); return; }
+    params.push(secs); conds.push(`c.seccion_id = ANY($${params.length})`);
+  } else if (user.rol === 'coordinador') {
+    const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
+    const muniId = mRes.rows[0]?.municipio_id;
+    if (!muniId) { res.json([]); return; }
+    params.push(muniId); conds.push(`s.municipio_id = $${params.length}`);
+  }
+  if (seccion_id) { params.push(seccion_id); conds.push(`c.seccion_id = $${params.length}`); }
+  if (conds.length) query += ' WHERE ' + conds.join(' AND ');
   query += ' ORDER BY c.seccion_id, c.nombre';
   const result = await pool.query(query, params);
   res.json(result.rows);
@@ -2064,15 +2077,28 @@ app.get('/api/detectar-seccion', authenticateToken, async (req: Request, res: Re
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/secciones/:municipioId/geometrias', async (req: Request, res: Response) => {
+app.get('/api/secciones/:municipioId/geometrias', authenticateToken, async (req: Request, res: Response) => {
   try {
+    const user = (req as any).user;
     const muniId = parseInt(req.params.municipioId);
     // INE stores 2-digit municipio code; our DB uses 5-digit (11 + INE code)
     const ineMuni = muniId % 100;
+    const params: any[] = [ineMuni];
+    let extra = '';
+    if (user?.rol === 'enlace') {
+      const secs = await getUserSecciones(user.userId);
+      if (!secs.length) { res.json({ type: 'FeatureCollection', features: [] }); return; }
+      params.push(secs);
+      extra = ` AND s.seccion = ANY($${params.length})`;
+    } else if (user?.rol === 'coordinador') {
+      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
+      const muniIdU = mRes.rows[0]?.municipio_id;
+      if (!muniIdU || muniIdU !== muniId) { res.json({ type: 'FeatureCollection', features: [] }); return; }
+    }
     const result = await pool.query(
       `SELECT s.seccion, ST_AsGeoJSON(s.geom)::jsonb as geometry
        FROM seccion_geo s
-       WHERE s.municipio = $1`, [ineMuni]
+       WHERE s.municipio = $1${extra}`, params
     );
     if (!result.rows.length) {
       res.json({ type: 'FeatureCollection', features: [] });
