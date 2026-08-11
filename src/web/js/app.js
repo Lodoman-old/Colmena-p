@@ -5766,10 +5766,10 @@
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
       <div class="form-row" style="align-items:center;gap:8px;flex-wrap:wrap">
         <label style="flex:2;min-width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
-        <select id="f-casilla" style="width:100%;box-sizing:border-box;height:32px;padding:0 8px"><option value="">Auto-detectar</option></select></label>
-        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:5px;justify-content:flex-end"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:-4px 0 0 0;width:18px;height:18px;flex:none"></label>
+        <select id="f-casilla" style="flex:none;width:100%;box-sizing:border-box;height:32px;padding:0 8px"><option value="">Auto-detectar</option></select></label>
+        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:5px;justify-content:flex-end"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:-8px 0 0 0;width:18px;height:18px;flex:none"></label>
         <label style="flex:none;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
-        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="width:55px;height:32px;box-sizing:border-box;text-align:center"></label>
+        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:55px;height:32px;box-sizing:border-box;text-align:center"></label>
         <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:32px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin-top:12px" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
       </div>
       <div class="form-row" style="align-items:stretch"><label style="flex:0.3;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;cursor:pointer;text-align:center"><span>Simpatizante</span><input type="checkbox" id="f-simpatizante" ${data.simpatizante?'checked':''} style="margin:0;width:auto"></label>
