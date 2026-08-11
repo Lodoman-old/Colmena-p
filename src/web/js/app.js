@@ -5764,13 +5764,13 @@
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:center;gap:8px;flex-wrap:wrap">
+      <div class="form-row" style="align-items:flex-end;gap:8px;flex-wrap:wrap">
         <label style="flex:2;min-width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
-        <select id="f-casilla" style="flex:none;width:100%;box-sizing:border-box;height:32px;padding:0 8px"><option value="">Auto-detectar</option></select></label>
-        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:5px;justify-content:flex-end"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:-8px 0 0 0;width:18px;height:18px;flex:none"></label>
+        <select id="f-casilla" style="flex:none;width:100%;box-sizing:border-box;height:40px;padding:0 8px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
+        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:8px"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:0;width:18px;height:18px;flex:none;margin-bottom:0"></label>
         <label style="flex:none;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
-        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:55px;height:32px;box-sizing:border-box;text-align:center"></label>
-        <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:32px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin-top:12px" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
+        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:60px;height:40px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
+        <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:40px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
       </div>
       <div class="form-row" style="align-items:stretch"><label style="flex:0.3;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;cursor:pointer;text-align:center"><span>Simpatizante</span><input type="checkbox" id="f-simpatizante" ${data.simpatizante?'checked':''} style="margin:0;width:auto"></label>
       <label style="flex:0.4;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
