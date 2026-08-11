@@ -5764,7 +5764,7 @@
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:flex-end;gap:8px;flex-wrap:wrap">
+      <div class="form-row" style="align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:26px">
         <label style="flex:2;min-width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
         <select id="f-casilla" style="flex:none;width:100%;box-sizing:border-box;height:40px;padding:0 8px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
         <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:8px"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:0;width:18px;height:18px;flex:none;margin-bottom:0"></label>
