@@ -1558,11 +1558,11 @@
       mobAdminBtns.forEach(b => b.style.display = 'none');
     }
     if (user?.rol === 'enlace') {
-      // Enlace sees Dashboard, Mi Ruta, Ciudadanos, Reportes
+      // Enlace sees Dashboard, Mi Ruta, Ciudadanos, Incidencias
       const operacionItems = document.querySelectorAll('.nav-dropdown:first-of-type .dropdown-item');
       operacionItems.forEach(item => {
         const v = item.dataset.view;
-        if (v && v !== 'mi-ruta' && v !== 'ciudadanos' && v !== 'casilla' && v !== 'incidencias') item.style.display = 'none';
+        if (v && v !== 'mi-ruta' && v !== 'ciudadanos' && v !== 'incidencias') item.style.display = 'none';
       });
       document.querySelectorAll('.nav-btn[data-view="reportes"]').forEach(b => b.style.display = 'none');
       document.querySelectorAll('.nav-dropdown').forEach(d => {

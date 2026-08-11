@@ -1677,8 +1677,13 @@ app.delete('/api/votos/:tipo/:id', authenticateToken, async (req, res) => {
 app.get('/api/casillas/:id/votantes', authenticateToken, async (req, res) => {
   try {
     const casillaId = req.params.id;
+    const user = (req as any).user;
     const c = await pool.query('SELECT id, seccion_id, nombre, direccion, meta_votos FROM casillas WHERE id=$1', [casillaId]);
     if (!c.rows.length) { res.status(404).json({ error: 'Casilla no encontrada' }); return; }
+    if (user.rol === 'enlace') {
+      const perm = await pool.query('SELECT 1 FROM usuarios_secciones WHERE usuario_id=$1 AND seccion_id=$2', [user.userId, c.rows[0].seccion_id]);
+      if (!perm.rows.length) { res.status(403).json({ error: 'No tienes permiso sobre esa casilla' }); return; }
+    }
     const [ciud, comp, fav] = await Promise.all([
       pool.query(
         `SELECT c.id, c.nombre, c.telefono, c.casilla_id, c.simpatizante, c.prioridad,
