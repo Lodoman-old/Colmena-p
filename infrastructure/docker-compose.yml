@@ -1,20 +1,24 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgis/postgis:15-3.4
+    env_file: .env
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/sqls:/docker-entrypoint-initdb.d
+      - ./infrastructure/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     ports:
-      - "5432:5432"
+      - "15432:5432"
     networks:
       - appnet
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -22,13 +26,21 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "16379:6379"
     networks:
       - appnet
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   api:
-    build: ./src/api
+    build:
+      context: ./src/api
+      dockerfile: Dockerfile
+    env_file: .env
     environment:
       NODE_ENV: development
       DB_HOST: postgres
@@ -40,38 +52,44 @@ services:
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      OSRM_URL: http://osrm-router:5000
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
     ports:
       - "3000:3000"
+    volumes:
+      - uploads_data:/app/uploads
     networks:
       - appnet
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+
+  osrm-router:
+    image: osrm/osrm-backend
+    command: osrm-routed --algorithm mld /data/guanajuato.osrm
     volumes:
-      - ./src/api:/app/src
-      - /app/src/node_modules
+      - osrm_data:/data
+    ports:
+      - "5000:5000"
+    networks:
+      - appnet
+    restart: unless-stopped
 
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
-      - "443:443"
     volumes:
-      - ./src/config/nginx.conf:/etc/nginx/nginx.conf
-      - ./src/config/ssl:/etc/nginx/ssl
+      - ./src/config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./src/web:/usr/share/nginx/html:ro
+      - ./src/tiles-server:/usr/share/nginx/tiles:ro
     depends_on:
       - api
-    networks:
-      - appnet
-    restart: unless-stopped
-
-  osrm-router:
-    image: osrm/osrm-backend:latest
-    ports:
-      - "5000:5000"
-    volumes:
-      - osrm-data:/data
     networks:
       - appnet
     restart: unless-stopped
@@ -79,7 +97,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  osrm-data:
+  uploads_data:
+  osrm_data:
 
 networks:
   appnet:

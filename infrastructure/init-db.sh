@@ -3,6 +3,9 @@ set -e
 
 echo "=== CREANDO ESQUEMA COLMENA - Estado > Municipio > Seccion > Ciudadano ==="
 
+ADMIN_PASS="$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 14)"
+if [ -z "$ADMIN_PASS" ]; then ADMIN_PASS="Colmena2026!"; fi
+
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     CREATE EXTENSION IF NOT EXISTS postgis;
     CREATE EXTENSION IF NOT EXISTS postgis_topology;
@@ -30,6 +33,28 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         id INTEGER PRIMARY KEY,
         municipio_id INTEGER NOT NULL REFERENCES municipios(id),
         tipo VARCHAR(20) DEFAULT 'urbana'
+    );
+
+    CREATE TABLE IF NOT EXISTS seccion_geo (
+        id_gid integer PRIMARY KEY,
+        id numeric(32,10),
+        entidad numeric(11,0),
+        distrito numeric(11,0),
+        distrito_l numeric(11,0),
+        municipio numeric(11,0),
+        seccion numeric(11,0),
+        tipo numeric(11,0),
+        control numeric(32,10),
+        geometry1_ character varying(15),
+        geom geometry(MultiPolygon,4326)
+    );
+    CREATE INDEX IF NOT EXISTS seccion_geo_geom_geom_idx ON seccion_geo USING GIST (geom);
+
+    CREATE TABLE IF NOT EXISTS partidos_politicos (
+        id SERIAL PRIMARY KEY,
+        nombre VARCHAR(100) NOT NULL,
+        abreviatura VARCHAR(20) NOT NULL,
+        color VARCHAR(7) DEFAULT '#999999'
     );
 
     CREATE TABLE IF NOT EXISTS ciudadanos (
@@ -136,13 +161,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE INDEX IF NOT EXISTS idx_secciones_municipio ON secciones_electorales (municipio_id);
     CREATE INDEX IF NOT EXISTS idx_eventos_seccion ON eventos (seccion_id);
     CREATE INDEX IF NOT EXISTS idx_geofences_ubicacion ON geofences USING GIST (ubicacion);
-    CREATE TABLE IF NOT EXISTS partidos_politicos (
-        id SERIAL PRIMARY KEY,
-        nombre VARCHAR(100) NOT NULL,
-        abreviatura VARCHAR(20) NOT NULL,
-        color VARCHAR(7) DEFAULT '#999999'
-    );
-
     CREATE TABLE IF NOT EXISTS casillas (
         id SERIAL PRIMARY KEY,
         seccion_id INTEGER NOT NULL REFERENCES secciones_electorales(id),
@@ -272,14 +290,14 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE TRIGGER trg_generar_geofences_evento AFTER INSERT ON eventos FOR EACH ROW EXECUTE FUNCTION generar_geofences_evento();
 
     CREATE OR REPLACE FUNCTION actualizar_geofence_evento()
-    RETURNS TRIGGER AS $$
+    RETURNS TRIGGER AS \$\$
     BEGIN
         IF OLD.ubicacion IS DISTINCT FROM NEW.ubicacion OR OLD.radio_geocerca IS DISTINCT FROM NEW.radio_geocerca THEN
             UPDATE geofences SET ubicacion = NEW.ubicacion, radio_metros = NEW.radio_geocerca WHERE evento_id = NEW.id;
         END IF;
         RETURN NEW;
     END;
-    $$ LANGUAGE plpgsql;
+    \$\$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS trg_actualizar_geofence_evento ON eventos;
     CREATE TRIGGER trg_actualizar_geofence_evento AFTER UPDATE ON eventos FOR EACH ROW EXECUTE FUNCTION actualizar_geofence_evento();
 
@@ -326,13 +344,20 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         (11046,11,'Yuriria',20.2167,-101.1267,FALSE)
     ON CONFLICT (id) DO NOTHING;
 
-    ---- SEED: SECCIONES ELECTORALES (Juventino Rosas - muestra) ----
+    ---- SEED: SECCIONES ELECTORALES (Santa Cruz de Juventino Rosas - 36 secciones INE) ----
     INSERT INTO secciones_electorales (id, municipio_id, tipo) VALUES
-        (1191,11035,'urbana'),(1192,11035,'urbana'),(1193,11035,'urbana'),
-        (1194,11035,'urbana'),(1195,11035,'rural'),(1196,11035,'rural'),
-        (1197,11035,'urbana'),(1198,11035,'urbana'),(1199,11035,'urbana'),
-        (1200,11035,'urbana'),(1201,11035,'rural'),(1202,11035,'rural'),
-        (1203,11035,'urbana'),(1204,11035,'urbana'),(1205,11035,'rural')
+        (2608,11035,'urbana'),(2609,11035,'urbana'),(2610,11035,'urbana'),
+        (2611,11035,'urbana'),(2612,11035,'urbana'),(2613,11035,'urbana'),
+        (2614,11035,'urbana'),(2615,11035,'urbana'),(2616,11035,'urbana'),
+        (2617,11035,'urbana'),(2618,11035,'urbana'),(2619,11035,'urbana'),
+        (2620,11035,'urbana'),(2621,11035,'urbana'),(2622,11035,'urbana'),
+        (2623,11035,'urbana'),(2624,11035,'urbana'),(2625,11035,'urbana'),
+        (2626,11035,'urbana'),(2627,11035,'urbana'),(2628,11035,'urbana'),
+        (2629,11035,'urbana'),(2630,11035,'urbana'),(2631,11035,'urbana'),
+        (2632,11035,'urbana'),(2633,11035,'urbana'),(2634,11035,'urbana'),
+        (2635,11035,'urbana'),(2636,11035,'urbana'),(2637,11035,'urbana'),
+        (2638,11035,'urbana'),(2639,11035,'urbana'),(2640,11035,'urbana'),
+        (2641,11035,'urbana'),(2642,11035,'urbana'),(2643,11035,'urbana')
     ON CONFLICT (id) DO NOTHING;
 
     ---- SEED: PARTIDOS POLITICOS ----
@@ -349,44 +374,20 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     ON CONFLICT (id) DO NOTHING;
     SELECT setval('partidos_politicos_id_seq', (SELECT COALESCE(MAX(id),0) FROM partidos_politicos));
 
-    ---- SEED: CASILLAS ----
+    ---- SEED: CASILLAS (una 'Basica' por seccion) ----
     INSERT INTO casillas (seccion_id, nombre) SELECT id, 'Básica' FROM secciones_electorales ON CONFLICT DO NOTHING;
 
-    ---- SEED: RESULTADOS CASILLA (muestra) ----
-    INSERT INTO resultados_casilla (casilla_id, partido_id, votos)
-    SELECT c.id, v.partido_id, v.votos FROM (VALUES
-        (1191,1,85),(1191,2,42),(1191,3,12),(1191,4,120),(1191,5,8),(1191,6,15),(1191,7,10),(1191,8,3),(1191,9,5),
-        (1192,1,60),(1192,2,55),(1192,3,8),(1192,4,95),(1192,5,5),(1192,6,10),(1192,7,7),(1192,8,2),(1192,9,3)
-    ) AS v(sec, partido_id, votos)
-    JOIN casillas c ON c.seccion_id = v.sec AND c.nombre = 'Básica'
-    ON CONFLICT (casilla_id, partido_id) DO NOTHING;
-
-    ---- SEED: USUARIOS ----
+    ---- SEED: USUARIOS (solo administrador, password aleatoria) ----
     INSERT INTO usuarios (id, nombre, email, password_hash, rol, municipio_id) VALUES
-        ('b0000000-0000-0000-0000-000000000001', 'Administrador', 'admin@colmena.app', '\$2a\$10\$i2bFt4jv/LPSMcrBO9p8gOZ38YolWPSgw2O5AKmcjsoNyKsGkZxXS', 'admin', NULL),
-        ('b0000000-0000-0000-0000-000000000002', 'Coord. Juventino Rosas', 'coord.jr@colmena.app', '\$2a\$10\$xMg.gWP/9F8lw0qdau4v4eWVsGaagb/ejQ37GuEHZX/PUgOcDUlPC', 'coordinador', 11035),
-        ('b0000000-0000-0000-0000-000000000003', 'Coord. Celaya', 'coord.celaya@colmena.app', '\$2a\$10\$xMg.gWP/9F8lw0qdau4v4eWVsGaagb/ejQ37GuEHZX/PUgOcDUlPC', 'coordinador', 11007),
-        ('b0000000-0000-0000-0000-000000000004', 'Enlace Seccion 1191', 'enlace@colmena.app', '\$2a\$10\$xMg.gWP/9F8lw0qdau4v4eWVsGaagb/ejQ37GuEHZX/PUgOcDUlPC', 'enlace', NULL)
+        ('b0000000-0000-0000-0000-000000000001', 'Administrador', 'admin@colmena.app', crypt('$ADMIN_PASS', gen_salt('bf', 10)), 'admin', NULL)
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO usuarios_secciones (usuario_id, seccion_id) VALUES
-        ('b0000000-0000-0000-0000-000000000004', 1191),
-        ('b0000000-0000-0000-0000-000000000004', 1193)
-    ON CONFLICT (usuario_id, seccion_id) DO NOTHING;
+    \echo '========================================================='
+    \echo 'ADMIN_PASSWORD=$ADMIN_PASS'
+    \echo 'login: admin@colmena.app'
+    \echo '========================================================='
 
-    ---- SEED: CIUDADANOS ----
-    INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, simpatizante, prioridad, intencion_voto) VALUES
-        ('c0000000-0000-0000-0000-000000000001', 1191, 'H-001', 'Juan Perez Lopez', '4611234567', 'Av. Principal', '123', 'Centro', '38240', ST_SetSRID(ST_MakePoint(-100.9929, 20.6434), 4326), TRUE, 3, 1),
-        ('c0000000-0000-0000-0000-000000000002', 1191, 'H-002', 'Maria Garcia Hernandez', '4617654321', 'Morelos', '456', 'Centro', '38240', ST_SetSRID(ST_MakePoint(-100.9900, 20.6400), 4326), FALSE, 1, 4),
-        ('c0000000-0000-0000-0000-000000000003', 1193, 'H-001', 'Carlos Lopez Martinez', '4615566778', 'Juarez', '789', 'San Miguel', '38243', ST_SetSRID(ST_MakePoint(-100.9850, 20.6500), 4326), TRUE, 2, 1),
-        ('c0000000-0000-0000-0000-000000000004', 1194, 'H-001', 'Ana Rodriguez Perez', '4619988776', 'Hidalgo', '321', 'Lomas', '38245', ST_SetSRID(ST_MakePoint(-100.9950, 20.6350), 4326), TRUE, 2, 2),
-        ('c0000000-0000-0000-0000-000000000005', 1197, 'H-001', 'Pedro Sanchez Torres', '4613344556', 'Allende', '654', 'Jardines', '38242', ST_SetSRID(ST_MakePoint(-100.9880, 20.6460), 4326), FALSE, 0, NULL)
-    ON CONFLICT (id) DO NOTHING;
-
-    ---- SEED: EVENTO ----
-    INSERT INTO eventos (id, nombre, descripcion, fecha_inicio, fecha_fin, ubicacion, radio_geocerca, seccion_id) VALUES
-        ('d0000000-0000-0000-0000-000000000001', 'Mitin Plaza Principal', 'Mitin en la plaza principal de Juventino Rosas', NOW() + INTERVAL '7 days', NOW() + INTERVAL '7 days' + INTERVAL '4 hours', ST_SetSRID(ST_MakePoint(-100.9929, 20.6434), 4326), 500, 1191)
-    ON CONFLICT (id) DO NOTHING;
+    ---- SEED: (sin datos de muestra: sin ciudadanos, sin eventos, sin resultados) ----
 
     \echo '=== Esquema COLMENA creado exitosamente ==='
 EOSQL

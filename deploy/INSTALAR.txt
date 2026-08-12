@@ -1,0 +1,52 @@
+# ==============================
+# Colmena - INSTALACION EN PRODUCCION
+# ==============================
+# Requisitos del servidor: Linux (Debian/Ubuntu) con Docker y el plugin
+# docker compose instalados. No necesita internet salvo para bajar imagenes.
+#
+# 1) Subir colmena-produccion.zip al servidor y descomprimir:
+#      unzip colmena-produccion.zip -d colmena
+#      cd colmena
+#
+# 2) Revisar y ajustar el archivo .env:
+#      - Cambiar DB_PASSWORD (cualquier valor, se crea la BD nueva)
+#      - Cambiar JWT_SECRET por un valor largo y aleatorio
+#      - TWILIO_AUTH_TOKEN / VAPID_* solo si se usan
+#      (NOTA: al cambiar VAPID, el navegador pedira re-activar notificaciones)
+#
+# 3) Instalar todo (BD + poligonos + migraciones + mapas + app):
+#      chmod +x deploy/instalar.sh deploy/preparar-osrm.sh
+#      ./deploy/instalar.sh
+#
+# 4) Al terminar, el script imprime el password de ADMINISTRADOR
+#    (generado aleatoriamente) y la url:
+#      - Web:               http://<IP-del-servidor>/
+#      - APK de descarga:   http://<IP-del-servidor>/apk/Colmena.apk
+#      - Usuario admin:     admin@colmena.app
+#    Si no lo ves, ejecuta: docker compose logs postgres | grep ADMIN_PASSWORD
+#
+# 5) Entrar con el admin, cambiar la password y en Configuracion poner la
+#    URL publica real del sistema (se usa para los enlaces de encuesta).
+#
+# ==============================
+# QUE SE INSTALA
+# ==============================
+# - 32 estados, 46 municipios de Guanajuato (Santa Cruz de Juventino Rosas
+#   queda como municipio por defecto/favorito), 9 partidos politicos.
+# - Las 36 secciones electorales reales de Juventino Rosas (2608-2643)
+#   con sus poligonos (tabla seccion_geo) y una casilla 'Basica' por seccion.
+# - UN usuario administrador con password aleatoria. SIN ciudadanos,
+#   SIN eventos, SIN resultados ni usuarios de muestra.
+# - Migraciones 001 y 003-015 (la 002 es legacy, referencia una tabla
+#   'sectores' inexistente y se omite por seguridad).
+# - Los mapas (tiles) y la ultima APK v181 para descarga directa.
+# - Datos de ruteo OSRM preparados a partir de guanajuato.osm.pbf.
+#
+# ==============================
+# OPERACIONES DIARIAS (backup, etc.)
+# ==============================
+# Backup de la BD:
+#   docker compose exec -T postgres pg_dump -U postgres -d colmena_db -F c > respaldo.dump
+# Restaurar en servidor nuevo: docker compose exec -T postgres pg_restore -U postgres -d colmena_db respaldo.dump
+# (Si restauras un respaldo, NO vuelvas a correr instalar.sh sobre la misma BD:
+#  el init solo corre cuando la carpeta de datos esta vacia.)
