@@ -13,6 +13,7 @@ src/app/node_modules/
 
 # ── Datos pesados descargados/generados ──
 osrm-data/
+!deploy/osrm-data/
 !deploy/osrm-data/guanajuato.osm.pbf
 src/api/uploads/
 src/api/db/
