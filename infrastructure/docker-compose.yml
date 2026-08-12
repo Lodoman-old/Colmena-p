@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgis/postgis:15-3.4
-    env_file: .env
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -40,9 +39,8 @@ services:
     build:
       context: ./src/api
       dockerfile: Dockerfile
-    env_file: .env
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER}
@@ -67,13 +65,37 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      app-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  # One-shot idempotente: poligonos + migraciones. Corre en cada deploy.
+  app-init:
+    image: postgis/postgis:15-3.4
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      PGHOST: postgres
+    volumes:
+      - ./deploy/init-app.sh:/init-app.sh:ro
+      - ./db:/db:ro
+      - ./infrastructure:/infrastructure:ro
+    command: sh -c "bash /init-app.sh"
+    networks:
+      - appnet
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   osrm-router:
     image: osrm/osrm-backend
-    command: osrm-routed --algorithm mld /data/guanajuato.osrm
+    # Auto-prepara los datos la primera vez (idempotente) y arranca el router
+    command: sh -c 'if [ ! -f /data/guanajuato.osrm ]; then cp /pbf/guanajuato.osm.pbf /data/ && cd /data && osrm-extract -p /opt/car.lua guanajuato.osm.pbf && osrm-partition guanajuato.osrm && osrm-customize guanajuato.osrm; fi; exec osrm-routed --algorithm mld /data/guanajuato.osrm'
     volumes:
       - osrm_data:/data
+      - ./deploy/osrm-data:/pbf:ro
     ports:
       - "5000:5000"
     networks:

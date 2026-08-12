@@ -13,7 +13,7 @@ src/app/node_modules/
 
 # ── Datos pesados descargados/generados ──
 osrm-data/
-src/tiles-server/
+!deploy/osrm-data/guanajuato.osm.pbf
 src/api/uploads/
 src/api/db/
 
@@ -21,6 +21,8 @@ src/api/db/
 builds/
 /web/
 *.apk
+!src/web/apk/Colmena.apk
+!infrastructure/nginx/apk/Colmena.apk
 
 # ── Android / Gradle ──
 android/.gradle/
