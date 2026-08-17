@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -20,6 +20,7 @@ import webpush from 'web-push';
 import axios from 'axios';
 // @ts-ignore pdfkit no tiene tipos completos en runtime con commonjs
 import PDFDocument from 'pdfkit';
+import { S3Client, PutObjectCommand, HeadObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 
 dotenv.config();
 
@@ -97,6 +98,8 @@ CREATE INDEX IF NOT EXISTS idx_auditoria_created ON auditoria(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria(entidad, entidad_id);
 
 ALTER TABLE campanas ADD COLUMN IF NOT EXISTS encuesta_lanzada BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE campanas ADD COLUMN IF NOT EXISTS encuesta_barrido BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_campanas_encuesta_barrido ON campanas (encuesta_barrido) WHERE encuesta_barrido = TRUE;
 
 ALTER TABLE campanas ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'whatsapp';
 ALTER TABLE campanas ADD COLUMN IF NOT EXISTS encuesta_id UUID REFERENCES campanas(id) ON DELETE SET NULL;
@@ -104,6 +107,17 @@ ALTER TABLE rutas ADD COLUMN IF NOT EXISTS encuesta_campana_id UUID REFERENCES c
 ALTER TABLE rutas ADD COLUMN IF NOT EXISTS polyline JSONB;
 CREATE INDEX IF NOT EXISTS idx_campanas_tipo ON campanas(tipo);
 CREATE INDEX IF NOT EXISTS idx_rutas_encuesta ON rutas(encuesta_campana_id);
+
+ALTER TABLE ciudadanos DROP COLUMN IF EXISTS simpatizante;
+ALTER TABLE ciudadanos_comprometidos DROP COLUMN IF EXISTS simpatizante;
+
+CREATE TABLE IF NOT EXISTS ciudadanos_encuestas (
+  ciudadano_id UUID PRIMARY KEY REFERENCES ciudadanos(id) ON DELETE CASCADE,
+  campana_id UUID NOT NULL REFERENCES campanas(id) ON DELETE CASCADE,
+  asignada_por UUID REFERENCES usuarios(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ciudadanos_encuestas_campana ON ciudadanos_encuestas(campana_id);
 
 INSERT INTO configuracion (clave, valor, descripcion) VALUES ('url_publica', 'http://192.168.0.16', 'URL publica del sistema (para enlaces de encuesta)')
 ON CONFLICT (clave) DO NOTHING;
@@ -164,6 +178,7 @@ io.on('connection', (socket: Socket) => {
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       authSocket.userId = decoded.userId;
+      authSocket.rol = decoded.rol;
       authSocket.join(`user_${decoded.userId}`);
       authSocket.emit('authenticated', { success: true });
     } catch { authSocket.emit('auth_error', { message: 'Token inválido' }); }
@@ -177,6 +192,11 @@ const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
+const requireAdminOCoordinador = (req: Request, res: Response, next: NextFunction) => {
+  if (!esAdminOCoordinador((req as any).user)) { res.status(403).json({ error: 'Solo administradores y coordinadores' }); return; }
+  next();
+};
+
 async function getUserSecciones(userId: string): Promise<number[]> {
   try {
     const r = await pool.query('SELECT seccion_id FROM usuarios_secciones WHERE usuario_id = $1', [userId]);
@@ -184,22 +204,56 @@ async function getUserSecciones(userId: string): Promise<number[]> {
   } catch { return []; }
 }
 
+async function emitirRefreshToken(usuarioId: string): Promise<string> {
+  const rt = crypto.randomBytes(48).toString('base64url');
+  const hash = crypto.createHash('sha256').update(rt).digest('hex');
+  await pool.query('INSERT INTO refresh_tokens (usuario_id, token_hash, expira_en) VALUES ($1,$2,NOW() + interval \'90 days\')', [usuarioId, hash]);
+  return rt;
+}
+
+function hashRefreshToken(rt: string): string {
+  return crypto.createHash('sha256').update(rt).digest('hex');
+}
+
 app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email || !password) { res.status(400).json({ error: 'Correo/usuario y contrasena requeridos' }); return; }
   try {
     const result = await pool.query(
-      `SELECT id, nombre, email, username, password_hash, rol, municipio_id, telefono FROM usuarios WHERE email = $1 OR nombre = $1`, [email]
+      `SELECT id, nombre, email, username, password_hash, rol, municipio_id, telefono FROM usuarios WHERE email = $1 OR nombre = $1 OR username = $1`, [email]
     );
     if (!result.rows.length) { res.status(401).json({ error: 'Credenciales inválidas' }); return; }
     const user = result.rows[0];
     if (!(await bcrypt.compare(password, user.password_hash))) { res.status(401).json({ error: 'Credenciales inválidas' }); return; }
     const secciones = await getUserSecciones(user.id);
     const token = jwt.sign({ userId: user.id, email: user.email, rol: user.rol, municipio_id: user.municipio_id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const refreshToken = await emitirRefreshToken(user.id);
     await logAuditoria(user.id, user.nombre, 'login', 'usuarios', user.id).catch(() => {});
-    res.json({ token, user: { id: user.id, nombre: user.nombre, email: user.email, username: user.username, rol: user.rol, municipio_id: user.municipio_id, telefono: user.telefono, secciones } });
+    res.json({ token, refresh_token: refreshToken, user: { id: user.id, nombre: user.nombre, email: user.email, username: user.username, rol: user.rol, municipio_id: user.municipio_id, telefono: user.telefono, secciones } });
   } catch (error) {
     console.error('Error en login:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+app.post('/api/auth/refresh', async (req: Request, res: Response) => {
+  const { refresh_token } = req.body || {};
+  if (!refresh_token) { res.status(400).json({ error: 'refresh_token requerido' }); return; }
+  try {
+    const hash = hashRefreshToken(refresh_token);
+    const r = await pool.query(
+      `SELECT u.id, u.nombre, u.email, u.username, u.rol, u.municipio_id, u.telefono
+       FROM refresh_tokens rt JOIN usuarios u ON u.id = rt.usuario_id
+       WHERE rt.token_hash=$1 AND rt.expira_en > NOW()`, [hash]);
+    if (!r.rows.length) { res.status(401).json({ error: 'Sesión expirada, inicia sesión de nuevo' }); return; }
+    const u = r.rows[0];
+    await pool.query('DELETE FROM refresh_tokens WHERE token_hash=$1', [hash]);
+    const token = jwt.sign({ userId: u.id, email: u.email, rol: u.rol, municipio_id: u.municipio_id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const refreshToken = await emitirRefreshToken(u.id);
+    const secciones = await getUserSecciones(u.id);
+    res.json({ token, refresh_token: refreshToken, user: { id: u.id, nombre: u.nombre, email: u.email, username: u.username, rol: u.rol, municipio_id: u.municipio_id, telefono: u.telefono, secciones } });
+  } catch (e: any) {
+    console.error('Error en refresh:', e?.message || e);
     res.status(500).json({ error: 'Error interno' });
   }
 });
@@ -214,7 +268,13 @@ app.get('/api/auth/me', authenticateToken, async (req: Request, res: Response) =
   } catch { res.status(500).json({ error: 'Error' }); }
 });
 
-app.post('/api/auth/logout', (_req: Request, res: Response) => res.json({ message: 'Sesion cerrada' }));
+app.post('/api/auth/logout', async (req: Request, res: Response) => {
+  try {
+    const { refresh_token } = req.body || {};
+    if (refresh_token) await pool.query('DELETE FROM refresh_tokens WHERE token_hash=$1', [hashRefreshToken(refresh_token)]);
+    res.json({ message: 'Sesion cerrada' });
+  } catch { res.json({ message: 'Sesion cerrada' }); }
+});
 
 app.post('/api/auth/solicitar-reseteo', async (req: Request, res: Response) => {
   try {
@@ -249,24 +309,28 @@ app.put('/api/auth/password', authenticateToken, async (req: Request, res: Respo
   } catch { res.status(500).json({ error: 'Error al actualizar' }); }
 });
 
-app.get('/api/usuarios', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+app.get('/api/usuarios', authenticateToken, requireAdminOCoordinador, async (_req: Request, res: Response) => {
   try {
     const result = await pool.query(`
       SELECT u.id, u.nombre, u.email, u.username, u.rol, u.municipio_id, u.telefono, m.nombre as municipio,
-      COALESCE(json_agg(json_build_object('id', us.seccion_id)) FILTER (WHERE us.seccion_id IS NOT NULL), '[]') as secciones
+      COALESCE(json_agg(DISTINCT jsonb_build_object('id', us.seccion_id)) FILTER (WHERE us.seccion_id IS NOT NULL), '[]') as secciones,
+      COALESCE(json_agg(DISTINCT jsonb_build_object('id', rc.casilla_id)) FILTER (WHERE rc.casilla_id IS NOT NULL), '[]') as casillas,
+      scc.seccional_id
       FROM usuarios u
       LEFT JOIN municipios m ON m.id = u.municipio_id
       LEFT JOIN usuarios_secciones us ON us.usuario_id = u.id
-      GROUP BY u.id, u.nombre, u.email, u.username, u.rol, u.municipio_id, u.telefono, m.nombre
+      LEFT JOIN representantes_casillas rc ON rc.representante_id = u.id
+      LEFT JOIN seccional_capturistas scc ON scc.capturista_id = u.id
+      GROUP BY u.id, u.nombre, u.email, u.username, u.rol, u.municipio_id, u.telefono, m.nombre, scc.seccional_id
       ORDER BY u.nombre
     `);
-    res.json(result.rows.map((r: any) => ({ ...r, secciones: r.secciones.map((s: any) => s.id) })));
+    res.json(result.rows.map((r: any) => ({ ...r, secciones: r.secciones.map((s: any) => s.id), casillas: r.casillas.map((c: any) => c.id) })));
   } catch { res.status(500).json({ error: 'Error al obtener usuarios' }); }
 });
 
-app.post('/api/usuarios', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/usuarios', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
-    const { nombre, email, username, password, rol, municipio_id, telefono, secciones } = req.body;
+    const { nombre, email, username, password, rol, municipio_id, telefono, secciones, casillas, seccional_id } = req.body;
     if (!nombre || !email || !password || !rol) { res.status(400).json({ error: 'Faltan datos' }); return; }
     const hash = await bcrypt.hash(password, 10);
     const user = await pool.query(
@@ -274,22 +338,28 @@ app.post('/api/usuarios', authenticateToken, requireAdmin, async (req: Request, 
       [nombre, email, username || null, hash, rol, municipio_id || null, telefono || '']
     );
     const userId = user.rows[0].id;
-    if (secciones?.length) {
-      if (rol === 'coordinador') {
-        const ocupadas = (await pool.query('SELECT seccion_id FROM usuarios_secciones WHERE seccion_id = ANY($1) AND usuario_id != $2',
-          [secciones, userId])).rows.map((r: any) => r.seccion_id);
-        if (ocupadas.length) { res.status(409).json({ error: `Secciones ya asignadas a otro coordinador: ${ocupadas.join(', ')}` }); return; }
-      }
+    if (secciones?.length && rol === 'enlace') {
       const vals = secciones.map((_: any, i: number) => `($1,$${i+2})`).join(',');
       await pool.query(`INSERT INTO usuarios_secciones (usuario_id, seccion_id) VALUES ${vals} ON CONFLICT DO NOTHING`, [userId, ...secciones]);
+    }
+    if (casillas?.length && rol === 'representante') {
+      if (casillas.length > 1) { res.status(400).json({ error: 'Solo se puede asignar una casilla por representante' }); return; }
+      const ocupadas = (await pool.query('SELECT casilla_id FROM representantes_casillas WHERE casilla_id = ANY($1) AND representante_id != $2',
+        [casillas, userId])).rows.map((r: any) => r.casilla_id);
+      if (ocupadas.length) { res.status(409).json({ error: `Casillas ya asignadas a otro representante: ${ocupadas.join(', ')}` }); return; }
+      const vals = casillas.map((_: any, i: number) => `($1,$${i+2})`).join(',');
+      await pool.query(`INSERT INTO representantes_casillas (representante_id, casilla_id) VALUES ${vals} ON CONFLICT DO NOTHING`, [userId, ...casillas]);
+    }
+    if (rol === 'capturista' && seccional_id) {
+      await pool.query('INSERT INTO seccional_capturistas (seccional_id, capturista_id) VALUES ($1,$2) ON CONFLICT (capturista_id) DO NOTHING', [seccional_id, userId]);
     }
     res.json({ id: userId, nombre, email, rol });
   } catch (e: any) { res.status(500).json({ error: e.message || 'Error al crear usuario' }); }
 });
 
-app.put('/api/usuarios/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.put('/api/usuarios/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
-    const { nombre, email, username, password, rol, municipio_id, telefono, secciones } = req.body;
+    const { nombre, email, username, password, rol, municipio_id, telefono, secciones, casillas, seccional_id } = req.body;
     if (password) {
       const hash = await bcrypt.hash(password, 10);
       await pool.query('UPDATE usuarios SET nombre=$1, email=$2, username=$3, password_hash=$4, rol=$5, municipio_id=$6, telefono=$7 WHERE id=$8',
@@ -299,20 +369,35 @@ app.put('/api/usuarios/:id', authenticateToken, requireAdmin, async (req: Reques
         [nombre, email, username || null, rol, municipio_id || null, telefono || '', req.params.id]);
     }
     await pool.query('DELETE FROM usuarios_secciones WHERE usuario_id=$1', [req.params.id]);
-    if (secciones?.length) {
-      if (rol === 'coordinador') {
-        const ocupadas = (await pool.query('SELECT seccion_id FROM usuarios_secciones WHERE seccion_id = ANY($1) AND usuario_id != $2',
-          [secciones, req.params.id])).rows.map((r: any) => r.seccion_id);
-        if (ocupadas.length) { res.status(409).json({ error: `Secciones ya asignadas a otro coordinador: ${ocupadas.join(', ')}` }); return; }
-      }
+    if (secciones?.length && rol === 'enlace') {
       const vals = secciones.map((_: any, i: number) => `($1,$${i+2})`).join(',');
       await pool.query(`INSERT INTO usuarios_secciones (usuario_id, seccion_id) VALUES ${vals} ON CONFLICT DO NOTHING`, [req.params.id, ...secciones]);
+    }
+    if (rol === 'representante') {
+      await pool.query('DELETE FROM representantes_casillas WHERE representante_id=$1', [req.params.id]);
+      if (casillas?.length) {
+        if (casillas.length > 1) { res.status(400).json({ error: 'Solo se puede asignar una casilla por representante' }); return; }
+        const ocupadas = (await pool.query('SELECT casilla_id FROM representantes_casillas WHERE casilla_id = ANY($1) AND representante_id != $2',
+          [casillas, req.params.id])).rows.map((r: any) => r.casilla_id);
+        if (ocupadas.length) { res.status(409).json({ error: `Casillas ya asignadas a otro representante: ${ocupadas.join(', ')}` }); return; }
+        const vals = casillas.map((_: any, i: number) => `($1,$${i+2})`).join(',');
+        await pool.query(`INSERT INTO representantes_casillas (representante_id, casilla_id) VALUES ${vals} ON CONFLICT DO NOTHING`, [req.params.id, ...casillas]);
+      }
+    } else {
+      await pool.query('DELETE FROM representantes_casillas WHERE representante_id=$1', [req.params.id]);
+    }
+    if (rol === 'capturista') {
+      if (seccional_id) {
+        await pool.query('INSERT INTO seccional_capturistas (seccional_id, capturista_id) VALUES ($1,$2) ON CONFLICT (capturista_id) DO UPDATE SET seccional_id=EXCLUDED.seccional_id', [seccional_id, req.params.id]);
+      }
+    } else {
+      await pool.query('DELETE FROM seccional_capturistas WHERE capturista_id=$1', [req.params.id]);
     }
     res.json({ message: 'Usuario actualizado' });
   } catch (e: any) { res.status(500).json({ error: e.message || 'Error al actualizar' }); }
 });
 
-app.delete('/api/usuarios/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/usuarios/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -322,6 +407,7 @@ app.delete('/api/usuarios/:id', authenticateToken, requireAdmin, async (req: Req
     await client.query('DELETE FROM push_subscriptions WHERE user_id=$1', [req.params.id]);
     await client.query('DELETE FROM notificaciones WHERE usuario_id=$1', [req.params.id]);
     await client.query('DELETE FROM usuarios_secciones WHERE usuario_id=$1', [req.params.id]);
+    await client.query('DELETE FROM representantes_casillas WHERE representante_id=$1', [req.params.id]);
     await client.query('DELETE FROM dispositivos WHERE usuario_id=$1', [req.params.id]);
     const result = await client.query('DELETE FROM usuarios WHERE id=$1', [req.params.id]);
     await client.query('COMMIT');
@@ -331,7 +417,7 @@ app.delete('/api/usuarios/:id', authenticateToken, requireAdmin, async (req: Req
   finally { client.release(); }
 });
 
-app.post('/api/usuarios/:id/reset-password', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/usuarios/:id/reset-password', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const u = (await pool.query('SELECT id, nombre, telefono FROM usuarios WHERE id=$1', [req.params.id])).rows[0];
     if (!u) { res.status(404).json({ error: 'Usuario no encontrado' }); return; }
@@ -361,7 +447,7 @@ app.get('/api/estados/default', async (_req: Request, res: Response) => {
   } catch { res.status(500).json({ error: 'Error al obtener default' }); }
 });
 
-app.post('/api/estados', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/estados', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const { id, nombre, abreviatura, es_default } = req.body;
     if (!id || !nombre) { res.status(400).json({ error: 'id y nombre requeridos' }); return; }
@@ -371,7 +457,7 @@ app.post('/api/estados', authenticateToken, requireAdmin, async (req: Request, r
   } catch { res.status(500).json({ error: 'Error al guardar estado' }); }
 });
 
-app.put('/api/estados/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.put('/api/estados/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const { nombre, abreviatura, es_default } = req.body;
     if (es_default) await pool.query('UPDATE estados SET es_default=FALSE WHERE es_default=TRUE');
@@ -380,7 +466,7 @@ app.put('/api/estados/:id', authenticateToken, requireAdmin, async (req: Request
   } catch { res.status(500).json({ error: 'Error al actualizar' }); }
 });
 
-app.delete('/api/estados/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/estados/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     await pool.query('DELETE FROM estados WHERE id=$1', [req.params.id]);
     res.json({ message: 'Estado eliminado' });
@@ -406,12 +492,12 @@ app.get('/api/municipios/default', async (_req: Request, res: Response) => {
 
 app.get('/api/municipios/:estadoId', async (req: Request, res: Response) => {
   try {
-    const result = await pool.query('SELECT id, nombre, lat, lng FROM municipios WHERE estado_id = $1 ORDER BY nombre', [req.params.estadoId]);
+    const result = await pool.query('SELECT id, nombre, lat, lng, es_default FROM municipios WHERE estado_id = $1 ORDER BY nombre', [req.params.estadoId]);
     res.json(result.rows);
   } catch { res.status(500).json({ error: 'Error al obtener municipios' }); }
 });
 
-app.post('/api/municipios', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/municipios', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const { id, nombre, estado_id, lat, lng, es_default } = req.body;
     if (!id || !nombre || !estado_id) { res.status(400).json({ error: 'id, nombre y estado_id requeridos' }); return; }
@@ -421,7 +507,7 @@ app.post('/api/municipios', authenticateToken, requireAdmin, async (req: Request
   } catch { res.status(500).json({ error: 'Error al guardar municipio' }); }
 });
 
-app.put('/api/municipios/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.put('/api/municipios/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const { nombre, estado_id, lat, lng, es_default } = req.body;
     if (es_default) await pool.query('UPDATE municipios SET es_default=FALSE WHERE es_default=TRUE');
@@ -430,7 +516,7 @@ app.put('/api/municipios/:id', authenticateToken, requireAdmin, async (req: Requ
   } catch { res.status(500).json({ error: 'Error al actualizar' }); }
 });
 
-app.delete('/api/municipios/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/municipios/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     await pool.query('DELETE FROM municipios WHERE id=$1', [req.params.id]);
     res.json({ message: 'Municipio eliminado' });
@@ -440,17 +526,13 @@ app.delete('/api/municipios/:id', authenticateToken, requireAdmin, async (req: R
 app.get('/api/secciones', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    let query = `SELECT s.id, s.municipio_id, s.tipo, m.nombre as municipio, m.estado_id
+    let query = `SELECT s.id, s.municipio_id, s.tipo, s.meta, m.nombre as municipio, m.estado_id
                  FROM secciones_electorales s
                  JOIN municipios m ON m.id = s.municipio_id`;
     const params: any[] = [];
     if (user.rol === 'enlace') {
       const secs = await getUserSecciones(user.userId);
       if (secs.length) { params.push(secs); query += ` WHERE s.id = ANY($${params.length})`; }
-    } else if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      const muniId = mRes.rows[0]?.municipio_id;
-      if (muniId) { params.push(muniId); query += ` WHERE s.municipio_id = $${params.length}`; }
     }
     query += ' ORDER BY s.id';
     const result = await pool.query(query, params);
@@ -461,10 +543,10 @@ app.get('/api/secciones', authenticateToken, async (req: Request, res: Response)
 app.get('/api/secciones/:municipioId', async (req: Request, res: Response) => {
   try {
     const { excluir_usuario, rol } = req.query;
-    const soloExclusivo = rol === 'coordinador';
+    const soloExclusivo = rol === 'enlace';
     const result = await pool.query(`
-      SELECT s.id, s.tipo,
-        ${soloExclusivo ? `(SELECT us.usuario_id FROM usuarios_secciones us JOIN usuarios u ON u.id = us.usuario_id WHERE us.seccion_id = s.id AND u.rol = 'coordinador' ${excluir_usuario ? 'AND us.usuario_id != $2' : ''}) as asignada_a` : 'NULL as asignada_a'}
+      SELECT s.id, s.tipo, s.meta,
+        ${soloExclusivo ? `(SELECT us.usuario_id FROM usuarios_secciones us JOIN usuarios u ON u.id = us.usuario_id WHERE us.seccion_id = s.id AND u.rol = 'enlace' ${excluir_usuario ? 'AND us.usuario_id != $2' : ''}) as asignada_a` : 'NULL as asignada_a'}
       FROM secciones_electorales s WHERE s.municipio_id = $1 ORDER BY s.id`,
       soloExclusivo && excluir_usuario ? [req.params.municipioId, excluir_usuario] : [req.params.municipioId]
     );
@@ -472,24 +554,24 @@ app.get('/api/secciones/:municipioId', async (req: Request, res: Response) => {
   } catch (e: any) { console.error('Error en /api/secciones/:municipioId', e.message || e); res.status(500).json({ error: 'Error al obtener secciones' }); }
 });
 
-app.post('/api/secciones', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/secciones', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
-    const { id, municipio_id, tipo } = req.body;
+    const { id, municipio_id, tipo, meta } = req.body;
     if (!id || !municipio_id) { res.status(400).json({ error: 'id y municipio_id requeridos' }); return; }
-    await pool.query('INSERT INTO secciones_electorales (id, municipio_id, tipo) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET municipio_id=$2, tipo=$3', [id, municipio_id, tipo||'urbana']);
+    await pool.query('INSERT INTO secciones_electorales (id, municipio_id, tipo, meta) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET municipio_id=$2, tipo=$3, meta=$4', [id, municipio_id, tipo||'urbana', parseInt(meta) || 0]);
     res.status(201).json({ message: 'Sección guardada' });
   } catch { res.status(500).json({ error: 'Error al guardar sección' }); }
 });
 
-app.put('/api/secciones/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.put('/api/secciones/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
-    const { municipio_id, tipo } = req.body;
-    await pool.query('UPDATE secciones_electorales SET municipio_id=$1, tipo=$2 WHERE id=$3', [municipio_id, tipo, req.params.id]);
+    const { municipio_id, tipo, meta } = req.body;
+    await pool.query('UPDATE secciones_electorales SET municipio_id=$1, tipo=$2, meta=$3 WHERE id=$4', [municipio_id, tipo, parseInt(meta) || 0, req.params.id]);
     res.json({ message: 'Sección actualizada' });
   } catch { res.status(500).json({ error: 'Error al actualizar' }); }
 });
 
-app.delete('/api/secciones/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/secciones/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     await pool.query('DELETE FROM secciones_electorales WHERE id=$1', [req.params.id]);
     res.json({ message: 'Sección eliminada' });
@@ -546,6 +628,34 @@ app.get('/api/cp/:codigo', async (req: Request, res: Response) => {
   } catch { res.status(502).json({ error: 'Error al consultar CP' }); }
 });
 
+async function getR2Config(): Promise<{ activo: boolean; client?: S3Client; bucket?: string; publicUrl?: string }> {
+  try {
+    const r = await pool.query("SELECT clave, valor FROM configuracion WHERE clave IN ('r2_account_id','r2_access_key_id','r2_secret_access_key','r2_bucket','r2_public_url')");
+    const cfg: Record<string, string> = {};
+    r.rows.forEach((x: any) => cfg[x.clave] = x.valor);
+    if (!cfg.r2_account_id || !cfg.r2_access_key_id || !cfg.r2_secret_access_key || !cfg.r2_bucket || !cfg.r2_public_url) {
+      return { activo: false };
+    }
+    const client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${cfg.r2_account_id}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId: cfg.r2_access_key_id, secretAccessKey: cfg.r2_secret_access_key },
+      forcePathStyle: true
+    });
+    return { activo: true, client, bucket: cfg.r2_bucket, publicUrl: cfg.r2_public_url.replace(/\/+$/, '') };
+  } catch (e: any) { console.warn('getR2Config:', e?.message || e); return { activo: false }; }
+}
+
+async function subirAR2(client: S3Client, bucket: string, filename: string, buf: Buffer, contentType: string): Promise<void> {
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: filename,
+    Body: buf,
+    ContentType: contentType,
+    CacheControl: 'public, max-age=31536000, immutable'
+  }));
+}
+
 app.post('/api/upload', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { image } = req.body;
@@ -556,17 +666,83 @@ app.post('/api/upload', authenticateToken, async (req: Request, res: Response) =
     if (!base64) { res.status(400).json({ error: 'Imagen inválida' }); return; }
     const buf = Buffer.from(base64, 'base64');
     const filename = crypto.randomUUID() + '.jpg';
+    const r2 = await getR2Config();
+    if (r2.activo && r2.client && r2.bucket && r2.publicUrl) {
+      await subirAR2(r2.client, r2.bucket, filename, await sharp(buf).resize(1200, 1200, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer(), 'image/jpeg');
+      res.json({ url: r2.publicUrl + '/' + filename });
+      return;
+    }
     const outputPath = path.join(__dirname, '../uploads/evidencias', filename);
     await sharp(buf).resize(1200, 1200, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 70 }).toFile(outputPath);
     res.json({ url: '/uploads/evidencias/' + filename });
   } catch { res.status(500).json({ error: 'Error al subir imagen' }); }
 });
 
+app.post('/api/config/r2/test', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const r2 = await getR2Config();
+    if (!r2.activo || !r2.client || !r2.bucket) { res.status(400).json({ error: 'Faltan datos de configuración R2 (completa los 5 campos)' }); return; }
+    const lista = await r2.client.send(new ListObjectsV2Command({ Bucket: r2.bucket, MaxKeys: 1 }));
+    res.json({ ok: true, bucket: r2.bucket, objetos: lista.Contents?.length || 0, publicUrl: r2.publicUrl });
+  } catch (e: any) { res.status(500).json({ error: 'No se pudo conectar a R2: ' + (e?.message || e) }); }
+});
+
+app.post('/api/upload/migrate-r2', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const r2 = await getR2Config();
+    if (!r2.activo || !r2.client || !r2.bucket || !r2.publicUrl) { res.status(400).json({ error: 'Configura Cloudflare R2 antes de migrar' }); return; }
+    const dir = path.join(__dirname, '../uploads/evidencias');
+    let archivos: string[] = [];
+    try { archivos = fs.readdirSync(dir).filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f)); } catch { archivos = []; }
+    let subidos = 0, yaExistentes = 0;
+    for (const f of archivos) {
+      try {
+        await r2.client.send(new HeadObjectCommand({ Bucket: r2.bucket, Key: f }));
+        yaExistentes++;
+        continue;
+      } catch { /* no existe, se sube */ }
+      const buf = fs.readFileSync(path.join(dir, f));
+      await subirAR2(r2.client, r2.bucket, f, buf, f.endsWith('.png') ? 'image/png' : 'image/jpeg');
+      subidos++;
+    }
+    const prefijoLocal = '/uploads/evidencias/';
+    const prefijoR2 = r2.publicUrl + '/';
+    const columnas: Array<[string, string]> = [
+      ['incidencias', 'evidencia'],
+      ['ciudadanos', 'evidencia'],
+      ['ciudadanos_comprometidos', 'evidencia']
+    ];
+    let filasActualizadas = 0;
+    for (const [tabla, col] of columnas) {
+      try {
+        const u = await pool.query(
+          `UPDATE ${tabla} SET ${col} = replace(${col}, $1, $2) WHERE ${col} LIKE '%' || $1 || '%'`,
+          [prefijoLocal, prefijoR2]);
+        filasActualizadas += u.rowCount || 0;
+      } catch (e: any) { console.warn(`Migrar columna ${tabla}.${col}:`, e?.message); }
+    }
+    try {
+      const ur = await pool.query(
+        `UPDATE rutas SET paradas = replace(paradas::text, $1, $2)::jsonb WHERE paradas::text LIKE '%' || $1 || '%'`,
+        [prefijoLocal, prefijoR2]);
+      filasActualizadas += ur.rowCount || 0;
+    } catch (e: any) { console.warn('Migrar rutas.paradas:', e?.message); }
+    try {
+      const ul = await pool.query(
+        `UPDATE configuracion SET valor = replace(valor, $1, $2) WHERE clave='logo' AND valor LIKE '%' || $1 || '%'`,
+        [prefijoLocal, prefijoR2]);
+      filasActualizadas += ul.rowCount || 0;
+    } catch (e: any) { console.warn('Migrar logo:', e?.message); }
+    res.json({ subidos, yaExistentes, filasActualizadas, totalArchivos: archivos.length, publicUrl: r2.publicUrl });
+  } catch (e: any) { res.status(500).json({ error: 'Error al migrar: ' + (e?.message || e) }); }
+});
+
 app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, votantes_casa_list } = req.body;
-    if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
-    const casillaAuto = await asignarCasillaAutomatica(seccion_id, lat, lng, casilla_id);
+    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
+    if (!seccion_id || (!nombre && !no_abrio)) { res.status(400).json({ error: 'seccion_id requerido; nombre requerido salvo que no haya abierto' }); return; }
+    const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
+    const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : null);
     // Idempotency check: if key provided and already processed, return existing record
     if (idempotency_key) {
       const existing = await pool.query('SELECT id FROM ciudadanos WHERE idempotency_key=$1', [idempotency_key]);
@@ -577,11 +753,18 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
       }
     }
     const id = crypto.randomUUID();
+    const ubiSql = 'ST_SetSRID(ST_MakePoint($10,$11),4326)';
     await pool.query(
-      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,ST_SetSRID(ST_MakePoint($10,$11),4326),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
-      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, lng||-100.9929, lat||20.6434, !!simpatizante, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, idempotency_key||null, casillaAuto, votantes_casa ? parseInt(votantes_casa) : 1, !!no_abrio]
+      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${ubiSql},$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacion ? +lng : null, tieneUbicacion ? +lat : null, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, idempotency_key||null, casillaAuto, votantes_casa ? parseInt(votantes_casa) : 1, !!no_abrio, (req as any).user?.userId || null]
     );
+    if (encuesta_campana_id) {
+      await pool.query(
+        'INSERT INTO ciudadanos_encuestas (ciudadano_id, campana_id, asignada_por) VALUES ($1,$2,$3) ON CONFLICT (ciudadano_id) DO UPDATE SET campana_id=$2, asignada_por=$3',
+        [id, encuesta_campana_id, (req as any).user?.userId || null]
+      );
+    }
     if (Array.isArray(votantes_casa_list) && votantes_casa_list.length) {
       for (const v of votantes_casa_list.slice(0, 20)) {
         if (!v) continue;
@@ -614,8 +797,9 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
 
 app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, casilla_id, votantes_casa, no_abrio, votantes_casa_list } = req.body;
-    const casillaAuto = casilla_id ? parseInt(casilla_id) : (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : undefined;
+    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
+    const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
+    const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : (casilla_id === null ? null : undefined));
     const parts: string[] = [];
     const params: any[] = [];
     const p = (v: any) => { params.push(v); return '$' + params.length; };
@@ -626,11 +810,24 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
       parts.push('ubicacion=ST_SetSRID(ST_MakePoint(' + p(+lng) + ',' + p(+lat) + '),4326)');
     }
     if (casillaAuto !== undefined) parts.push('casilla_id=' + p(casillaAuto));
-    const cols2 = ['simpatizante', 'prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'votantes_casa', 'no_abrio'];
-    const vals2 = [simpatizante!=null?!!simpatizante:null, prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null, votantes_casa ? parseInt(votantes_casa) : null, no_abrio!=null?!!no_abrio:null];
+    const cols2 = ['prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'votantes_casa', 'no_abrio'];
+    const vals2 = [prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null, votantes_casa ? parseInt(votantes_casa) : null, no_abrio!=null?!!no_abrio:null];
     parts.push(cols2.map((c,i) => c + '=COALESCE(' + p(vals2[i]) + ',' + c + ')').join(','));
+    parts.push('updated_at=now()');
+    parts.push('updated_by=' + p((req as any).user?.userId || null));
     params.push(req.params.id);
     await pool.query('UPDATE ciudadanos SET ' + parts.join(',') + ' WHERE id=$' + params.length, params);
+    if (encuesta_campana_id !== undefined) {
+      const userId = (req as any).user?.userId || null;
+      if (encuesta_campana_id) {
+        await pool.query(
+          'INSERT INTO ciudadanos_encuestas (ciudadano_id, campana_id, asignada_por) VALUES ($1,$2,$3) ON CONFLICT (ciudadano_id) DO UPDATE SET campana_id=$2, asignada_por=$3',
+          [req.params.id, encuesta_campana_id, userId]
+        );
+      } else {
+        await pool.query('DELETE FROM ciudadanos_encuestas WHERE ciudadano_id=$1', [req.params.id]);
+      }
+    }
     await pool.query('DELETE FROM votantes_casa WHERE ciudadano_id=$1', [req.params.id]);
     if (Array.isArray(votantes_casa_list)) {
       for (const v of votantes_casa_list.slice(0, 20)) {
@@ -702,10 +899,12 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
     const seccionId = req.query.seccion_id;
     let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.notas,
                   ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
-                  c.simpatizante, c.prioridad, c.timestamp_registro,
+                  c.prioridad, c.timestamp_registro,
                   c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
                   c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
                   c.casilla_id, cs.nombre as casilla_nombre, c.votantes_casa, c.no_abrio,
+                  c.created_at, c.updated_at, ucb.nombre as creado_por, uub.nombre as editado_por,
+                  ce.campana_id as encuesta_campana_id,
                   (v.ciudadano_id IS NOT NULL) as ya_voto,
                   s.id as seccion_num, m.nombre as municipio, e.nombre as estado
                 FROM ciudadanos c
@@ -715,6 +914,9 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
                 LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
                 LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
                 LEFT JOIN casillas cs ON cs.id = c.casilla_id
+                LEFT JOIN usuarios ucb ON ucb.id = c.created_by
+                LEFT JOIN usuarios uub ON uub.id = c.updated_by
+                LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
                 LEFT JOIN votos v ON v.ciudadano_id = c.id`;
     const params: any[] = [];
     const conds: string[] = [];
@@ -722,10 +924,6 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
       const secs = await getUserSecciones(user.userId);
       if (!secs.length) { res.json([]); return; }
       params.push(secs); conds.push(`c.seccion_id = ANY($${params.length})`);
-    } else if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      const muniId = mRes.rows[0]?.municipio_id;
-      if (muniId) { params.push(muniId); conds.push(`s.municipio_id = $${params.length}`); }
     }
     if (seccionId) { params.push(seccionId); conds.push(`c.seccion_id = $${params.length}`); }
     if (conds.length) query += ' WHERE ' + conds.join(' AND ');
@@ -752,19 +950,12 @@ app.get('/api/ciudadanos/duplicados', authenticateToken, async (req: Request, re
     if (user.rol !== 'admin' && user.rol !== 'coordinador') { res.json([]); return; }
     let where = '';
     const params: any[] = [];
-    if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      const muniId = mRes.rows[0]?.municipio_id;
-      if (!muniId) { res.json([]); return; }
-      params.push(muniId);
-      where = ` WHERE s.municipio_id = $${params.length} `;
-    }
     params.push(2);
     const query = `SELECT LOWER(TRIM(c.nombre)) as grupo_clave,
       array_agg(c.id) as ids, array_agg(c.nombre) as nombres, array_agg(c.edad) as edades,
       array_agg(c.calle) as calles, array_agg(c.numero) as numeros, array_agg(c.colonia) as colonias,
       array_agg(c.cp) as cps, array_agg(c.telefono) as telefonos,
-      array_agg(c.simpatizante) as simpatizantes, array_agg(c.prioridad) as prioridades,
+      array_agg(c.prioridad) as prioridades,
       array_agg(c.notas) as notas_arr, array_agg(c.seccion_id) as seccion_ids,
       array_agg(c.timestamp_registro) as timestamps,
       array_agg(ST_X(c.ubicacion::geometry)) as lngs, array_agg(ST_Y(c.ubicacion::geometry)) as lats
@@ -780,7 +971,7 @@ app.get('/api/ciudadanos/duplicados', authenticateToken, async (req: Request, re
       registros: r.ids.map((id: string, i: number) => ({
         id, nombre: r.nombres[i], edad: r.edades[i],
         calle: r.calles[i], numero: r.numeros[i], colonia: r.colonias[i], cp: r.cps[i],
-        telefono: r.telefonos[i], simpatizante: r.simpatizantes[i], prioridad: r.prioridades[i],
+        telefono: r.telefonos[i], prioridad: r.prioridades[i],
         notas: r.notas_arr[i], seccion_id: r.seccion_ids[i],
         timestamp: r.timestamps[i],
         lat: r.lats[i], lng: r.lngs[i]
@@ -812,10 +1003,12 @@ app.get('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
     const result = await pool.query(
       `SELECT c.*, ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
         c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
-        c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura
+        c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
+        ce.campana_id as encuesta_campana_id
        FROM ciudadanos c
        LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
        LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
+       LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
        WHERE c.id=$1`, [req.params.id]
     );
     if (!result.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
@@ -842,27 +1035,34 @@ function normalizarCurp(curp: any): string | null {
   return c;
 }
 
+// Una casilla solo se asigna automáticamente si el ciudadano tiene ubicación y dirección,
+// para poder posicionarlo en el mapa y decidir qué casilla le corresponde por cercanía/sección.
+function tieneDireccionValida(c: any): boolean {
+  const calle = String(c?.calle || '').trim();
+  const numero = String(c?.numero || '').trim();
+  const colonia = String(c?.colonia || '').trim();
+  return !!calle && (!!numero || !!colonia);
+}
+
 // Asigna la casilla más cercana dentro de la sección según lat/lng.
-// Si la sección tiene una sola casilla, se asigna esa. Devuelve null si no hay casillas o coordenadas.
+// Requiere coordenadas válidas Y casillas posicionadas (lat/lng); sin posición no se puede
+// decidir por cercanía, por lo que se devuelve null (no se asigna casilla a ciegas).
 async function asignarCasillaAutomatica(seccionId: any, lat: any, lng: any, casillaId?: any): Promise<number | null> {
   if (casillaId) return parseInt(casillaId);
+  const lats = parseFloat(lat), lngs = parseFloat(lng);
+  if (Number.isNaN(lats) || Number.isNaN(lngs)) return null;
   const casillas = await pool.query('SELECT id, lat, lng FROM casillas WHERE seccion_id=$1 ORDER BY id', [seccionId]);
   if (!casillas.rows.length) return null;
-  if (casillas.rows.length === 1) return casillas.rows[0].id;
-  const lats = parseFloat(lat), lngs = parseFloat(lng);
-  if (!Number.isNaN(lats) && !Number.isNaN(lngs)) {
-    let mejor: number | null = null;
-    let mejorDist = Infinity;
-    for (const c of casillas.rows) {
-      if (c.lat == null || c.lng == null) continue;
-      const d = Math.hypot(c.lat - lats, c.lng - lngs);
-      if (d < mejorDist) { mejorDist = d; mejor = c.id; }
-    }
-    if (mejor) return mejor;
+  const posicionadas = casillas.rows.filter(c => c.lat != null && c.lng != null);
+  if (!posicionadas.length) return null;
+  if (posicionadas.length === 1) return posicionadas[0].id;
+  let mejor: number | null = null;
+  let mejorDist = Infinity;
+  for (const c of posicionadas) {
+    const d = Math.hypot(c.lat - lats, c.lng - lngs);
+    if (d < mejorDist) { mejorDist = d; mejor = c.id; }
   }
-  // Sin coordenadas útiles: asignar la primera casilla de la sección para que
-  // el votante sea visible y ajustable desde la pantalla de representante.
-  return casillas.rows[0].id;
+  return mejor;
 }
 
 // Valida coherencia semántica: inicial del nombre (pos 4) y fecha de nacimiento (pos 5-10)
@@ -905,15 +1105,17 @@ function validarCurpSemantica(curp: string, nombre: any, fechaNacimiento: any): 
 app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    if (!esAdminOCoordinador(user) && user.rol !== 'capturista' && user.rol !== 'seccional') { res.status(403).json({ error: 'Solo coordinadores, administradores, seccionales y capturistas' }); return; }
     const seccionId = req.query.seccion_id;
     let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.fecha_nacimiento, c.notas,
                   ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
-                  c.simpatizante, c.prioridad, c.timestamp_registro,
+                  c.timestamp_registro,
                   c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
                   c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
-                  c.correo, c.curp, c.ine, c.nivel_compromiso,
+                  c.correo, c.curp, c.ine, c.vigencia_ine,
                   c.casilla_id, cs.nombre as casilla_nombre,
+                  c.correccion_solicitada_at, ucb_corr.nombre as correccion_solicitada_por,
+                  c.created_at, c.updated_at, ucb.nombre as creado_por, uub.nombre as editado_por,
                   (v.comprometido_id IS NOT NULL) as ya_voto,
                   s.id as seccion_num, m.nombre as municipio, e.nombre as estado
                 FROM ciudadanos_comprometidos c
@@ -923,13 +1125,18 @@ app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Respo
                 LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
                 LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
                 LEFT JOIN casillas cs ON cs.id = c.casilla_id
+                LEFT JOIN usuarios ucb ON ucb.id = c.created_by
+                LEFT JOIN usuarios uub ON uub.id = c.updated_by
+                LEFT JOIN usuarios ucb_corr ON ucb_corr.id = c.correccion_solicitada_by
                 LEFT JOIN votos v ON v.comprometido_id = c.id`;
     const params: any[] = [];
     const conds: string[] = [];
-    if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      const muniId = mRes.rows[0]?.municipio_id;
-      if (muniId) { params.push(muniId); conds.push(`s.municipio_id = $${params.length}`); }
+    if (user.rol === 'capturista') {
+      params.push(user.userId);
+      conds.push(`c.created_by = $${params.length}`);
+    } else if (user.rol === 'seccional') {
+      params.push(user.userId);
+      conds.push(`c.created_by IN (SELECT capturista_id FROM seccional_capturistas WHERE seccional_id = $${params.length})`);
     }
     if (seccionId) { params.push(seccionId); conds.push(`c.seccion_id = $${params.length}`); }
     if (conds.length) query += ' WHERE ' + conds.join(' AND ');
@@ -970,8 +1177,6 @@ app.post('/api/comprometidos/importar', authenticateToken, async (req: Request, 
       const seccion_id = secRes.rows[0].id;
       const abrev = String(fila['partido'] || '').toLowerCase().trim();
       const partidoId = abrev ? partidoPorAbrev.get(abrev) || null : null;
-      const nivel = String(fila['nivel_compromiso'] || '').toLowerCase().trim();
-      const nivelOk = nivel && !['seguro', 'probable', 'dudoso', 'indefinido'].includes(nivel) ? 'indefinido' : nivel || null;
       const curpImp = normalizarCurp(fila['curp']);
       if (curpImp && !validarCurp(curpImp)) { errores.push(`Fila ${i + 1}: CURP inválida (${curpImp})`); continue; }
       let fechaNacImp: string | null = null;
@@ -996,11 +1201,11 @@ app.post('/api/comprometidos/importar', authenticateToken, async (req: Request, 
       const id = crypto.randomUUID();
       const casillaAuto = await asignarCasillaAutomatica(seccion_id, null, null);
       await pool.query(
-        `INSERT INTO ciudadanos_comprometidos (id, seccion_id, nombre, telefono, edad, fecha_nacimiento, calle, numero, colonia, cp, correo, curp, ine, nivel_compromiso, intencion_voto_presidente, casilla_id, capturado_por, idempotency_key)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        `INSERT INTO ciudadanos_comprometidos (id, seccion_id, nombre, telefono, edad, fecha_nacimiento, calle, numero, colonia, cp, correo, curp, ine, intencion_voto_presidente, casilla_id, capturado_por, idempotency_key)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [id, seccion_id, nombre, fila['telefono'] || null, fila['edad'] ? parseInt(fila['edad']) || null : null, fechaNacImp,
          fila['calle'] || null, fila['numero'] || null, fila['colonia'] || null, fila['cp'] || null,
-         fila['correo'] || null, curpImp, fila['ine'] || null, nivelOk, partidoId, casillaAuto, user.userId, key]
+         fila['correo'] || null, curpImp, fila['ine'] || null, partidoId, casillaAuto, user.userId, key]
       );
       creados++;
       try { if (user?.nombre) await logAuditoria(user.userId, user.nombre, 'importar_comprometidos', 'ciudadanos_comprometidos', id, { nombre, seccion_id }); } catch { }
@@ -1013,7 +1218,15 @@ app.post('/api/comprometidos/importar', authenticateToken, async (req: Request, 
 app.get('/api/comprometidos/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    if (!esAdminOCoordinador(user) && user.rol !== 'capturista' && user.rol !== 'seccional') { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    if (user.rol === 'capturista') {
+      const owned = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE id=$1 AND created_by=$2', [req.params.id, user.userId]);
+      if (!owned.rows.length) { res.status(403).json({ error: 'No puedes ver esta captura' }); return; }
+    }
+    if (user.rol === 'seccional') {
+      const owned = await pool.query('SELECT c.id FROM ciudadanos_comprometidos c JOIN seccional_capturistas sc ON sc.capturista_id=c.created_by WHERE sc.seccional_id=$1 AND c.id=$2', [user.userId, req.params.id]);
+      if (!owned.rows.length) { res.status(403).json({ error: 'No puedes ver esta captura' }); return; }
+    }
     const result = await pool.query(
       `SELECT c.*, ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
         c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
@@ -1035,16 +1248,27 @@ app.get('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
 app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
-    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, nivel_compromiso, idempotency_key, casilla_id } = req.body;
+    if (!esAdminOCoordinador(user) && user.rol !== 'capturista') { res.status(403).json({ error: 'Solo coordinadores, administradores y capturistas' }); return; }
+    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, intencion_voto_presidente, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, idempotency_key, casilla_id } = req.body;
     if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
-    const casillaAuto = await asignarCasillaAutomatica(seccion_id, lat, lng, casilla_id);
+    // Captura obligatoria: todos los campos salvo el correo
+    if (user.rol === 'capturista') {
+      if (!telefono || !curp || !ine || !vigencia_ine || !calle || !numero || !colonia || !cp || !fecha_nacimiento) {
+        res.status(400).json({ error: 'Todos los campos son obligatorios salvo el correo' }); return;
+      }
+    }
+    const casillaAuto = casilla_id ? parseInt(casilla_id as string) : (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng) && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : null);
     const curpVal = normalizarCurp(curp);
     if (curpVal && !validarCurp(curpVal)) { res.status(400).json({ error: 'CURP inválida: debe tener 18 caracteres con el formato oficial (ej. GODE561231HDFRRN09)' }); return; }
     let fechaNacVal: string | null = null;
     if (fecha_nacimiento) {
       fechaNacVal = String(fecha_nacimiento).slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNacVal) || Number.isNaN(new Date(fechaNacVal).getTime())) { res.status(400).json({ error: 'Fecha de nacimiento inválida' }); return; }
+    }
+    let vigenciaIneVal: string | null = null;
+    if (vigencia_ine) {
+      vigenciaIneVal = String(vigencia_ine).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(vigenciaIneVal) || Number.isNaN(new Date(vigenciaIneVal).getTime())) { res.status(400).json({ error: 'Vigencia de INE inválida' }); return; }
     }
     if (curpVal) {
       const errSem = validarCurpSemantica(curpVal, nombre, fechaNacVal);
@@ -1057,10 +1281,12 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
       if (existing.rows.length) { res.status(200).json({ id: existing.rows[0].id, message: 'Ya existe (idempotente)' }); return; }
     }
     const id = crypto.randomUUID();
+    const tieneUbicacionComp = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
+    const ubiSqlComp = 'ST_SetSRID(ST_MakePoint($10,$11),4326)';
     await pool.query(
-      `INSERT INTO ciudadanos_comprometidos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, simpatizante, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, nivel_compromiso, capturado_por, idempotency_key, casilla_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,ST_SetSRID(ST_MakePoint($10,$11),4326),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
-      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, lng||-100.9929, lat||20.6434, !!simpatizante, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, fechaNacVal, correo||null, curpVal, ine||null, nivel_compromiso||null, user.userId, idempotency_key||null, casillaAuto]
+      `INSERT INTO ciudadanos_comprometidos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, capturado_por, idempotency_key, casilla_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${ubiSqlComp},$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacionComp ? +lng : null, tieneUbicacionComp ? +lat : null, intencion_voto_presidente||null, null, notas||null, edad ? parseInt(edad) : null, fechaNacVal, correo||null, curpVal, ine||null, vigenciaIneVal, user.userId, idempotency_key||null, casillaAuto, user.userId]
     );
     res.status(201).json({ id, message: 'Ciudadano comprometido creado' });
     try { io.emit('nuevo-comprometido', { id, seccion_id }); } catch (e) { console.warn('io.emit error:', e); }
@@ -1077,14 +1303,26 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
 app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
-    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, simpatizante, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, nivel_compromiso, casilla_id } = req.body;
+    if (!esAdminOCoordinador(user)) {
+      if (user.rol === 'capturista') {
+        const owned = await pool.query('SELECT created_by, correccion_solicitada_at FROM ciudadanos_comprometidos WHERE id=$1', [req.params.id]);
+        if (!owned.rows.length || owned.rows[0].created_by !== user.userId || !owned.rows[0].correccion_solicitada_at) {
+          res.status(403).json({ error: 'Solo puedes editar capturas propias con corrección solicitada por tu seccional' }); return;
+        }
+      } else { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    }
+    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, numero_hogar, intencion_voto_presidente, notas, edad, fecha_nacimiento, curp, vigencia_ine, casilla_id } = req.body;
     const curpVal = normalizarCurp(curp);
     if (curpVal && !validarCurp(curpVal)) { res.status(400).json({ error: 'CURP inválida: debe tener 18 caracteres con el formato oficial (ej. GODE561231HDFRRN09)' }); return; }
     let fechaNacVal: string | null = null;
     if (fecha_nacimiento) {
       fechaNacVal = String(fecha_nacimiento).slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNacVal) || Number.isNaN(new Date(fechaNacVal).getTime())) { res.status(400).json({ error: 'Fecha de nacimiento inválida' }); return; }
+    }
+    let vigenciaIneVal: string | null = null;
+    if (vigencia_ine) {
+      vigenciaIneVal = String(vigencia_ine).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(vigenciaIneVal) || Number.isNaN(new Date(vigenciaIneVal).getTime())) { res.status(400).json({ error: 'Vigencia de INE inválida' }); return; }
     }
     if (curpVal) {
       const errSem = validarCurpSemantica(curpVal, nombre, fechaNacVal);
@@ -1095,17 +1333,23 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
     const parts: string[] = [];
     const params: any[] = [];
     const p = (v: any) => { params.push(v); return '$' + params.length; };
-    const cols = ['nombre', 'telefono', 'seccion_id', 'calle', 'numero', 'colonia', 'cp', 'correo', 'curp', 'ine', 'nivel_compromiso'];
-    const vals = [nombre||null, telefono||null, seccion_id||null, calle||null, numero||null, colonia||null, cp||null, correo||null, curpVal, ine||null, nivel_compromiso||null];
+    const cols = ['nombre', 'telefono', 'seccion_id', 'calle', 'numero', 'colonia', 'cp'];
+    const vals = [nombre||null, telefono||null, seccion_id||null, calle||null, numero||null, colonia||null, cp||null];
     parts.push(cols.map((c,i) => c + '=COALESCE(' + p(vals[i]) + ',' + c + ')').join(','));
+    const colsLimpiables = ['correo', 'curp', 'ine'].filter(c => (req.body as any)[c] !== undefined);
+    const valsLimpiables = colsLimpiables.map(c => c === 'curp' ? curpVal : ((req.body as any)[c] || null));
+    if (colsLimpiables.length) parts.push(colsLimpiables.map((c,i) => c + '=' + p(valsLimpiables[i])).join(','));
     if (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) {
       parts.push('ubicacion=ST_SetSRID(ST_MakePoint(' + p(+lng) + ',' + p(+lat) + '),4326)');
     }
-    if (casilla_id != null) parts.push('casilla_id=' + p(parseInt(casilla_id)));
-    else if (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) parts.push('casilla_id=' + p(await asignarCasillaAutomatica(seccion_id, lat, lng)));
-    const cols2 = ['simpatizante', 'prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'fecha_nacimiento'];
-    const vals2 = [simpatizante!=null?!!simpatizante:null, prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null, fechaNacVal];
+    if (casilla_id != null) parts.push('casilla_id=' + p(parseInt(casilla_id as string)));
+    else if (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng) && tieneDireccionValida(req.body)) parts.push('casilla_id=' + p(await asignarCasillaAutomatica(seccion_id, lat, lng)));
+    else if (casilla_id === null) parts.push('casilla_id=NULL');
+    const cols2 = ['numero_hogar', 'intencion_voto_presidente', 'notas', 'edad', 'fecha_nacimiento', 'vigencia_ine'];
+    const vals2 = [numero_hogar||null, intencion_voto_presidente||null, notas||null, edad||null, fechaNacVal, vigenciaIneVal];
     parts.push(cols2.map((c,i) => c + '=COALESCE(' + p(vals2[i]) + ',' + c + ')').join(','));
+    parts.push('updated_at=now()');
+    parts.push('updated_by=' + p(user.userId || null));
     params.push(req.params.id);
     await pool.query('UPDATE ciudadanos_comprometidos SET ' + parts.join(',') + ' WHERE id=$' + params.length, params);
     res.json({ message: 'Ciudadano comprometido actualizado' });
@@ -1162,6 +1406,146 @@ app.delete('/api/comprometidos/:id/foto', authenticateToken, async (req: Request
   } catch { res.status(500).json({ error: 'Error al eliminar foto' }); }
 });
 
+app.get('/api/representante/casillas', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (user.rol !== 'representante') { res.status(403).json({ error: 'Solo representantes' }); return; }
+    const rows = await pool.query(`
+      SELECT rc.casilla_id, c.nombre as casilla, c.direccion, c.seccion_id, c.meta_votos,
+             m.nombre as municipio
+      FROM representantes_casillas rc
+      JOIN casillas c ON c.id = rc.casilla_id
+      LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+      LEFT JOIN municipios m ON m.id = s.municipio_id
+      WHERE rc.representante_id = $1
+      ORDER BY c.seccion_id, c.nombre`, [user.userId]);
+    res.json(rows.rows);
+  } catch { res.status(500).json({ error: 'Error' }); }
+});
+
+app.get('/api/seccional/capturistas', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user) && user.rol !== 'seccional') { res.status(403).json({ error: 'No autorizado' }); return; }
+    const rows = await pool.query(`
+      SELECT u.id as capturista_id, u.nombre, u.email, u.telefono, sc.seccional_id,
+             m.meta, m.updated_at as meta_actualizada
+      FROM usuarios u
+      LEFT JOIN seccional_capturistas sc ON sc.capturista_id = u.id
+      LEFT JOIN metas_captura m ON m.capturista_id = u.id
+      WHERE u.rol = 'capturista'
+      ORDER BY u.nombre`);
+    if (user.rol === 'seccional') {
+      res.json(rows.rows
+        .filter((r: any) => r.seccional_id === user.userId)
+        .map(({ seccional_id, ...r }: any) => r));
+      return;
+    }
+    res.json(rows.rows.map(({ seccional_id, ...r }: any) => r));
+  } catch { res.status(500).json({ error: 'Error al obtener capturistas' }); }
+});
+
+app.put('/api/seccional/capturistas', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user) && user.rol !== 'seccional') { res.status(403).json({ error: 'No autorizado' }); return; }
+    const { capturista_ids } = req.body;
+    if (!Array.isArray(capturista_ids)) { res.status(400).json({ error: 'capturista_ids requerido' }); return; }
+    if (capturista_ids.length) {
+      const otros = (await pool.query(
+        'SELECT sc.capturista_id FROM seccional_capturistas sc WHERE sc.capturista_id = ANY($1) AND sc.seccional_id != $2',
+        [capturista_ids, user.userId])).rows.map((r: any) => r.capturista_id);
+      if (otros.length) { res.status(409).json({ error: 'Uno o más capturistas ya pertenecen a otro seccional' }); return; }
+    }
+    await pool.query('DELETE FROM seccional_capturistas WHERE seccional_id=$1', [user.userId]);
+    if (capturista_ids.length) {
+      const vals = capturista_ids.map((_: any, i: number) => `($1,$${i+2})`).join(',');
+      await pool.query(`INSERT INTO seccional_capturistas (seccional_id, capturista_id) VALUES ${vals} ON CONFLICT DO NOTHING`, [user.userId, ...capturista_ids]);
+    }
+    res.json({ message: 'Capturistas asignados' });
+  } catch { res.status(500).json({ error: 'Error al asignar capturistas' }); }
+});
+
+app.get('/api/metas', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user) && user.rol !== 'seccional') { res.status(403).json({ error: 'No autorizado' }); return; }
+    const params: any[] = [];
+    let where = '';
+    if (user.rol === 'seccional') { params.push(user.userId); where = 'WHERE m.capturista_id IN (SELECT capturista_id FROM seccional_capturistas WHERE seccional_id=$' + params.length + ')'; }
+    const rows = await pool.query(`
+      SELECT m.capturista_id, u.nombre as capturista_nombre, m.meta, m.updated_by, m.updated_at
+      FROM metas_captura m
+      JOIN usuarios u ON u.id = m.capturista_id
+      ${where}`, params);
+    res.json(rows.rows);
+  } catch { res.status(500).json({ error: 'Error al obtener metas' }); }
+});
+
+app.put('/api/metas/:capturistaId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user) && user.rol !== 'seccional') { res.status(403).json({ error: 'No autorizado' }); return; }
+    const meta = parseInt(req.body.meta as string);
+    if (Number.isNaN(meta) || meta < 0) { res.status(400).json({ error: 'Meta inválida' }); return; }
+    if (user.rol === 'seccional') {
+      const asig = await pool.query('SELECT 1 FROM seccional_capturistas WHERE seccional_id=$1 AND capturista_id=$2', [user.userId, req.params.capturistaId]);
+      if (!asig.rows.length) { res.status(403).json({ error: 'Ese capturista no está asignado a ti' }); return; }
+    }
+    await pool.query('INSERT INTO metas_captura (capturista_id, meta, created_by, updated_by) VALUES ($1,$2,$3,$3) ON CONFLICT (capturista_id) DO UPDATE SET meta=$2, updated_by=$3, updated_at=now()',
+      [req.params.capturistaId, meta, user.userId]);
+    res.json({ message: 'Meta guardada' });
+  } catch { res.status(500).json({ error: 'Error al guardar meta' }); }
+});
+
+app.post('/api/comprometidos/:id/solicitar-correccion', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user) && user.rol !== 'seccional') { res.status(403).json({ error: 'No autorizado' }); return; }
+    const scope = user.rol === 'seccional'
+      ? ' AND c.created_by IN (SELECT capturista_id FROM seccional_capturistas WHERE seccional_id=$' + 2 + ')'
+      : '';
+    const owner = await pool.query('SELECT id, created_by, nombre FROM ciudadanos_comprometidos c WHERE c.id=$1' + scope, [req.params.id, ...(user.rol === 'seccional' ? [user.userId] : [])]);
+    if (!owner.rows.length) { res.status(404).json({ error: 'Captura no encontrada en tu alcance' }); return; }
+    await pool.query('UPDATE ciudadanos_comprometidos SET correccion_solicitada_at=now(), correccion_solicitada_by=$1 WHERE id=$2', [user.userId, req.params.id]);
+    const c = owner.rows[0];
+    try { await notificacionService.enviarPushAUsuarios([c.created_by], 'Corrección solicitada', `Se solicita corregir el registro de ${c.nombre || 'ciudadano'}`); } catch (e) { console.warn('push correccion:', e); }
+    try {
+      const sockets = await io.fetchSockets();
+      sockets.forEach(s => { if ((s as any).userId === c.created_by) s.emit('correccion-solicitada', { id: req.params.id }); });
+    } catch (e) { console.warn('emit correccion:', e); }
+    res.json({ message: 'Corrección solicitada al capturista' });
+  } catch { res.status(500).json({ error: 'Error al solicitar corrección' }); }
+});
+
+app.get('/api/reportes/capturas-por-capturista', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user) && user.rol !== 'seccional') { res.status(403).json({ error: 'No autorizado' }); return; }
+    let where = '';
+    const params: any[] = [];
+    if (user.rol === 'seccional') {
+      params.push(user.userId);
+      where = 'WHERE c.created_by IN (SELECT capturista_id FROM seccional_capturistas WHERE seccional_id=$' + params.length + ')';
+    } else {
+      where = "WHERE u.rol = 'capturista' OR c.id IS NOT NULL";
+    }
+    const rows = await pool.query(`
+      SELECT u.id as capturista_id, u.nombre as capturista_nombre, u.telefono, u.rol,
+             count(c.id) FILTER (WHERE c.id IS NOT NULL) as total,
+             count(c.id) FILTER (WHERE c.correccion_solicitada_at IS NOT NULL) as con_correccion,
+             m.meta,
+             min(c.created_at)::date as primera_captura, max(c.created_at)::date as ultima_captura
+      FROM usuarios u
+      LEFT JOIN ciudadanos_comprometidos c ON c.created_by = u.id
+      LEFT JOIN metas_captura m ON m.capturista_id = u.id
+      ${where}
+      GROUP BY u.id, u.nombre, u.telefono, u.rol, m.meta
+      ORDER BY u.nombre`, params);
+    res.json(rows.rows);
+  } catch { res.status(500).json({ error: 'Error al generar reporte' }); }
+});
+
 app.post('/api/eventos', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { nombre, descripcion, fecha_inicio, fecha_fin, lat, lng, radio_geocerca, seccion_id, plantilla_id, alertar_config, alertar_solo_simpatizantes } = req.body;
@@ -1191,10 +1575,6 @@ app.get('/api/eventos', authenticateToken, async (req: Request, res: Response) =
     if (user.rol === 'enlace') {
       const secs = await getUserSecciones(user.userId);
       if (secs.length) { params.push(secs); query += ` WHERE e.seccion_id = ANY($${params.length})`; }
-    } else if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      const muniId = mRes.rows[0]?.municipio_id;
-      if (muniId) { params.push(muniId); query += ` WHERE e.seccion_id IN (SELECT id FROM secciones_electorales WHERE municipio_id = $${params.length})`; }
     }
     query += ' ORDER BY e.fecha_inicio DESC';
     const result = await pool.query(query, params);
@@ -1242,12 +1622,11 @@ app.post('/api/eventos/:id/disparar-alertas', authenticateToken, async (req: Req
     if (!ev.plantilla_id) { res.status(400).json({ error: 'El evento no tiene plantilla WhatsApp asignada' }); return; }
     const plantilla = (await pool.query('SELECT cuerpo, nombre FROM plantillas_whatsapp WHERE id=$1', [ev.plantilla_id])).rows[0];
     if (!plantilla) { res.status(400).json({ error: 'Plantilla no encontrada' }); return; }
-    const simpFilter = ev.alertar_solo_simpatizantes ? ' AND simpatizante = TRUE' : '';
     let ciudadanos: any[];
     if (ev.lat && ev.lng) {
-      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE telefono IS NOT NULL AND telefono != '' AND ST_DWithin(ubicacion, ST_SetSRID(ST_MakePoint($1,$2),4326), $3)${simpFilter}`, [ev.lng, ev.lat, ev.radio_geocerca || 500])).rows;
+      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE telefono IS NOT NULL AND telefono != '' AND ST_DWithin(ubicacion, ST_SetSRID(ST_MakePoint($1,$2),4326), $3)`, [ev.lng, ev.lat, ev.radio_geocerca || 500])).rows;
     } else if (ev.seccion_id) {
-      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE seccion_id=$1 AND telefono IS NOT NULL AND telefono != ''${simpFilter}`, [ev.seccion_id])).rows;
+      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE seccion_id=$1 AND telefono IS NOT NULL AND telefono != ''`, [ev.seccion_id])).rows;
     } else {
       ciudadanos = [];
     }
@@ -1324,10 +1703,6 @@ app.get('/api/rutas', authenticateToken, async (req: Request, res: Response) => 
                  LEFT JOIN campanas ec ON ec.id = r.encuesta_campana_id`;
     const params: any[] = [];
     if (user.rol === 'enlace') { params.push(user.userId); query += ' WHERE r.enlace_id = $1'; }
-    else if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      if (mRes.rows[0]?.municipio_id) { params.push(mRes.rows[0].municipio_id); query += ' WHERE r.seccion_id IN (SELECT id FROM secciones_electorales WHERE municipio_id = $1)'; }
-    }
     query += ' ORDER BY r.creado_en DESC';
     const r = await pool.query(query, params);
     res.json(r.rows);
@@ -1344,12 +1719,6 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
     if (tipoRuta === 'encuesta' && encuesta_campana_id) {
       const ec = (await pool.query('SELECT tipo FROM campanas WHERE id=$1', [encuesta_campana_id])).rows[0];
       if (!ec || ec.tipo !== 'encuesta') { res.status(400).json({ error: 'La encuesta asignada no existe o no es tipo encuesta' }); return; }
-    }
-    if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      const muniId = mRes.rows[0]?.municipio_id;
-      const ok = (await pool.query('SELECT id FROM secciones_electorales WHERE id=$1 AND municipio_id=$2', [seccion_id, muniId])).rows.length > 0;
-      if (!ok) { res.status(403).json({ error: 'La seccion no pertenece a tu municipio' }); return; }
     }
     const tablaParadas = tipoRuta === 'seguros' ? 'ciudadanos_comprometidos' : 'ciudadanos';
     const countRes = await pool.query(
@@ -1400,7 +1769,7 @@ app.get('/api/rutas/:id', authenticateToken, async (req: Request, res: Response)
   } catch { res.status(500).json({ error: 'Error' }); }
 });
 
-app.delete('/api/rutas/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/rutas/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     await pool.query('DELETE FROM rutas WHERE id=$1', [req.params.id]);
     res.json({ message: 'Ruta eliminada' });
@@ -1429,15 +1798,16 @@ app.patch('/api/rutas/:id/estado', authenticateToken, async (req: Request, res: 
 
 app.patch('/api/rutas/:id/parada/:idx', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { visitado, gps_confirmado, evidencia } = req.body;
+    const { visitado, gps_confirmado, evidencia, no_abrio } = req.body;
     const q = await pool.query('SELECT paradas FROM rutas WHERE id=$1', [req.params.id]);
     if (!q.rows.length) { res.status(404).json({ error: 'No encontrada' }); return; }
     const paradas = q.rows[0].paradas;
     const idx = parseInt(req.params.idx);
     if (!paradas[idx]) { res.status(400).json({ error: 'Índice inválido' }); return; }
-    paradas[idx].visitado = !!visitado;
-    paradas[idx].gps_confirmado = !!gps_confirmado;
+    if (visitado !== undefined) paradas[idx].visitado = !!visitado;
+    if (gps_confirmado !== undefined) paradas[idx].gps_confirmado = !!gps_confirmado;
     if (evidencia !== undefined) paradas[idx].evidencia = evidencia;
+    if (no_abrio !== undefined) { paradas[idx].no_abrio = !!no_abrio; if (no_abrio) { paradas[idx].visitado = true; } }
     await pool.query('UPDATE rutas SET paradas=$1 WHERE id=$2', [JSON.stringify(paradas), req.params.id]);
     res.json({ message: 'Parada actualizada' });
   } catch (e: any) { res.status(500).json({ error: 'Error: ' + (e.message || '') }); }
@@ -1509,7 +1879,7 @@ app.get('/api/partidos', authenticateToken, async (_req, res) => {
   res.json(result.rows);
 });
 
-app.post('/api/partidos', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/partidos', authenticateToken, requireAdminOCoordinador, async (req, res) => {
   const { nombre, abreviatura, color, es_favorito } = req.body;
   const client = await pool.connect();
   try {
@@ -1522,7 +1892,7 @@ app.post('/api/partidos', authenticateToken, requireAdmin, async (req, res) => {
   res.status(201).json({ message: 'Partido guardado' });
 });
 
-app.put('/api/partidos/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.put('/api/partidos/:id', authenticateToken, requireAdminOCoordinador, async (req, res) => {
   const { nombre, abreviatura, color, es_favorito } = req.body;
   const client = await pool.connect();
   try {
@@ -1537,7 +1907,7 @@ app.put('/api/partidos/:id', authenticateToken, requireAdmin, async (req, res) =
   res.json({ message: 'Partido actualizado' });
 });
 
-app.delete('/api/partidos/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/partidos/:id', authenticateToken, requireAdminOCoordinador, async (req, res) => {
   await pool.query('DELETE FROM partidos_politicos WHERE id=$1', [req.params.id]);
   res.json({ message: 'Partido eliminado' });
 });
@@ -1555,11 +1925,6 @@ app.get('/api/casillas', authenticateToken, async (req, res) => {
     const secs = await getUserSecciones(user.userId);
     if (!secs.length) { res.json([]); return; }
     params.push(secs); conds.push(`c.seccion_id = ANY($${params.length})`);
-  } else if (user.rol === 'coordinador') {
-    const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-    const muniId = mRes.rows[0]?.municipio_id;
-    if (!muniId) { res.json([]); return; }
-    params.push(muniId); conds.push(`s.municipio_id = $${params.length}`);
   }
   if (seccion_id) { params.push(seccion_id); conds.push(`c.seccion_id = $${params.length}`); }
   if (conds.length) query += ' WHERE ' + conds.join(' AND ');
@@ -1568,20 +1933,20 @@ app.get('/api/casillas', authenticateToken, async (req, res) => {
   res.json(result.rows);
 });
 
-app.post('/api/casillas', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/casillas', authenticateToken, requireAdminOCoordinador, async (req, res) => {
   const { seccion_id, nombre, direccion, lat, lng, meta_votos } = req.body;
   if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
   await pool.query('INSERT INTO casillas (seccion_id, nombre, direccion, lat, lng, meta_votos) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (seccion_id,nombre) DO UPDATE SET direccion=$3, lat=$4, lng=$5, meta_votos=$6', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0]);
   res.status(201).json({ message: 'Casilla guardada' });
 });
 
-app.put('/api/casillas/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.put('/api/casillas/:id', authenticateToken, requireAdminOCoordinador, async (req, res) => {
   const { nombre, direccion, seccion_id, lat, lng, meta_votos } = req.body;
   await pool.query('UPDATE casillas SET seccion_id=$1, nombre=$2, direccion=$3, lat=$4, lng=$5, meta_votos=$6 WHERE id=$7', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0, req.params.id]);
   res.json({ message: 'Casilla actualizada' });
 });
 
-app.delete('/api/casillas/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/casillas/:id', authenticateToken, requireAdminOCoordinador, async (req, res) => {
   await pool.query('DELETE FROM casillas WHERE id=$1', [req.params.id]);
   res.json({ message: 'Casilla eliminada' });
 });
@@ -1684,9 +2049,13 @@ app.get('/api/casillas/:id/votantes', authenticateToken, async (req, res) => {
       const perm = await pool.query('SELECT 1 FROM usuarios_secciones WHERE usuario_id=$1 AND seccion_id=$2', [user.userId, c.rows[0].seccion_id]);
       if (!perm.rows.length) { res.status(403).json({ error: 'No tienes permiso sobre esa casilla' }); return; }
     }
+    if (user.rol === 'representante') {
+      const perm = await pool.query('SELECT 1 FROM representantes_casillas WHERE representante_id=$1 AND casilla_id=$2', [user.userId, casillaId]);
+      if (!perm.rows.length) { res.status(403).json({ error: 'No tienes permiso sobre esa casilla' }); return; }
+    }
     const [ciud, comp, fav] = await Promise.all([
       pool.query(
-        `SELECT c.id, c.nombre, c.telefono, c.casilla_id, c.simpatizante, c.prioridad,
+        `SELECT c.id, c.nombre, c.telefono, c.casilla_id, c.prioridad,
                 c.intencion_voto_presidente as partido_id, pp.nombre as partido_nombre, pp.abreviatura, pp.color,
                 (v.ciudadano_id IS NOT NULL) as ya_voto
          FROM ciudadanos c
@@ -1694,7 +2063,7 @@ app.get('/api/casillas/:id/votantes', authenticateToken, async (req, res) => {
          LEFT JOIN votos v ON v.ciudadano_id = c.id
          WHERE c.casilla_id = $1 ORDER BY c.nombre`, [casillaId]),
       pool.query(
-        `SELECT c.id, c.nombre, c.telefono, c.casilla_id, c.simpatizante, c.prioridad, c.nivel_compromiso,
+        `SELECT c.id, c.nombre, c.telefono, c.casilla_id,
                 c.intencion_voto_presidente as partido_id, pp.nombre as partido_nombre, pp.abreviatura, pp.color,
                 (v.comprometido_id IS NOT NULL) as ya_voto
          FROM ciudadanos_comprometidos c
@@ -1773,19 +2142,42 @@ app.get('/api/reportes/votacion-horaria', authenticateToken, async (req: Request
 app.post('/api/incidencias', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const { casilla_id, tipo, descripcion } = req.body || {};
-    if (!casilla_id || !tipo) { res.status(400).json({ error: 'casilla_id y tipo son requeridos' }); return; }
+    const { casilla_id, ruta_id, tipo, descripcion, evidencia } = req.body || {};
+    if (!tipo) { res.status(400).json({ error: 'tipo es requerido' }); return; }
     if (!descripcion || !String(descripcion).trim()) { res.status(400).json({ error: 'Describe la incidencia' }); return; }
+    let insCasilla: number | null = null;
+    let insSeccion: number | null = null;
+    let insRuta: string | null = null;
     if (user.rol === 'enlace') {
-      const sec = await pool.query('SELECT seccion_id FROM casillas WHERE id=$1', [casilla_id]);
-      const sId = sec.rows[0]?.seccion_id;
-      if (!sId) { res.status(404).json({ error: 'Casilla no encontrada' }); return; }
-      const perm = await pool.query('SELECT 1 FROM usuarios_secciones WHERE usuario_id=$1 AND seccion_id=$2', [user.userId, sId]);
-      if (!perm.rows.length) { res.status(403).json({ error: 'No tienes permiso sobre esa casilla' }); return; }
+      if (!ruta_id) { res.status(400).json({ error: 'Selecciona tu ruta de barrido' }); return; }
+      const rr = await pool.query('SELECT id, enlace_id, seccion_id FROM rutas WHERE id=$1', [ruta_id]);
+      if (!rr.rows.length) { res.status(404).json({ error: 'Ruta no encontrada' }); return; }
+      if (rr.rows[0].enlace_id !== user.userId) { res.status(403).json({ error: 'Esa ruta no te pertenece' }); return; }
+      insRuta = ruta_id; insSeccion = rr.rows[0].seccion_id;
+    } else if (ruta_id) {
+      const rr = await pool.query('SELECT id, enlace_id, seccion_id FROM rutas WHERE id=$1', [ruta_id]);
+      if (!rr.rows.length) { res.status(404).json({ error: 'Ruta no encontrada' }); return; }
+      insRuta = ruta_id; insSeccion = rr.rows[0].seccion_id;
+    } else {
+      if (!casilla_id) { res.status(400).json({ error: 'Selecciona una casilla' }); return; }
+      if (user.rol === 'representante') {
+        const perm = await pool.query('SELECT 1 FROM representantes_casillas WHERE representante_id=$1 AND casilla_id=$2', [user.userId, casilla_id]);
+        if (!perm.rows.length) { res.status(403).json({ error: 'No tienes permiso sobre esa casilla' }); return; }
+      }
+      insCasilla = casilla_id;
     }
     const r = await pool.query(
-      `INSERT INTO incidencias (casilla_id, tipo, descripcion, creado_por) VALUES ($1,$2,$3,$4) RETURNING id`,
-      [casilla_id, tipo, String(descripcion).trim(), user.userId]);
+      `INSERT INTO incidencias (casilla_id, seccion_id, ruta_id, tipo, descripcion, creado_por, evidencia) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [insCasilla, insSeccion, insRuta, tipo, String(descripcion).trim(), user.userId, evidencia || null]);
+    try {
+      const det = await pool.query(
+        `SELECT i.id, i.tipo, i.estado, i.descripcion, i.ruta_id, i.created_at, COALESCE(cas.seccion_id, i.seccion_id) AS seccion_id, u.nombre AS creado_por_nombre
+         FROM incidencias i LEFT JOIN casillas cas ON cas.id = i.casilla_id LEFT JOIN usuarios u ON u.id = i.creado_por WHERE i.id = $1`, [r.rows[0].id]);
+      const sockets = await io.fetchSockets();
+      sockets.forEach(s => {
+        if ((s as any).rol === 'admin' || (s as any).rol === 'coordinador') s.emit('nueva-incidencia', det.rows[0] || { id: r.rows[0].id, tipo, ruta_id: insRuta, seccion_id: insSeccion });
+      });
+    } catch (e: any) { console.warn('Emitir nueva-incidencia:', e?.message || e); }
     res.status(201).json({ id: r.rows[0].id });
   } catch (e: any) { console.error('POST /api/incidencias error:', e?.message || e); res.status(500).json({ error: 'Error al registrar incidencia' }); }
 });
@@ -1798,17 +2190,21 @@ app.get('/api/incidencias', authenticateToken, async (req: Request, res: Respons
     const conds: string[] = [];
     if (user.rol === 'enlace') {
       params.push(user.userId);
-      conds.push(`cas.seccion_id IN (SELECT seccion_id FROM usuarios_secciones WHERE usuario_id = $${params.length})`);
+      conds.push(`(i.seccion_id IN (SELECT seccion_id FROM usuarios_secciones WHERE usuario_id = $${params.length}) OR cas.seccion_id IN (SELECT seccion_id FROM usuarios_secciones WHERE usuario_id = $${params.length}))`);
     }
-    if (seccion_id) { params.push(seccion_id); conds.push(`cas.seccion_id = $${params.length}`); }
+    if (user.rol === 'representante') {
+      params.push(user.userId);
+      conds.push(`cas.id IN (SELECT casilla_id FROM representantes_casillas WHERE representante_id = $${params.length})`);
+    }
+    if (seccion_id) { params.push(seccion_id); conds.push(`(cas.seccion_id = $${params.length} OR i.seccion_id = $${params.length})`); }
     if (estado) { params.push(estado); conds.push(`i.estado = $${params.length}`); }
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
     const result = await pool.query(`
-      SELECT i.id, i.casilla_id, i.tipo, i.descripcion, i.estado, i.respuesta,
+      SELECT i.id, i.casilla_id, i.ruta_id, i.tipo, i.descripcion, i.estado, i.respuesta, i.evidencia,
              i.created_at, u.nombre as creado_por_nombre, ur.nombre as resuelto_por_nombre,
-             cas.nombre as casilla_nombre, cas.seccion_id
+             cas.nombre as casilla_nombre, COALESCE(cas.seccion_id, i.seccion_id) as seccion_id
       FROM incidencias i
-      JOIN casillas cas ON cas.id = i.casilla_id
+      LEFT JOIN casillas cas ON cas.id = i.casilla_id
       LEFT JOIN usuarios u ON u.id = i.creado_por
       LEFT JOIN usuarios ur ON ur.id = i.resuelto_por
       ${where} ORDER BY i.created_at DESC LIMIT 300`, params);
@@ -1834,8 +2230,8 @@ app.patch('/api/incidencias/:id', authenticateToken, async (req: Request, res: R
   } catch (e: any) { console.error('PATCH /api/incidencias error:', e?.message || e); res.status(500).json({ error: 'Error al actualizar incidencia' }); }
 });
 
-// PDF votantes por sección/casilla (solo admin) para palomear en papel
-app.get('/api/reportes/pdf-votantes', authenticateToken, requireAdmin, async (req, res) => {
+// PDF votantes por sección/casilla (admin y coordinador) para palomear en papel
+app.get('/api/reportes/pdf-votantes', authenticateToken, requireAdminOCoordinador, async (req, res) => {
   try {
     const { seccion_id, casilla_id } = req.query;
     let filter = '';
@@ -1843,8 +2239,8 @@ app.get('/api/reportes/pdf-votantes', authenticateToken, requireAdmin, async (re
     if (casilla_id) { params.push(casilla_id); filter = ` WHERE c.casilla_id = $${params.length}`; }
     else if (seccion_id) { params.push(seccion_id); filter = ` WHERE c.seccion_id = $${params.length}`; }
     const rows = (await pool.query(
-      `SELECT c.nombre, c.telefono, c.seccion_id, c.casilla_id, cs.nombre as casilla_nombre,
-              pp.nombre as partido_nombre, pp.abreviatura, c.simpatizante, c.prioridad, c.nivel_compromiso
+      `SELECT c.nombre, c.telefono, c.seccion_id, c.casilla_id, c.vigencia_ine, cs.nombre as casilla_nombre,
+              pp.nombre as partido_nombre, pp.abreviatura
        FROM ciudadanos_comprometidos c
        LEFT JOIN casillas cs ON cs.id = c.casilla_id
        LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
@@ -1861,7 +2257,7 @@ app.get('/api/reportes/pdf-votantes', authenticateToken, requireAdmin, async (re
       if (doc.y > 720) { doc.addPage(); }
       doc.fontSize(11);
       doc.text('☐ ', { continued: false, width: 0 });
-      const nombre = (r.prioridad >= 2 ? '★ ' : '') + r.nombre + (r.nivel_compromiso ? ` [${r.nivel_compromiso}]` : '');
+      const nombre = r.nombre;
       const line = `${nombre} — Sec ${r.seccion_id}${r.casilla_nombre ? ' / ' + r.casilla_nombre : ''}`;
       const detalle = (r.abreviatura ? r.abreviatura : 'Sin partido') + (r.telefono ? ' — ' + r.telefono : '');
       doc.text('☐ ' + line, { width: 480 });
@@ -1971,13 +2367,31 @@ app.post('/api/campanas', authenticateToken, async (req, res) => {
 
 app.put('/api/campanas/:id', authenticateToken, async (req, res) => {
   const { nombre, plantilla_id, filtros, scheduled_at, status, encuesta_lanzada, tipo, encuesta_id } = req.body;
-  const actual = (await pool.query('SELECT tipo, encuesta_id FROM campanas WHERE id=$1', [req.params.id])).rows[0];
+  const user = (req as any).user;
+  if (req.body.encuesta_barrido !== undefined && !esAdminOCoordinador(user)) {
+    res.status(403).json({ error: 'Solo coordinadores y administradores' }); return;
+  }
+  const actual = (await pool.query('SELECT * FROM campanas WHERE id=$1', [req.params.id])).rows[0];
+  const nombreFinal = nombre !== undefined ? nombre : (actual?.nombre ?? null);
+  const plantillaFinal = plantilla_id !== undefined ? plantilla_id : (actual?.plantilla_id ?? null);
+  const filtrosFinal = filtros !== undefined ? filtros : (actual?.filtros ?? []);
+  const fechaFinal = scheduled_at !== undefined ? scheduled_at : (actual?.scheduled_at ?? null);
+  const statusFinal = status !== undefined ? status : (actual?.status ?? 'pending');
   const tipoFinal = tipo !== undefined ? tipo : (actual?.tipo || 'whatsapp');
   const encuestaFinal = encuesta_id !== undefined ? encuesta_id : (actual?.encuesta_id || null);
   await pool.query(
     'UPDATE campanas SET nombre=$1, plantilla_id=$2, filtros=$3, scheduled_at=$4, status=$5, encuesta_lanzada=$6, tipo=$7, encuesta_id=$8 WHERE id=$9',
-    [nombre, plantilla_id || null, JSON.stringify(filtros || []), scheduled_at || null, status || 'pending', !!encuesta_lanzada, tipoFinal, encuestaFinal, req.params.id]
+    [nombreFinal, plantillaFinal, JSON.stringify(filtrosFinal || []), fechaFinal, statusFinal, !!encuesta_lanzada, tipoFinal, encuestaFinal, req.params.id]
   );
+  if (req.body.encuesta_barrido !== undefined) {
+    // Una sola encuesta de barrido: desmarca las demás
+    await pool.query(
+      "UPDATE campanas SET encuesta_barrido = (id = $1) WHERE id = $1 OR encuesta_barrido = TRUE",
+      [req.params.id]
+    );
+    const u = user as any;
+    if (u?.nombre) await logAuditoria(u.userId, u.nombre, 'encuesta_barrido', 'campanas', req.params.id, { encuesta_barrido: !!req.body.encuesta_barrido });
+  }
   res.json({ message: 'Campaña actualizada' });
 });
 
@@ -2041,7 +2455,7 @@ app.post('/api/campanas/preview', authenticateToken, async (req, res) => {
     const countResult = await pool.query(`SELECT COUNT(*) FROM ciudadanos ${where}`, params);
     const total = parseInt(countResult.rows[0].count);
     const dataResult = await pool.query(
-      `SELECT ciudadanos.id, ciudadanos.nombre, ciudadanos.seccion_id, ciudadanos.telefono, ciudadanos.simpatizante FROM ciudadanos ${where} ORDER BY ciudadanos.nombre LIMIT 500`,
+      `SELECT ciudadanos.id, ciudadanos.nombre, ciudadanos.seccion_id, ciudadanos.telefono FROM ciudadanos ${where} ORDER BY ciudadanos.nombre LIMIT 500`,
       params
     );
 
@@ -2095,10 +2509,6 @@ app.get('/api/secciones/:municipioId/geometrias', authenticateToken, async (req:
       if (!secs.length) { res.json({ type: 'FeatureCollection', features: [] }); return; }
       params.push(secs);
       extra = ` AND s.seccion = ANY($${params.length})`;
-    } else if (user?.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      const muniIdU = mRes.rows[0]?.municipio_id;
-      if (!muniIdU || muniIdU !== muniId) { res.json({ type: 'FeatureCollection', features: [] }); return; }
     }
     const result = await pool.query(
       `SELECT s.seccion, ST_AsGeoJSON(s.geom)::jsonb as geometry
@@ -2380,17 +2790,15 @@ setInterval(async () => {
         if (!plantilla) continue;
         let ciudadanos: any[] = [];
         if (ev.lat && ev.lng) {
-          const simpFilter = ev.alertar_solo_simpatizantes ? ' AND simpatizante = TRUE' : '';
           ciudadanos = (await pool.query(
             `SELECT id, nombre, telefono FROM ciudadanos
              WHERE telefono IS NOT NULL AND telefono != ''
-             AND ST_DWithin(ubicacion, ST_SetSRID(ST_MakePoint($1,$2),4326), $3)${simpFilter}`,
+             AND ST_DWithin(ubicacion, ST_SetSRID(ST_MakePoint($1,$2),4326), $3)`,
             [ev.lng, ev.lat, ev.radio_geocerca || 500]
           )).rows;
         } else if (ev.seccion_id) {
-          const simpFilter = ev.alertar_solo_simpatizantes ? ' AND simpatizante = TRUE' : '';
           ciudadanos = (await pool.query(
-            `SELECT id, nombre, telefono FROM ciudadanos WHERE seccion_id=$1 AND telefono IS NOT NULL AND telefono != ''${simpFilter}`,
+            `SELECT id, nombre, telefono FROM ciudadanos WHERE seccion_id=$1 AND telefono IS NOT NULL AND telefono != ''`,
             [ev.seccion_id]
           )).rows;
         }
@@ -2471,9 +2879,6 @@ app.get('/api/geo/avance-barrido', authenticateToken, async (req: Request, res: 
       const secs = await getUserSecciones(user.userId);
       if (!secs.length) { res.json([]); return; }
       params.push(secs); conds.push(`s.id = ANY($${params.length})`);
-    } else if (user.rol === 'coordinador') {
-      const mRes = await pool.query('SELECT municipio_id FROM usuarios WHERE id=$1', [user.userId]);
-      params.push(mRes.rows[0]?.municipio_id || null); conds.push(`s.municipio_id = $${params.length}`);
     }
     if (qm) { params.push(qm); conds.push(`s.municipio_id = $${params.length}`); }
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
@@ -2506,9 +2911,9 @@ app.get('/api/encuestas/preguntas', authenticateToken, async (req: Request, res:
     const params: any[] = [];
     let where = incluirInactivas ? 'WHERE 1=1' : 'WHERE p.activa = TRUE';
     if (campanaId) { params.push(campanaId); where += ` AND p.campana_id = $${params.length}`; }
-    else if (user?.rol !== 'admin') { where += ' AND c.encuesta_lanzada = TRUE'; }
+    else if (user?.rol !== 'admin') { where += ' AND (c.encuesta_lanzada = TRUE OR c.encuesta_barrido = TRUE)'; }
     const rows = await pool.query(
-      `SELECT p.id, p.campana_id, p.pregunta, p.tipo, p.opciones, p.obligatoria, p.orden, p.activa, c.nombre as campana_nombre, c.encuesta_lanzada
+      `SELECT p.id, p.campana_id, p.pregunta, p.tipo, p.opciones, p.obligatoria, p.orden, p.activa, c.nombre as campana_nombre, c.encuesta_lanzada, c.encuesta_barrido
        FROM encuesta_preguntas p JOIN campanas c ON c.id = p.campana_id
        ${where} ORDER BY p.orden ASC, p.created_at ASC`,
       params
@@ -2517,7 +2922,7 @@ app.get('/api/encuestas/preguntas', authenticateToken, async (req: Request, res:
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/encuestas/preguntas', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/encuestas/preguntas', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const { campana_id, pregunta, tipo, opciones, obligatoria, orden } = req.body;
     if (!campana_id || !pregunta) { res.status(400).json({ error: 'campana_id y pregunta requeridos' }); return; }
@@ -2533,7 +2938,7 @@ app.post('/api/encuestas/preguntas', authenticateToken, requireAdmin, async (req
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/encuestas/preguntas/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.put('/api/encuestas/preguntas/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const { pregunta, tipo, opciones, obligatoria, orden, activa } = req.body;
     const parts: string[] = [];
@@ -2552,7 +2957,7 @@ app.put('/api/encuestas/preguntas/:id', authenticateToken, requireAdmin, async (
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/encuestas/preguntas/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/encuestas/preguntas/:id', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     await pool.query('DELETE FROM encuesta_preguntas WHERE id=$1', [req.params.id]);
     res.json({ message: 'Pregunta eliminada' });
@@ -2724,7 +3129,7 @@ app.post('/api/publico/encuesta/:token', async (req: Request, res: Response) => 
 });
 
 // Genera el enlace público de prueba para una campaña encuesta (solo admin)
-app.post('/api/campanas/:id/enlace-demo', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/campanas/:id/enlace-demo', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
   try {
     const camp = (await pool.query('SELECT id, nombre, tipo FROM campanas WHERE id=$1', [req.params.id])).rows[0];
     if (!camp || camp.tipo !== 'encuesta') { res.status(404).json({ error: 'Campaña no encontrada o no es de encuesta' }); return; }
@@ -2762,8 +3167,69 @@ app.post('/api/sync/reconexion', authenticateToken, async (req: Request, res: Re
 app.get('/api/exportar/excel', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    const tipo = String(req.query.tipo || 'ciudadanos');
+    const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    if (tipo === 'encuesta' || tipo === 'general') {
+      const campanaId = String(req.query.campana_id || '');
+      const rowsCampanaQuery = campanaId
+        ? `WHERE ce.campana_id = $1`
+        : '';
+      const rows = (await pool.query(
+        `SELECT c.id, c.nombre, c.telefono, c.no_abrio, c.edad, s.id as seccion_num, m.nombre as municipio,
+                u.nombre as capturado_por, cam.nombre as encuesta_nombre, c.created_at, c.updated_at
+         FROM ciudadanos c
+         LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
+         LEFT JOIN campanas cam ON cam.id = ce.campana_id
+         LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+         LEFT JOIN municipios m ON m.id = s.municipio_id
+         LEFT JOIN usuarios u ON u.id = c.created_by
+         ${rowsCampanaQuery}
+         ORDER BY c.created_at DESC`, campanaId ? [campanaId] : []
+      )).rows;
+      const header = ['Nombre', 'Telefono', 'Abrio', 'Edad', 'Seccion', 'Municipio', 'Encuesta asignada', 'Capturado por', 'Capturado el', 'Actualizado el'];
+      const headCells = header.map(h => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join('');
+      const body = rows.map(r => {
+        const vals = [r.nombre, r.telefono, r.no_abrio ? 'NO' : 'SI', r.edad, r.seccion_num, r.municipio, r.encuesta_nombre, r.capturado_por, r.created_at, r.updated_at];
+        return '<Row>' + vals.map(v => `<Cell><Data ss:Type="String">${esc(v)}</Data></Cell>`).join('') + '</Row>';
+      }).join('');
+      const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles><Style ss:ID="h"><Font ss:Bold="1"/></Style></Styles>
+ <Worksheet ss:Name="Ciudadanos generales"><Table>${headCells}${body}</Table></Worksheet></Workbook>`;
+      res.setHeader('Content-Type', 'application/vnd.ms-excel');
+      res.setHeader('Content-Disposition', 'attachment; filename="ciudadanos-general.xls"');
+      res.send(Buffer.from(xml, 'utf8'));
+      return;
+    }
+    if (tipo === 'seguros' || tipo === 'simpatizantes') {
+      const rows = (await pool.query(
+        `SELECT c.nombre, c.telefono, c.correo, c.curp, c.ine, c.vigencia_ine, c.edad, s.id as seccion_num, m.nombre as municipio,
+                u.nombre as capturado_por, c.created_at, c.updated_at
+         FROM ciudadanos_comprometidos c
+         LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+         LEFT JOIN municipios m ON m.id = s.municipio_id
+         LEFT JOIN usuarios u ON u.id = c.created_by
+         ORDER BY c.created_at DESC`
+      )).rows;
+      const header = ['Nombre', 'Telefono', 'Correo', 'CURP', 'INE', 'Vigencia INE', 'Edad', 'Seccion', 'Municipio', 'Capturado por', 'Capturado el', 'Actualizado el'];
+      const headCells = header.map(h => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join('');
+      const body = rows.map(r => {
+        const vals = [r.nombre, r.telefono, r.correo, r.curp, r.ine, r.vigencia_ine, r.edad, r.seccion_num, r.municipio, r.capturado_por, r.created_at, r.updated_at];
+        return '<Row>' + vals.map(v => `<Cell><Data ss:Type="String">${esc(v)}</Data></Cell>`).join('') + '</Row>';
+      }).join('');
+      const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles><Style ss:ID="h"><Font ss:Bold="1"/></Style></Styles>
+ <Worksheet ss:Name="Simpatizantes"><Table>${headCells}${body}</Table></Worksheet></Workbook>`;
+      res.setHeader('Content-Type', 'application/vnd.ms-excel');
+      res.setHeader('Content-Disposition', 'attachment; filename="simpatizantes.xls"');
+      res.send(Buffer.from(xml, 'utf8'));
+      return;
+    }
     const query = `SELECT c.nombre, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad,
-              s.id as seccion_num, m.nombre as municipio, c.simpatizante, c.prioridad, c.notas,
+              s.id as seccion_num, m.nombre as municipio, c.prioridad, c.notas,
               c.timestamp_registro
             FROM ciudadanos c
             JOIN secciones_electorales s ON s.id = c.seccion_id
@@ -2776,11 +3242,10 @@ app.get('/api/exportar/excel', authenticateToken, async (req: Request, res: Resp
     const rows = params.length
       ? (await pool.query(query + ' WHERE c.seccion_id = ANY($1) ORDER BY c.nombre', params)).rows
       : (await pool.query(query + ' ORDER BY c.nombre')).rows;
-    const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const header = ['Nombre', 'Telefono', 'Calle', 'Numero', 'Colonia', 'CP', 'Edad', 'Seccion', 'Municipio', 'Simpatizante', 'Prioridad', 'Notas', 'Registrado'];
+    const header = ['Nombre', 'Telefono', 'Calle', 'Numero', 'Colonia', 'CP', 'Edad', 'Seccion', 'Municipio', 'Prioridad', 'Notas', 'Registrado'];
     const headCells = header.map(h => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join('');
     const body = rows.map(r => {
-      const vals = [r.nombre, r.telefono, r.calle, r.numero, r.colonia, r.cp, r.edad, r.seccion_num, r.municipio, r.simpatizante ? 'SI' : 'NO', r.prioridad, r.notas, r.timestamp_registro];
+      const vals = [r.nombre, r.telefono, r.calle, r.numero, r.colonia, r.cp, r.edad, r.seccion_num, r.municipio, r.prioridad, r.notas, r.timestamp_registro];
       return '<Row>' + vals.map(v => `<Cell><Data ss:Type="String">${esc(v)}</Data></Cell>`).join('') + '</Row>';
     }).join('');
     const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
@@ -2794,7 +3259,157 @@ app.get('/api/exportar/excel', authenticateToken, async (req: Request, res: Resp
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// Backup descargable (dump SQL portable de todas las tablas)
+// Reporte de ciudadanos (General): todos los capturados por barrido o tabla, con su encuesta asignada si aplica
+app.get('/api/reportes/capturados-general', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const campanaId = String(req.query.campana_id || '');
+    const rows = (await pool.query(
+      `SELECT c.id, c.nombre, c.telefono, c.no_abrio, c.edad, c.calle, c.colonia,
+              s.id as seccion_num, m.nombre as municipio,
+              u.nombre as capturado_por, c.created_at, c.updated_at,
+              cam.nombre as encuesta_nombre
+       FROM ciudadanos c
+       LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
+       LEFT JOIN campanas cam ON cam.id = ce.campana_id
+       LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+       LEFT JOIN municipios m ON m.id = s.municipio_id
+       LEFT JOIN usuarios u ON u.id = c.created_by
+       ${campanaId ? 'WHERE ce.campana_id = $1' : ''}
+       ORDER BY c.created_at DESC`,
+      campanaId ? [campanaId] : []
+    )).rows;
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Reporte de ciudadanos: simpatizantes (comprometidos) — admin/coord
+app.get('/api/reportes/capturados-seguros', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const rows = (await pool.query(
+      `SELECT c.id, c.nombre, c.telefono, c.correo, c.curp, c.ine, c.vigencia_ine, c.edad,
+              c.calle, c.colonia, s.id as seccion_num, m.nombre as municipio,
+              u.nombre as capturado_por, c.created_at, c.updated_at
+       FROM ciudadanos_comprometidos c
+       LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+       LEFT JOIN municipios m ON m.id = s.municipio_id
+       LEFT JOIN usuarios u ON u.id = c.created_by
+       ORDER BY c.created_at DESC`
+    )).rows;
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Reporte de cumplimiento de rutas — admin/coord
+app.get('/api/reportes/rutas', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const rows = (await pool.query(
+      `SELECT r.id, r.enlace_id, u.nombre AS enlace_nombre, r.seccion_id, s.id AS seccion_num,
+              m.nombre AS municipio, r.tipo, r.estado, r.creado_en, r.completado_en,
+              r.distancia_total_km, r.tiempo_total_minutos, r.encuesta_campana_id,
+              c.nombre AS encuesta_nombre, r.paradas
+       FROM rutas r
+       JOIN usuarios u ON u.id = r.enlace_id
+       JOIN secciones_electorales s ON s.id = r.seccion_id
+       LEFT JOIN municipios m ON m.id = s.municipio_id
+       LEFT JOIN campanas c ON c.id = r.encuesta_campana_id
+       ORDER BY r.creado_en DESC`
+    )).rows as any[];
+
+    const visitadosIds = new Set<string>();
+    const visitadosPorRuta = new Map<string, string[]>();
+    const rutas = rows.map((r: any) => {
+      const paradas: any[] = r.paradas || [];
+      const visitadas = paradas.filter((p: any) => p.visitado);
+      const visitados = visitadas.map((p: any) => p.id).filter(Boolean);
+      visitadosPorRuta.set(r.id, visitados);
+      visitados.forEach((id: string) => visitadosIds.add(id));
+      const total = paradas.length;
+      const visit = visitadas.length;
+      return {
+        id: r.id,
+        enlace_id: r.enlace_id,
+        enlace_nombre: r.enlace_nombre,
+        seccion_id: r.seccion_id,
+        seccion_num: r.seccion_num,
+        municipio: r.municipio,
+        tipo: r.tipo,
+        estado: r.estado,
+        creado_en: r.creado_en,
+        completado_en: r.completado_en,
+        distancia_total_km: Number(r.distancia_total_km || 0),
+        tiempo_total_minutos: r.tiempo_total_minutos || 0,
+        encuesta_campana_id: r.encuesta_campana_id,
+        encuesta_nombre: r.encuesta_nombre,
+        paradas_total: total,
+        paradas_visitadas: visit,
+        paradas_con_gps: visitadas.filter((p: any) => p.gps_confirmado).length,
+        paradas_con_foto: visitadas.filter((p: any) => p.evidencia).length,
+        paradas_no_abrio: paradas.filter((p: any) => p.no_abrio).length,
+        pct_visitadas: total ? Math.round(visit / total * 100) : 0,
+        atrasada: r.estado !== 'completada' && new Date(r.creado_en) < new Date(Date.now() - 24 * 3600 * 1000)
+      };
+    });
+
+    let contestaron = new Set<string>();
+    if (visitadosIds.size) {
+      const cr = await pool.query('SELECT DISTINCT ciudadano_id FROM encuesta_respuestas WHERE ciudadano_id = ANY($1)', [Array.from(visitadosIds)]);
+      contestaron = new Set(cr.rows.map((x: any) => x.ciudadano_id));
+    }
+    rutas.forEach((r: any) => {
+      const ids = visitadosPorRuta.get(r.id) || [];
+      r.contestaron = ids.filter((id: string) => contestaron.has(id)).length;
+    });
+
+    const enlaceIds = [...new Set(rows.map((r: any) => r.enlace_id))];
+    let incidenciasPorEnlace: Record<string, any[]> = {};
+    if (enlaceIds.length) {
+      const ir = await pool.query(
+        `SELECT i.creado_por, i.tipo, i.estado, i.descripcion, i.created_at, i.ruta_id, COALESCE(ca.seccion_id, i.seccion_id) as seccion_id
+         FROM incidencias i LEFT JOIN casillas ca ON ca.id = i.casilla_id
+         WHERE i.creado_por = ANY($1)
+         ORDER BY i.created_at DESC`,
+        [enlaceIds]
+      );
+      ir.rows.forEach((x: any) => { (incidenciasPorEnlace[x.creado_por] = incidenciasPorEnlace[x.creado_por] || []).push(x); });
+    }
+
+    const totalR = rutas.length;
+    const completadas = rutas.filter((r: any) => r.estado === 'completada').length;
+    const enProgreso = rutas.filter((r: any) => r.estado === 'en_progreso').length;
+    const pendientes = rutas.filter((r: any) => r.estado === 'pendiente').length;
+    const paradasTotal = rutas.reduce((s: number, r: any) => s + r.paradas_total, 0);
+    const paradasVisitadas = rutas.reduce((s: number, r: any) => s + r.paradas_visitadas, 0);
+    const paradasNoAbrio = rutas.reduce((s: number, r: any) => s + r.paradas_no_abrio, 0);
+    const porEnlace: Record<string, any> = {};
+    rutas.forEach((r: any) => {
+      const e = porEnlace[r.enlace_id] || (porEnlace[r.enlace_id] = { enlace_id: r.enlace_id, nombre: r.enlace_nombre, total: 0, completadas: 0, en_progreso: 0, pendientes: 0, visitadas: 0, paradas: 0 });
+      e.total++; e[r.estado] = (e[r.estado] || 0) + 1; e.visitadas += r.paradas_visitadas; e.paradas += r.paradas_total;
+    });
+    const enlaces = Object.values(porEnlace).map((e: any) => ({ ...e, pct: e.total ? Math.round(e.completadas / e.total * 100) : 0 }));
+
+    res.json({
+      resumen: {
+        total: totalR,
+        completadas,
+        en_progreso: enProgreso,
+        pendientes,
+        pct_completadas: totalR ? Math.round(completadas / totalR * 100) : 0,
+        paradas_total: paradasTotal,
+        paradas_visitadas: paradasVisitadas,
+        paradas_no_abrio: paradasNoAbrio,
+        pct_visitadas: paradasTotal ? Math.round(paradasVisitadas / paradasTotal * 100) : 0,
+        atrasadas: rutas.filter((r: any) => r.atrasada).length,
+        enlaces
+      },
+      rutas,
+      incidenciasPorEnlace
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/backup', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const tables = (await pool.query(

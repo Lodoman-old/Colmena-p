@@ -1,7 +1,8 @@
-<?xml version='1.0' encoding='utf-8'?>
+﻿<?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Colmena</string>
-    <string name="title_activity_main">Colmena</string>
+    <string name="app_name">PRIoridad Territorial</string>
+    <string name="title_activity_main">PRIoridad Territorial</string>
     <string name="package_name">com.colmena.app</string>
     <string name="custom_url_scheme">com.colmena.app</string>
 </resources>
+

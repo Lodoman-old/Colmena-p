@@ -24,10 +24,10 @@ export interface RutaOptimizada {
 export declare class RoutingService {
     private pool;
     constructor(pool: Pool);
-    calcularRutaOptima(origen: Coordenada, seccionId: string, soloSimpatizantes?: boolean, maxDistanciaKm?: number): Promise<RutaOptimizada>;
+    calcularRutaOptima(origen: Coordenada, seccionId: string, tipo?: 'encuesta' | 'seguros', maxDistanciaKm?: number): Promise<RutaOptimizada>;
     private obtenerParadas;
     private calcularDistancias;
-    repartirRutas(seccionId: string, soloSimpatizantes: boolean, numGrupos: number): Promise<RutaOptimizada[]>;
+    repartirRutas(seccionId: string, tipo: 'encuesta' | 'seguros', numGrupos: number): Promise<RutaOptimizada[]>;
     private optimizarConOSRM;
     private calcularOrdenTSP;
     obtenerCentroideSeccion(seccionId: string): Promise<Coordenada | null>;

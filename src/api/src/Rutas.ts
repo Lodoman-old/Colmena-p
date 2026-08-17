@@ -88,8 +88,8 @@ export class RoutingService {
         SELECT c.id, c.nombre, c.telefono,
                ST_X(c.ubicacion::geometry) as lng,
                ST_Y(c.ubicacion::geometry) as lat,
-               c.simpatizante as es_simpatizante,
-               c.prioridad,
+               true as es_simpatizante,
+               0 as prioridad,
                c.calle, c.numero, c.colonia,
                (v.id IS NOT NULL) AS ya_voto
         FROM ciudadanos_comprometidos c
@@ -114,7 +114,7 @@ export class RoutingService {
     }
 
     if (tipo === 'seguros') {
-      query += ` ORDER BY c.prioridad DESC, c.simpatizante DESC`;
+      query += ` ORDER BY c.nombre`;
     } else {
       query += ` ORDER BY c.prioridad DESC, c.simpatizante DESC`;
     }

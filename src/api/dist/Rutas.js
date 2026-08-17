@@ -10,8 +10,8 @@ class RoutingService {
     constructor(pool) {
         this.pool = pool;
     }
-    async calcularRutaOptima(origen, seccionId, soloSimpatizantes = false, maxDistanciaKm = 25) {
-        const paradas = await this.obtenerParadas(seccionId, soloSimpatizantes);
+    async calcularRutaOptima(origen, seccionId, tipo = 'encuesta', maxDistanciaKm = 25) {
+        const paradas = await this.obtenerParadas(seccionId, tipo);
         const advertencias = [];
         if (paradas.length === 0) {
             return {
@@ -36,23 +36,45 @@ class RoutingService {
             advertencias
         };
     }
-    async obtenerParadas(seccionId, soloSimpatizantes) {
-        let query = `
-      SELECT c.id, c.nombre, c.telefono,
-             ST_X(c.ubicacion::geometry) as lng,
-             ST_Y(c.ubicacion::geometry) as lat,
-             c.simpatizante as es_simpatizante,
-             c.prioridad,
-             c.calle, c.numero, c.colonia
-      FROM ciudadanos c
-      WHERE c.seccion_id = $1
-        AND c.ubicacion IS NOT NULL
-    `;
+    async obtenerParadas(seccionId, tipo) {
+        let query;
         const params = [seccionId];
-        if (soloSimpatizantes) {
-            query += ` AND c.simpatizante = TRUE`;
+        if (tipo === 'seguros') {
+            query = `
+        SELECT c.id, c.nombre, c.telefono,
+               ST_X(c.ubicacion::geometry) as lng,
+               ST_Y(c.ubicacion::geometry) as lat,
+               true as es_simpatizante,
+               0 as prioridad,
+               c.calle, c.numero, c.colonia,
+               (v.id IS NOT NULL) AS ya_voto
+        FROM ciudadanos_comprometidos c
+        LEFT JOIN votos v ON v.comprometido_id = c.id
+        WHERE c.seccion_id = $1
+          AND c.ubicacion IS NOT NULL
+      `;
         }
-        query += ` ORDER BY prioridad DESC, es_simpatizante DESC`;
+        else {
+            query = `
+        SELECT c.id, c.nombre, c.telefono,
+               ST_X(c.ubicacion::geometry) as lng,
+               ST_Y(c.ubicacion::geometry) as lat,
+               c.simpatizante as es_simpatizante,
+               c.prioridad,
+               c.calle, c.numero, c.colonia,
+               (v.id IS NOT NULL) AS ya_voto
+        FROM ciudadanos c
+        LEFT JOIN votos v ON v.ciudadano_id = c.id
+        WHERE c.seccion_id = $1
+          AND c.ubicacion IS NOT NULL
+      `;
+        }
+        if (tipo === 'seguros') {
+            query += ` ORDER BY c.nombre`;
+        }
+        else {
+            query += ` ORDER BY c.prioridad DESC, c.simpatizante DESC`;
+        }
         const result = await this.pool.query(query, params);
         return result.rows.map((row) => ({
             id: row.id,
@@ -61,6 +83,7 @@ class RoutingService {
             ubicacion: { lat: row.lat, lng: row.lng },
             es_simpatizante: row.es_simpatizante,
             prioridad: row.prioridad,
+            ya_voto: !!row.ya_voto,
             direccion: [row.calle, row.numero].filter(Boolean).join(' '),
             colonia: row.colonia
         }));
@@ -89,8 +112,8 @@ class RoutingService {
         }
         return paradas;
     }
-    async repartirRutas(seccionId, soloSimpatizantes, numGrupos) {
-        const paradas = await this.obtenerParadas(seccionId, soloSimpatizantes);
+    async repartirRutas(seccionId, tipo, numGrupos) {
+        const paradas = await this.obtenerParadas(seccionId, tipo);
         if (!paradas.length || !numGrupos)
             return [];
         const centroid = await this.obtenerCentroideSeccion(seccionId);

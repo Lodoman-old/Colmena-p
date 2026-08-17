@@ -5,24 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#e53935">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Colmena">
+  <meta name="apple-mobile-web-app-title" content="PRIoridad Territorial">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/img/icon-192.png">
-  <title>Colmena - Sistema de Movilización</title>
+  <title>PRIoridad Territorial - Sistema de Movilización</title>
   <script>window._APP_VERSION = '134';</script>
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.markercluster.css" />
   <link rel="stylesheet" href="vendor/leaflet.markercluster.default.css" />
-  <link rel="stylesheet" href="css/styles.css?v=181">
+  <link rel="stylesheet" href="css/styles.css?v=218">
 </head>
 <body>
   <div id="app">
     <div id="config-screen">
       <div class="login-card">
         <div class="login-logo">
-          <div class="logo-icon"><img id="config-logo-preview" src="" alt="Logo" class="logo-img" style="display:none"><div id="config-logo-fallback" class="logo-fallback">C</div></div>
-          <h1>Colmena</h1>
+          <div class="logo-icon"><img id="config-logo-preview" src="" alt="Logo" class="logo-img" style="display:none"><div id="config-logo-fallback" class="logo-fallback">P</div></div>
+          <h1><span class="brand-pri">PRI</span><span class="brand-oridad">oridad</span> <span class="brand-terr">Territorial</span></h1>
           <p class="login-subtitle">Configurar Servidor</p>
         </div>
         <form id="config-form">
@@ -41,14 +42,13 @@
     <div id="login-screen" class="hidden">
       <div class="login-card">
         <div class="login-logo">
-          <div class="logo-icon"><img id="login-logo-img" src="" alt="Logo" class="logo-img" style="display:none"><div id="login-logo-fallback" class="logo-fallback">C</div></div>
-          <h1>Colmena</h1>
+          <div class="logo-icon"><img id="login-logo-img" src="" alt="Logo" class="logo-img" style="display:none"><img id="login-logo-fallback" src="img/PRIoridad-2.png" alt="PRIoridad Territorial" class="login-logo-fallback-img"></div>
           <p class="login-subtitle">Sistema de Movilización</p>
         </div>
         <form id="login-form">
           <div class="form-group">
-            <label for="email">Correo electrónico</label>
-            <input type="email" id="email" placeholder="correo@ejemplo.com" required>
+            <label for="email">Correo o usuario</label>
+            <input type="text" id="email" placeholder="correo@ejemplo.com o tu usuario" required autocomplete="username">
           </div>
           <div class="form-group">
             <label for="password">Contraseña</label>
@@ -65,8 +65,7 @@
       <nav class="navbar">
         <div class="nav-brand">
           <button id="menu-toggle" class="hamburger" aria-label="Menú"><span class="hamburger-icon"></span></button>
-          <span class="logo-icon"><img id="nav-logo-img" src="" alt="Logo" class="logo-img-sm" style="display:none"><span id="nav-logo-fallback" class="logo-fallback-sm">C</span></span>
-          <span class="nav-title">Colmena</span>
+          <span class="logo-icon"><img id="nav-logo-img" src="" alt="Logo" class="logo-img-sm" style="display:none"><img id="nav-logo-fallback" src="img/PRIoridad-2.png" alt="PRIoridad Territorial" class="logo-fallback-sm-img"></span>
           <span id="sync-badge" class="sync-badge hidden" title="Pendientes de sincronizar: toca para sincronizar">⏫</span>
         </div>
         <div class="nav-links" id="nav-links">
@@ -83,6 +82,7 @@
               <button class="dropdown-item" data-view="rutas">Rutas</button>
               <button class="dropdown-item" data-view="mi-ruta">Mi Ruta</button>
               <button class="dropdown-item" data-view="casilla">Casilla (Representante)</button>
+              <button class="dropdown-item" data-view="metas">Metas de Captura</button>
               <button class="dropdown-item" data-view="incidencias">⚠️ Incidencias</button>
             </div>
           </div>
@@ -101,6 +101,8 @@
             <div class="dropdown-menu">
               <button class="dropdown-item" data-view="reportes">Votación</button>
               <button class="dropdown-item" data-view="reportes-encuesta">Respuestas Encuesta</button>
+              <button class="dropdown-item" data-view="reportes-captura">Reporte de Ciudadanos</button>
+              <button class="dropdown-item" data-view="reportes-rutas">Cumplimiento de Rutas</button>
             </div>
           </div>
           <button class="nav-btn" id="nav-btn-share">Compartir App</button>
@@ -154,8 +156,6 @@
           </div>
           <div class="dash-tabs">
             <button class="dash-tab active" data-filter="all">Todos</button>
-            <button class="dash-tab" data-filter="simpatizantes">Simpatizantes</button>
-            <button class="dash-tab" data-filter="nosimp">No simpatizantes</button>
             <button class="dash-tab" data-filter="partido">Por partido</button>
             <select id="dash-partido" class="dash-partido-select hidden"><option value="">Partido...</option></select>
             <select id="dash-intencion-tipo" class="dash-partido-select"><option value="intencion_voto_presidente">Presidente Municipal</option><option value="intencion_voto_diputado">Diputado Local</option></select>
@@ -178,7 +178,6 @@
               <div class="stat-card" data-type="municipios"><div class="stat-value" id="stat-municipios">0</div><div class="stat-label">Municipios</div></div>
               <div class="stat-card" data-type="secciones"><div class="stat-value" id="stat-secciones">0</div><div class="stat-label">Secciones</div></div>
               <div class="stat-card" data-type="ciudadanos"><div class="stat-value" id="stat-ciudadanos">0</div><div class="stat-label">Total ciudadanos</div><div class="stat-micro" id="micro-ciudadanos"></div></div>
-              <div class="stat-card" data-type="simpatizantes"><div class="stat-value" id="stat-simpatizantes">0</div><div class="stat-label">Simpatizantes</div><div class="stat-micro" id="micro-simpatizantes"></div></div>
               <div class="stat-card" data-type="rutas"><div class="stat-value" id="stat-rutas-activas">0</div><div class="stat-label">Rutas activas</div><div class="stat-micro" id="micro-rutas"></div></div>
               <div class="stat-card" data-type="visitas"><div class="stat-value" id="stat-visitas-hoy">0</div><div class="stat-label">Visitas hoy</div><div class="stat-micro" id="micro-visitas"></div></div>
               <div class="stat-card" data-type="eventos"><div class="stat-value" id="stat-eventos">0</div><div class="stat-label">Eventos</div></div>
@@ -277,7 +276,7 @@
     <button class="dash-tab" data-tipo="rural">Rural</button>
   </div>
   <div class="table-container">
-    <table><thead><tr><th>ID</th><th>Municipio</th><th>Tipo</th><th></th></tr></thead>
+    <table><thead><tr><th>ID</th><th>Municipio</th><th>Tipo</th><th>Meta</th><th>Votos esperados</th><th></th></tr></thead>
       <tbody id="secciones-body"></tbody>
     </table>
   </div>
@@ -296,7 +295,7 @@
           <h2>Casillas <button class="btn-small btn-primary" onclick="abrirModal('casilla')">+ Agregar</button></h2>
           <div class="toolbar"><select id="cas-filtro-seccion"><option value="">Todas las secciones</option></select></div>
           <div class="table-container">
-            <table><thead><tr><th>ID</th><th>Sección</th><th>Nombre</th><th>Dirección</th><th></th></tr></thead>
+            <table><thead><tr><th>ID</th><th>Sección</th><th>Nombre</th><th>Dirección</th><th>Meta de votos</th><th>Ubicación</th><th></th></tr></thead>
               <tbody id="casillas-body"></tbody>
             </table>
           </div>
@@ -322,8 +321,10 @@
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <select id="csa-filtro-seccion" onchange="csaSeleccionarSeccion()"><option value="">Seleccionar sección</option></select>
                 <select id="csa-filtro-casilla" onchange="csaCargarVotantes()"><option value="">Seleccionar casilla</option></select>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer"><input type="checkbox" id="csa-filtro-pendientes" checked onchange="csaCargarVotantes()"> Solo pendientes</label>
                 <span id="csa-estado" style="font-size:11px;padding:4px 8px;border-radius:10px;background:#eee;color:#666"></span>
                 <button class="btn-small btn-secondary" onclick="csaCargarVotantes(true)">↻ Recargar</button>
+                <button class="btn-small btn-secondary" id="btn-csa-pdf" onclick="descargarPdfVotantesCsa()" style="display:none" title="Descargar PDF de votantes (solo admin/coordinador)">📄 PDF</button>
               </div>
             </div>
             <div id="csa-resumen" style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 10px;font-size:12px"></div>
@@ -332,8 +333,41 @@
           </div>
         </div>
 
+        <div id="view-metas" class="view">
+          <h2>Metas y rendimiento</h2>
+          <div class="view-tabs" id="metas-tabs">
+            <button class="tab-btn active" data-tab="capturistas" onclick="metasTab('capturistas')">Capturistas</button>
+            <button class="tab-btn" data-tab="enlaces" onclick="metasTab('enlaces')">Enlaces</button>
+          </div>
+          <div id="metas-tab-capturistas" style="display:flex;flex-direction:column;gap:16px">
+            <div class="single-card">
+              <div class="single-card-header">
+                <h3>Asignación y metas</h3>
+                <button class="btn-small btn-secondary" onclick="loadMetas()">↻ Recargar</button>
+              </div>
+              <div id="metas-capturistas"></div>
+              <p style="font-size:11px;color:#999;margin:8px 0 0" id="metas-ayuda"></p>
+            </div>
+            <div class="single-card">
+              <div class="single-card-header">
+                <h3>Avance de capturistas</h3>
+                <button class="btn-small btn-secondary" onclick="exportarCapturasPorCapturista()">Descargar Excel</button>
+              </div>
+              <div id="metas-reporte"></div>
+            </div>
+          </div>
+          <div id="metas-tab-enlaces" class="hidden" style="display:flex;flex-direction:column;gap:16px">
+            <div class="single-card">
+              <div class="single-card-header">
+                <h3>Rendimiento de enlaces</h3>
+              </div>
+              <div id="metas-enlaces"></div>
+            </div>
+          </div>
+        </div>
+
         <div id="view-incidencias" class="view">
-          <h2>⚠️ Incidencias de casilla</h2>
+          <h2>⚠️ Incidencias</h2>
           <div class="toolbar">
             <select id="inc-filtro-seccion"><option value="">Todas las secciones</option></select>
             <select id="inc-filtro-estado">
@@ -448,7 +482,6 @@
                             <option value="seccion_id">Sección</option>
                             <option value="intencion_voto">Partido simpatía</option>
                             <option value="telefono">Teléfono</option>
-                            <option value="simpatizante">Simpatizante</option>
                           </select>
                           <div id="campana-filtro-valor" class="filtro-valor" style="flex:1;display:flex;gap:4px"></div>
                         </div>
@@ -502,7 +535,7 @@
                   <p id="campana-preview-count" style="margin:0 0 12px;font-weight:bold"></p>
                   <div class="table-container" style="max-height:400px">
                     <table>
-                      <thead><tr><th>Nombre</th><th>Sección</th><th>Teléfono</th><th>Simpatizante</th></tr></thead>
+                      <thead><tr><th>Nombre</th><th>Sección</th><th>Teléfono</th></tr></thead>
                       <tbody id="campana-preview-body"></tbody>
                     </table>
                   </div>
@@ -514,8 +547,8 @@
         <div id="view-ciudadanos" class="view">
           <h2>Ciudadanos</h2>
           <div class="geo-tabs" id="ciu-subtabs">
-            <button class="ciu-tab active" data-tab="encuestados" onclick="cambiarSubTabCiudadanos('encuestados')">Encuestados</button>
-            <button class="ciu-tab" data-tab="seguros" onclick="cambiarSubTabCiudadanos('seguros')" id="ciu-tab-seguros" style="display:none">Seguros</button>
+            <button class="ciu-tab active" data-tab="encuestados" onclick="cambiarSubTabCiudadanos('encuestados')" id="ciu-tab-general">General</button>
+            <button class="ciu-tab" data-tab="seguros" onclick="cambiarSubTabCiudadanos('seguros')" id="ciu-tab-seguros" style="display:none">Simpatizantes</button>
           </div>
           <div id="ciu-panel-encuestados">
             <div class="toolbar"><select id="ciu-filtro-seccion"><option value="">Todas las secciones</option></select>
@@ -542,20 +575,23 @@
                   <select id="bf-seccion" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Seccion</option></select>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                  <label style="display:flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="bf-simpatizante"> Simp.</label>
+                  <label style="display:flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;white-space:nowrap" title="No abrió la puerta"><input type="checkbox" id="bf-no_abrio"> No abrió</label>
                   <select id="bf-partido-presidente" style="flex:1;min-width:80px;padding:5px;border:2px solid var(--border);border-radius:6px;font-size:11px"><option value="">Presidente</option></select>
                   <select id="bf-partido-diputado" style="flex:1;min-width:80px;padding:5px;border:2px solid var(--border);border-radius:6px;font-size:11px"><option value="">Diputado</option></select>
                   <input type="hidden" id="bf-lat" value="">
                   <input type="hidden" id="bf-lng" value="">
                   <span id="bf-gps-indicator" title="GPS no obtenido" style="display:inline-flex;align-items:center;gap:2px;font-size:10px;padding:2px 5px;border-radius:4px;background:#f0f0f0;color:#999">📡<span id="bf-gps-text">Sin GPS</span></span>
                   <button id="bf-btn-camara" type="button" onclick="capturarEvidenciaBarrido()" style="background:none;border:1px solid var(--border);border-radius:4px;padding:3px 6px;cursor:pointer;font-size:12px" title="Tomar foto de evidencia">📷</button>
-                  <button id="btn-guardar-barrido" class="btn-small btn-primary" disabled style="width:auto;padding:6px 12px;font-size:12px;opacity:0.4;cursor:not-allowed">Guardar</button>
-                  <span id="bf-status" style="font-size:11px;color:var(--color-secondary)"></span>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
                   <label style="font-size:12px;white-space:nowrap" title="Además del entrevistado">Votantes extra</label>
                   <input type="number" id="bf-votantes_casa" min="0" max="20" value="0" style="width:60px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
                   <button type="button" id="bf-btn-vc" class="btn-small btn-secondary" onclick="abrirModalVotantesCasa('bf')" style="font-size:11px">👥 Votantes de la casa</button>
+                  <span id="bf-encuesta-info" style="font-size:11px;color:var(--text-muted);margin-left:2px"></span>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+                  <button id="btn-guardar-barrido" class="btn-small btn-primary" disabled style="width:auto;padding:6px 12px;font-size:12px;opacity:0.4;cursor:not-allowed">Guardar</button>
+                  <span id="bf-status" style="font-size:11px;color:var(--color-secondary)"></span>
                 </div>
                 <div id="bf-evidencia-preview" style="display:none;margin-top:6px;position:relative">
                   <img id="bf-evidencia-img" style="height:60px;border-radius:4px;border:1px solid #ddd;object-fit:cover">
@@ -565,7 +601,7 @@
               <div id="ciu-barrido-mapa" style="flex:1;min-width:280px;height:250px;border-radius:8px;box-shadow:var(--shadow)"></div>
             </div>
             <div id="ciu-tabla-container" class="table-container">
-              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Colonia</th><th>Sección</th><th>Simp.</th><th>Prioridad</th><th>Foto</th><th></th></tr></thead>
+              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Colonia</th><th>Sección</th><th>Prioridad</th><th>Foto</th><th></th></tr></thead>
                 <tbody id="ciudadanos-body"></tbody>
               </table>
             </div>
@@ -574,15 +610,15 @@
             <div class="toolbar">
               <input type="search" id="cpr-buscar" placeholder="🔍 Buscar nombre, CURP, INE, teléfono..." style="flex:1.5;min-width:160px;padding:7px 10px;border:2px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box" oninput="cprDebounceBuscar(this.value)">
               <select id="cpr-filtro-seccion" style="flex:1;max-width:200px"><option value="">Todas las secciones</option></select>
-              <button class="btn-small btn-primary" onclick="abrirModal('comprometido')">+ Agregar seguro</button>
+              <button class="btn-small btn-primary" onclick="abrirModal('comprometido')">+ Agregar simpatizante</button>
               <button class="btn-small btn-secondary" onclick="document.getElementById('cpr-excel-input').click()">⬆ Cargar Excel</button>
               <input type="file" id="cpr-excel-input" accept=".csv" style="display:none" onchange="cargarExcelComprometidos(this)">
-              <button class="btn-small btn-secondary" onclick="descargarPlantillaExcel()" title="Descargar plantilla con las columnas esperadas">⬇ Plantilla</button>
+              <button class="btn-small btn-secondary" id="descargar-plantilla-btn" onclick="descargarPlantillaExcel()" title="Descargar plantilla con las columnas esperadas">⬇ Plantilla</button>
               <button class="btn-small btn-secondary" onclick="loadComprometidos()" title="Refrescar lista" style="margin-left:4px">↻</button>
             </div>
             <div id="cpr-status" style="font-size:12px;color:var(--color-secondary);margin-bottom:6px"></div>
             <div class="table-container">
-              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>CURP</th><th>INE</th><th>Sección</th><th>Nivel</th><th>Partido</th><th></th></tr></thead>
+              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>CURP</th><th>INE</th><th>Vigencia INE</th><th>Sección</th><th>Partido</th><th>Corrección</th><th></th></tr></thead>
                 <tbody id="comprometidos-body"></tbody>
               </table>
             </div>
@@ -609,8 +645,6 @@
           </div>
           <div class="geo-tabs">
             <button class="geo-tab active" data-filter="all">Todos</button>
-            <button class="geo-tab" data-filter="simpatizantes">Simpatizantes</button>
-            <button class="geo-tab" data-filter="nosimp">No simpatizantes</button>
             <button class="geo-tab" data-filter="partido">Por partido</button>
             <select id="geo-filtro-partido" class="geo-partido-select hidden"><option value="">Partido...</option></select>
             <select id="geo-intencion-tipo" style="margin-left:6px;font-size:12px;padding:4px 6px;border:1px solid #ccc;border-radius:6px">
@@ -653,7 +687,7 @@
             <div id="ruta-enlace-tipo-filtro" style="display:flex;gap:6px;margin:8px 0">
               <button class="ruta-tipo-btn active" data-tipo-filtro="todos">Todos</button>
               <button class="ruta-tipo-btn" data-tipo-filtro="encuesta">📋 Encuesta</button>
-              <button class="ruta-tipo-btn" data-tipo-filtro="seguros">🛡 Seguros</button>
+              <button class="ruta-tipo-btn" data-tipo-filtro="seguros">🛡 Simpatizantes</button>
             </div>
             <div id="ruta-enlace-tab-pendientes" class="ruta-enlace-tab-content active">
               <div id="ruta-enlace-list" class="cards-grid"></div>
@@ -662,6 +696,9 @@
               <div id="ruta-enlace-completadas-list" class="cards-grid"></div>
             </div>
             <div id="ruta-enlace-detalle" class="hidden">
+              <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                <button id="btn-inc-ruta-activa" class="btn-small" style="background:#fff3cd;border:1px solid #d4a017;color:#6b4f00">🚨 Reportar incidencia de esta sección</button>
+              </div>
               <div id="ruta-progress" class="hidden" style="margin:2px 0 4px;font-size:12px;color:var(--color-secondary);text-align:center"></div>
               <div id="ruta-siguiente-parada" class="hidden" style="position:sticky;top:0;z-index:500;background:#fff;padding:4px 8px;border-bottom:2px solid var(--color-secondary);margin-bottom:4px;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap">
                 <span id="ruta-actual-label" style="font-weight:600;font-size:13px"></span>
@@ -674,7 +711,6 @@
                   <div id="ruta-leyenda" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px;font-size:10px;color:#555;background:#f4faf4;border:1px solid #c8e6c9;border-radius:6px;padding:4px 8px">
                     <span style="font-weight:700;color:#009639">📱 Gira tu teléfono horizontal para ver mejor la ruta</span>
                     <span>➤ Sentido de la ruta (línea verde punteada)</span>
-                    <span style="color:var(--color-secondary)">● Simpatizante</span>
                     <span style="color:var(--pri-red)">● Parada</span>
                     <span>✓ Visitada</span>
                     <span>📋 Encuesta en la parada</span>
@@ -683,7 +719,9 @@
                 </div>
               </div>
               <div id="ruta-reporte" class="hidden" style="padding:12px;background:#f0faf0;border-radius:8px;border:1px solid #009639;text-align:center"></div>
-              <button id="btn-cerrar-ruta" class="btn-small btn-secondary" style="margin-top:8px">Cerrar ruta actual</button>
+              <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <button id="btn-cerrar-ruta" class="btn-small btn-secondary">Cerrar ruta actual</button>
+              </div>
             </div>
           </div>
         </div>
@@ -711,22 +749,28 @@
             <span id="rep-ultima-actualizacion" style="font-size:10px;color:#888;align-self:center"></span>
           </div>
           <div id="rep-meta-favorito" style="margin:10px 0"></div>
-          <div style="display:flex;gap:36px;flex-wrap:wrap">
-            <div style="flex:1;min-width:320px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)"><h3 style="margin:0 0 8px">Presidente Municipal</h3><canvas id="chart-presidente" style="max-height:280px;width:100%"></canvas></div>
-            <div style="flex:1;min-width:320px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)"><h3 style="margin:0 0 8px">Diputado Local</h3><canvas id="chart-diputado" style="max-height:280px;width:100%"></canvas></div>
+          <div style="display:flex;gap:24px;flex-wrap:wrap">
+            <div style="flex:1;min-width:320px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+              <div style="background:var(--pri-red);color:#fff;padding:8px 14px;font-size:13px;font-weight:700">🗳️ Presidente Municipal</div>
+              <div style="padding:10px"><canvas id="chart-presidente" style="max-height:280px;width:100%"></canvas></div>
+            </div>
+            <div style="flex:1;min-width:320px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+              <div style="background:var(--pri-green);color:#fff;padding:8px 14px;font-size:13px;font-weight:700">🪑 Diputado Local</div>
+              <div style="padding:10px"><canvas id="chart-diputado" style="max-height:280px;width:100%"></canvas></div>
+            </div>
           </div>
-          <div style="margin-top:16px;padding:10px;border:1px solid var(--border);border-radius:var(--radius)">
-            <h3 style="margin:0 0 8px">Votación por hora <span style="font-size:11px;color:#888;font-weight:400">(últimas 48 h)</span></h3>
-            <canvas id="chart-horaria" style="max-height:240px;width:100%"></canvas>
+          <div style="margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+            <div style="background:#f4f4f4;padding:8px 14px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border)">📈 Votación por hora <span style="font-size:11px;color:#777;font-weight:400">(últimas 48 h)</span></div>
+            <div style="padding:10px"><canvas id="chart-horaria" style="max-height:240px;width:100%"></canvas></div>
           </div>
           <div id="rep-detalle" style="margin-top:16px"></div>
-          <details style="margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px">
-            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#666">📊 Seguimiento de votación (meta vs ya votaron)</summary>
-            <div style="display:flex;gap:6px;margin:8px 0">
+          <details style="margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+            <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#333;padding:10px 14px;background:#f8f8f8">📊 Seguimiento de votación <span style="font-size:11px;color:#777;font-weight:400">— registros del día de la elección (meta vs ya votaron)</span></summary>
+            <div style="display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);background:#fafafa">
               <button class="btn-small btn-secondary" id="btn-csv-secciones">⬇ CSV por sección</button>
               <button class="btn-small btn-secondary" id="btn-csv-casillas">⬇ CSV por casilla</button>
             </div>
-            <div id="rep-votacion" style="margin-top:8px"></div>
+            <div id="rep-votacion" style="padding:12px"></div>
           </details>
         </div>
 
@@ -738,6 +782,64 @@
           <div id="rep-encuesta-detalle" style="margin-top:12px;display:flex;flex-direction:column;gap:12px"></div>
         </div>
 
+        <div id="view-reportes-captura" class="view">
+          <h2>Reporte de Ciudadanos</h2>
+          <div class="geo-tabs" style="margin-bottom:10px">
+            <button class="geo-tab active" data-cap="encuesta" onclick="cambiarTabCaptura('encuesta')">General</button>
+            <button class="geo-tab" data-cap="seguros" onclick="cambiarTabCaptura('seguros')">Simpatizantes</button>
+          </div>
+          <div id="cap-panel-encuesta">
+            <div class="toolbar">
+              <select id="cap-encuesta-campana" onchange="cargarCapturadosGeneral()"><option value="">Todas las campañas</option></select>
+              <button class="btn-small btn-primary" onclick="exportarCapturadosExcel()" title="Descargar Excel con los ciudadanos capturados">⬇ Excel</button>
+              <button class="btn-small btn-secondary" onclick="exportarCapturadosPDF()" title="Descargar PDF con los ciudadanos capturados">⬇ PDF</button>
+              <button class="btn-small btn-secondary" onclick="cargarCapturadosGeneral()" title="Refrescar">↻</button>
+            </div>
+            <div id="cap-encuesta-status" style="font-size:12px;color:var(--color-secondary);margin-bottom:6px"></div>
+            <div class="table-container">
+              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Abrió</th><th>Sección</th><th>Encuesta asignada</th><th>Capturado por</th><th>Capturado el</th><th>Actualizado</th></tr></thead>
+                <tbody id="cap-encuesta-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="cap-panel-seguros" style="display:none">
+            <div class="toolbar">
+              <button class="btn-small btn-primary" onclick="exportarSegurosExcel()" title="Descargar Excel con los simpatizantes capturados">⬇ Excel</button>
+              <button class="btn-small btn-secondary" onclick="exportarSegurosPDF()" title="Descargar PDF con los simpatizantes capturados">⬇ PDF</button>
+              <button class="btn-small btn-secondary" onclick="cargarCapturadosSeguros()" title="Refrescar">↻</button>
+            </div>
+            <div id="cap-seguros-status" style="font-size:12px;color:var(--color-secondary);margin-bottom:6px"></div>
+            <div class="table-container">
+              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>CURP</th><th>INE</th><th>Vigencia INE</th><th>Sección</th><th>Capturado por</th><th>Capturado el</th><th>Actualizado</th></tr></thead>
+                <tbody id="cap-seguros-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="view-reportes-rutas" class="view">
+          <h2>Cumplimiento de Rutas</h2>
+          <div class="toolbar">
+            <select id="rr-enlace" onchange="cargarReporteRutas()"><option value="">Todos los enlaces</option></select>
+            <select id="rr-estado" onchange="cargarReporteRutas()">
+              <option value="">Todos los estados</option>
+              <option value="completada">Completadas</option>
+              <option value="en_progreso">En progreso</option>
+              <option value="pendiente">Pendientes</option>
+              <option value="atrasadas">Atrasadas (+24h)</option>
+            </select>
+            <button class="btn-small btn-secondary" onclick="cargarReporteRutas()">↻ Refrescar</button>
+          </div>
+          <div id="rr-resumen" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
+          <div id="rr-incidencias" style="margin-bottom:12px"></div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Enlace</th><th>Sección</th><th>Tipo</th><th>Estado</th><th>Paradas</th><th>Visitadas</th><th>GPS</th><th>Foto</th><th>No abrió</th><th>Contestaron</th><th>Km</th><th>Min</th><th>Creada</th><th>Completada</th><th></th></tr></thead>
+              <tbody id="rr-body"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div id="view-configuracion" class="view">
           <h2>Configuracion del Sistema</h2>
           <div class="cfg-tabs">
@@ -745,6 +847,7 @@
             <button class="cfg-tab" data-panel="db">Base de datos</button>
             <button class="cfg-tab" data-panel="firebase">Firebase</button>
             <button class="cfg-tab" data-panel="twilio">Twilio</button>
+            <button class="cfg-tab" data-panel="r2">Cloudflare R2</button>
             <button class="cfg-tab" data-panel="app">App y respaldo</button>
           </div>
           <div id="cfg-panel-visual" class="cfg-panel active">
@@ -797,6 +900,32 @@
               <label for="cfg-twilio_whatsapp">WhatsApp Number</label>
               <input type="text" id="cfg-twilio_whatsapp" class="cfg-input" placeholder="+14155238886">
             </div>
+          </div>
+          <div id="cfg-panel-r2" class="cfg-panel">
+            <p style="font-size:12px;color:#666;margin:0 0 12px">Las fotos de evidencia se guardan <strong>en este servidor</strong> por defecto. Con Cloudflare R2 se guardan en la nube (10 GB gratis, sin costo por descargas). Si configuras R2, las fotos <strong>nuevas</strong> suben directo a la nube y puedes <strong>migrar</strong> las ya guardadas.</p>
+            <div style="background:#f0f7ff;border:1px solid #cfe4ff;border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:12px">
+              <strong>Pasos para crear la cuenta y bucket (5 min):</strong>
+              <ol style="margin:6px 0 0;padding-left:18px">
+                <li>Crea tu cuenta gratis en <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">dash.cloudflare.com</a>.</li>
+                <li>Menú lateral: <strong>R2 → Crear bucket</strong> (ej: <code>evidencias-colmena</code>).</li>
+                <li>En el bucket: <strong>Settings → Public access</strong> → activa <em>R2.dev subdomain</em> y copia la <strong>URL pública</strong> (ej: <code>https://pub-abc123.r2.dev</code>).</li>
+                <li>En R2: <strong>Manage R2 API Tokens → Create API token</strong> → permiso <em>Object Read &amp; Write</em> (todos los buckets o solo el tuyo). Copia <strong>Access Key ID</strong> y <strong>Secret Access Key</strong>.</li>
+                <li>Pega todo abajo, guarda y pulsa <strong>Probar conexión</strong>.</li>
+              </ol>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div class="form-group"><label for="cfg-r2_account_id">Account ID</label><input type="text" id="cfg-r2_account_id" class="cfg-input" placeholder="e.g. 8f3c...a9b2"></div>
+              <div class="form-group"><label for="cfg-r2_bucket">Bucket</label><input type="text" id="cfg-r2_bucket" class="cfg-input" placeholder="evidencias-colmena"></div>
+              <div class="form-group"><label for="cfg-r2_access_key_id">Access Key ID</label><input type="text" id="cfg-r2_access_key_id" class="cfg-input" placeholder="e.g. c0f2...a1"></div>
+              <div class="form-group"><label for="cfg-r2_secret_access_key">Secret Access Key</label><input type="password" id="cfg-r2_secret_access_key" class="cfg-input" placeholder="..."></div>
+              <div class="form-group" style="grid-column:1/-1"><label for="cfg-r2_public_url">URL pública (R2.dev o dominio propio)</label><input type="text" id="cfg-r2_public_url" class="cfg-input" placeholder="https://pub-abc123.r2.dev"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+              <button class="btn-small btn-primary" onclick="probarConexionR2()">Probar conexión</button>
+              <button class="btn-small btn-secondary" onclick="migrarFotosAR2()">Migrar fotos locales → R2</button>
+            </div>
+            <p style="font-size:12px;margin:8px 0 0" id="cfg-r2-status"></p>
+            <p style="font-size:11px;color:#999;margin:8px 0 0">El Secret Access Key queda guardado en la base de datos (como el resto de la configuración). Las fotos ya en R2 no se vuelven a subir (detección automática).</p>
           </div>
           <div id="cfg-panel-app" class="cfg-panel">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
@@ -892,7 +1021,7 @@
               <div style="background:#fff;border-radius:12px;padding:20px;max-width:420px;width:90%;max-height:80vh;overflow-y:auto">
                 <h3 id="ruta-modal-titulo" style="margin:0 0 8px;font-size:14px">Asignar ruta - Seccion <span id="ruta-modal-sec"></span></h3>
                 <div style="display:flex;gap:6px;margin-bottom:6px">
-                  <button type="button" id="ruta-modal-tipo-seguros" class="btn-small btn-primary" onclick="setRutaModalTipo('seguros')">🛡 Seguros</button>
+                  <button type="button" id="ruta-modal-tipo-seguros" class="btn-small btn-primary" onclick="setRutaModalTipo('seguros')">🛡 Simpatizantes</button>
                   <button type="button" id="ruta-modal-tipo-encuesta" class="btn-small btn-secondary" onclick="setRutaModalTipo('encuesta')">📋 Encuesta</button>
                 </div>
                 <p id="ruta-modal-tipo-ayuda" style="font-size:11px;color:#666;margin:0 0 8px"></p>
@@ -935,19 +1064,17 @@
           <button class="modal-close" onclick="cerrarModal('inc')">X</button>
         </div>
         <div class="modal-body">
-          <div class="form-group"><label for="inc-casilla">Casilla</label><select id="inc-casilla"></select></div>
+          <div class="form-group" id="inc-casilla-wrap"><label for="inc-casilla">Casilla</label><select id="inc-casilla"></select></div>
+          <div class="form-group" id="inc-ruta-wrap" style="display:none"><label for="inc-ruta">Ruta de barrido</label><select id="inc-ruta"></select><p id="inc-ruta-nota" style="display:none;font-size:11px;color:#666;margin:4px 0 0">La incidencia quedará registrada para toda la <strong>sección</strong> de la ruta, no para una parada específica.</p></div>
           <div class="form-group"><label for="inc-tipo">Tipo de incidencia</label>
-            <select id="inc-tipo">
-              <option value="material">Falta material electoral</option>
-              <option value="instalacion">Casilla no instaló / tardó en instalar</option>
-              <option value="presencia">Presencia de otro partido / provocaciones</option>
-              <option value="larga_fila">Filas largas / lentitud</option>
-              <option value="seguridad">Problema de seguridad</option>
-              <option value="otro">Otro</option>
-            </select>
+            <select id="inc-tipo"></select>
           </div>
           <div class="form-group"><label for="inc-descripcion">Descripción</label>
-            <textarea id="inc-descripcion" rows="3" placeholder="Describe qué pasó en la casilla..."></textarea>
+            <textarea id="inc-descripcion" rows="3" placeholder="Describe qué pasó..."></textarea>
+          </div>
+          <div class="form-group"><label>Evidencia (foto opcional)</label>
+            <input type="file" id="inc-evidencia" accept="image/*" capture="environment" style="font-size:12px">
+            <img id="inc-evidencia-preview" style="display:none;margin-top:6px;max-height:150px;border-radius:8px;border:1px solid #ddd">
           </div>
           <button class="btn btn-primary" style="width:100%" onclick="guardarIncidencia()">Enviar incidencia</button>
         </div>
@@ -972,6 +1099,14 @@
       <div style="background:#fff;border-radius:12px;padding:20px;max-width:520px;width:94%;max-height:88vh;overflow-y:auto">
         <h3 style="margin:0 0 4px;font-size:15px" id="encuesta-title">Encuesta</h3>
         <p style="margin:0 0 12px;font-size:12px;color:#666">Configura las preguntas. Luego lanza la encuesta desde la campaña para que aparezca en cada ciudadano</p>
+        <div id="enc-uso-wrap" style="margin-bottom:12px;display:none">
+          <label style="font-size:12px;font-weight:600;color:#444;margin-bottom:4px;display:block">Tipo de encuesta</label>
+          <select id="enc-tipo-uso" onchange="cambiarTipoUsoEncuesta()" style="width:100%;padding:7px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">
+            <option value="normal">📋 Encuesta normal</option>
+            <option value="barrido">🚪 Encuesta de barrido inicial</option>
+          </select>
+          <p style="font-size:11px;color:#999;margin:4px 0 0">La encuesta de barrido inicial se muestra siempre en el modo barrido de los enlaces, sin necesidad de lanzarla.</p>
+        </div>
         <div id="encuesta-list" style="margin-bottom:12px"></div>
         <div style="background:#f7f7f7;border-radius:8px;padding:12px;margin-bottom:12px">
           <div style="display:flex;gap:6px;margin-bottom:6px">
@@ -1021,7 +1156,7 @@
     </div>
     <div id="qr-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.classList.add('hidden')">
       <div style="background:white;border-radius:12px;padding:24px;text-align:center;max-width:440px;width:92%;max-height:90vh;overflow-y:auto">
-        <h3 style="margin:0 0 12px">Compartir App Colmena</h3>
+        <h3 style="margin:0 0 12px">Compartir App PRIoridad Territorial</h3>
         <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;background:#f2f2f2;border-radius:8px;padding:4px">
           <button class="btn-small btn-primary" id="tab-share-android" onclick="cambiarPestanaCompartir('android')" style="flex:1;padding:8px">Android</button>
           <button class="btn-small btn-secondary" id="tab-share-ios" onclick="cambiarPestanaCompartir('ios')" style="flex:1;padding:8px">iPhone (iOS)</button>
@@ -1109,8 +1244,8 @@
   </div>
   <div id="notify-toast" class="notify-toast" style="display:none"></div>
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
-  <script src="js/api.js?v=98"></script>
+  <script src="js/api.js?v=101"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=181"></script>
+  <script src="js/app.js?v=237"></script>
 </body>
 </html>

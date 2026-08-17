@@ -1,41 +1,5 @@
-CREATE OR REPLACE FUNCTION validar_gps_modo_mapeo()
-RETURNS TRIGGER AS $$
-DECLARE
-    sector_en_mapeo BOOLEAN;
-    hogares_geo INTEGER;
-    poblacion_total INTEGER;
-BEGIN
-    SELECT sg.hogares_georreferenciados, s.poblacion_total
-    INTO hogares_geo, poblacion_total
-    FROM sectores s
-    LEFT JOIN (
-        SELECT sector_id, COUNT(*) as hogares_georreferenciados
-        FROM ciudadanos
-        WHERE ubicacion IS NOT NULL
-        GROUP BY sector_id
-    ) sg ON s.id = sg.sector_id
-    WHERE s.id = NEW.sector_id;
-
-    IF poblacion_total IS NOT NULL AND poblacion_total > 0 THEN
-        sector_en_mapeo := (COALESCE(hogares_geo, 0)::FLOAT / poblacion_total::FLOAT) < 0.70;
-
-        IF sector_en_mapeo THEN
-            IF NEW.ubicacion IS NULL OR
-               ST_X(NEW.ubicacion) IS NULL OR
-               ST_Y(NEW.ubicacion) IS NULL THEN
-                RAISE EXCEPTION 'GPS_OBLIGATORIO: Debe capturar ubicación GPS para guardar este hogar en modo mapeo';
-            END IF;
-        END IF;
-    END IF;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_validar_gps_modo_mapeo ON ciudadanos;
-CREATE TRIGGER trg_validar_gps_modo_mapeo
-    BEFORE INSERT OR UPDATE ON ciudadanos
-    FOR EACH ROW EXECUTE FUNCTION validar_gps_modo_mapeo();
+-- El trigger legacy validar_gps_modo_mapeo/trg_validar_gps (tabla "sectores"
+-- inexistente) fue eliminado en 019; el frontend exige GPS o foto de evidencia.
 
 CREATE OR REPLACE FUNCTION generar_geofences_evento()
 RETURNS TRIGGER AS $$
@@ -71,6 +35,7 @@ BEGIN
         JOIN geofences g ON g.activo = TRUE
         WHERE ST_DWithin(c.ubicacion, g.ubicacion, g.radio_metros)
         AND c.id = NEW.id
+        AND c.telefono IS NOT NULL AND c.telefono <> ''
         AND NOT EXISTS (
             SELECT 1 FROM alertas_whatsapp a
             WHERE a.ciudadano_id = c.id

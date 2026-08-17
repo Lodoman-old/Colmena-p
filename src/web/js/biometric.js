@@ -15,11 +15,11 @@ const Biometric = (() => {
     } catch { return false; }
   }
 
-  async function verify(reason = 'Acceso a Colmena') {
+  async function verify(reason = 'Acceso a PRIoridad Territorial') {
     const plugin = getPlugin();
     if (!plugin) return false;
     try {
-      await plugin.verifyIdentity({ reason, title: 'Colmena', subtitle: 'Autenticación biométrica' });
+      await plugin.verifyIdentity({ reason, title: 'PRIoridad Territorial', subtitle: 'Autenticación biométrica' });
       return true;
     } catch { return false; }
   }

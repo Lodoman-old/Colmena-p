@@ -27,6 +27,7 @@ const API = (() => {
   const _getCacheTtl = 20000;
   let _staleServed = false;
   let token = localStorage.getItem('colmena_token');
+  let refreshToken = localStorage.getItem('colmena_refresh');
   let currentUser = (() => { try { return JSON.parse(localStorage.getItem('colmena_user') || 'null'); } catch { return null; } })();
 
   function setToken(t) {
@@ -35,9 +36,42 @@ const API = (() => {
     else localStorage.removeItem('colmena_token');
   }
 
+  function setRefreshToken(rt) {
+    refreshToken = rt;
+    if (rt) localStorage.setItem('colmena_refresh', rt);
+    else localStorage.removeItem('colmena_refresh');
+  }
+
   function guardarUser() {
     if (currentUser) localStorage.setItem('colmena_user', JSON.stringify(currentUser));
     else localStorage.removeItem('colmena_user');
+  }
+
+  let _cerrandoSesion = false;
+  function cerrarSesionTokenExpirado() {
+    if (_cerrandoSesion) return;
+    _cerrandoSesion = true;
+    setToken(null);
+    setRefreshToken(null);
+    localStorage.removeItem('colmena_user');
+    _getCache.clear();
+    if (typeof window.__colmenaCerrarSesion === 'function') {
+      window.__colmenaCerrarSesion();
+    } else {
+      location.reload();
+    }
+  }
+
+  async function renovarSesion() {
+    if (!refreshToken) return false;
+    try {
+      const d = await request('POST', '/api/auth/refresh', { refresh_token: refreshToken }, 12000);
+      setToken(d.token);
+      setRefreshToken(d.refresh_token);
+      currentUser = d.user;
+      guardarUser();
+      return true;
+    } catch { return false; }
   }
 
   async function request(method, path, body = null, timeoutMs = 15000) {
@@ -58,7 +92,13 @@ const API = (() => {
     const text = await res.text();
     let data;
     try { data = JSON.parse(text); } catch { data = { error: text || 'Error de conexión' }; }
-    if (!res.ok) throw new Error(data.error || 'Error de conexión');
+    if (!res.ok) {
+      if ((res.status === 401 || res.status === 403) && /token/i.test(data.error || '')) {
+        if (await renovarSesion()) return request(method, path, body, timeoutMs);
+        cerrarSesionTokenExpirado();
+      }
+      throw new Error(data.error || 'Error de conexión');
+    }
     if (method === 'GET') {
       if (fromSwCache) _staleServed = true;
       else _staleServed = false;
@@ -92,16 +132,29 @@ const API = (() => {
     async login(email, password) {
       const data = await request('POST', '/api/auth/login', { email, password });
       setToken(data.token);
+      setRefreshToken(data.refresh_token);
       currentUser = data.user;
       guardarUser();
       return data;
     },
     setToken(t) { setToken(t); },
     setUser(u) { currentUser = u; guardarUser(); },
-    logout() { setToken(null); currentUser = null; guardarUser(); },
+    logout() {
+      const rt = refreshToken;
+      setToken(null);
+      setRefreshToken(null);
+      currentUser = null;
+      guardarUser();
+      if (rt) fetch(`${BASE}/api/auth/logout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: rt }) }).catch(() => {});
+    },
     getToken() { return token; },
     getUser() { return currentUser; },
     getBase() { return BASE; },
+    cerrarSesionTokenExpirado() { cerrarSesionTokenExpirado(); },
+    async renovarSesionSiNecesario() {
+      if (refreshToken) return await renovarSesion();
+      return !!token;
+    },
 
     getEstados() { return request('GET', '/api/estados'); },
     getEstadoDefault() { return request('GET', '/api/estados/default'); },
@@ -132,6 +185,14 @@ const API = (() => {
     crearComprometido(data) { return request('POST', '/api/comprometidos', data); },
     actualizarComprometido(id, data) { return request('PUT', `/api/comprometidos/${id}`, data); },
     eliminarComprometido(id) { return request('DELETE', `/api/comprometidos/${id}`); },
+    solicitarCorreccionComprometido(id) { return request('POST', `/api/comprometidos/${id}/solicitar-correccion`); },
+
+    getSeccionalCapturistas() { return request('GET', '/api/seccional/capturistas'); },
+    putSeccionalCapturistas(capturistaIds) { return request('PUT', '/api/seccional/capturistas', { capturista_ids: capturistaIds }); },
+    getMetas() { return request('GET', '/api/metas'); },
+    putMeta(capturistaId, meta) { return request('PUT', `/api/metas/${capturistaId}`, { meta }); },
+    getCapturasPorCapturista() { return request('GET', '/api/reportes/capturas-por-capturista'); },
+    getMisCasillasRep() { return request('GET', '/api/representante/casillas'); },
 
     getEventos() { return request('GET', '/api/eventos'); },
     crearEvento(data) { return request('POST', '/api/eventos', data); },

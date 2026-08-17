@@ -1,4 +1,4 @@
-const CACHE = 'colmena-v9';
+const CACHE = 'colmena-v13';
 const PRECACHE = [
   '/css/styles.css',
   '/js/app.js',
@@ -110,7 +110,7 @@ async function refreshInBackground(req) {
 }
 
 self.addEventListener('push', function(event) {
-  let data = { title: 'Colmena', body: '', url: '/' };
+  let data = { title: 'PRIoridad Territorial', body: '', url: '/' };
   try {
     const parsed = event.data ? JSON.parse(event.data.text()) : {};
     data = { ...data, ...parsed };

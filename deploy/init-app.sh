@@ -22,7 +22,7 @@ sleep 3
 echo "==> Poligonos de secciones (idempotente)"
 psql -h "$PGHOST" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f /infrastructure/seed-seccion-geo-jr.sql
 
-echo "==> Migraciones (001 y 003-015; 002 es legacy y se omite)"
+echo "==> Migraciones (001 y 003-027; 002 es legacy y se omite)"
 apply() {
   if psql -h "$PGHOST" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "/db/migrations/$1.sql" >/dev/null; then
     echo "    OK  $1"
@@ -47,5 +47,17 @@ apply 011_backfill_casilla
 apply 013_alertas_votacion
 apply 014_incidencias
 apply 015_votantes_casa_diputado
+apply 016_auditoria_ciudadanos
+apply 017_encuesta_barrido
+apply 018_sin_simpatizante_encuesta_asignada
+apply 019_drop_trigger_gps_mapeo
+apply 020_roles_captura
+apply 021_representantes_casillas
+apply 022_meta_secciones
+apply 023_capturista_unique
+apply 024_coordinador_sin_secciones
+apply 025_incidencias_evidencia
+apply 026_incidencias_ruta
+apply 027_refresh_tokens
 
 echo "==> Init completado"

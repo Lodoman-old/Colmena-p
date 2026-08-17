@@ -46,3 +46,9 @@ desktop.ini
 
 # build logs
 build-log.txt
+
+# build logs (todos)
+build-*.txt
+build-err*.txt
+android/build-*.txt
+android/build-err*.txt
