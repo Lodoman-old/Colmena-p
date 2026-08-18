@@ -59,5 +59,6 @@ apply 024_coordinador_sin_secciones
 apply 025_incidencias_evidencia
 apply 026_incidencias_ruta
 apply 027_refresh_tokens
+apply 028_intencion_voto_split
 
 echo "==> Init completado"

@@ -70,7 +70,8 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         ubicacion GEOMETRY(POINT, 4326),
         simpatizante BOOLEAN DEFAULT FALSE,
         prioridad INTEGER DEFAULT 0,
-        intencion_voto INTEGER REFERENCES partidos_politicos(id),
+        intencion_voto_presidente INTEGER REFERENCES partidos_politicos(id),
+        intencion_voto_diputado INTEGER REFERENCES partidos_politicos(id),
         edad INTEGER,
         notas TEXT,
         timestamp_registro TIMESTAMP DEFAULT NOW()
