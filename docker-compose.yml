@@ -105,8 +105,8 @@ services:
 
   nginx:
     image: nginx:alpine
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     volumes:
       - /opt/colmena/src/config/nginx.conf:/etc/nginx/nginx.conf:ro
       - /opt/colmena/src/web:/usr/share/nginx/html:ro
