@@ -7,7 +7,7 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infrastructure/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - /opt/colmena/infrastructure/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     ports:
       - "15432:5432"
     networks:
@@ -79,9 +79,9 @@ services:
       DB_NAME: ${DB_NAME}
       PGHOST: postgres
     volumes:
-      - ./deploy/init-app.sh:/init-app.sh:ro
-      - ./db:/db:ro
-      - ./infrastructure:/infrastructure:ro
+      - /opt/colmena/deploy/init-app.sh:/init-app.sh:ro
+      - /opt/colmena/db:/db:ro
+      - /opt/colmena/infrastructure:/infrastructure:ro
     command: sh -c "bash /init-app.sh"
     networks:
       - appnet
@@ -96,7 +96,7 @@ services:
     command: sh -c 'if [ ! -f /data/guanajuato.osrm ]; then cp /pbf/guanajuato.osm.pbf /data/ && cd /data && osrm-extract -p /opt/car.lua guanajuato.osm.pbf && osrm-partition guanajuato.osrm && osrm-customize guanajuato.osrm; fi; exec osrm-routed --algorithm mld /data/guanajuato.osrm'
     volumes:
       - osrm_data:/data
-      - ./deploy/osrm-data:/pbf:ro
+      - /opt/colmena/osrm-data:/pbf:ro
     ports:
       - "5000:5000"
     networks:
@@ -108,9 +108,9 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./src/config/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./src/web:/usr/share/nginx/html:ro
-      - ./src/tiles-server:/usr/share/nginx/tiles:ro
+      - /opt/colmena/src/config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/colmena/src/web:/usr/share/nginx/html:ro
+      - /opt/colmena/src/tiles-server:/usr/share/nginx/tiles:ro
     depends_on:
       - api
     networks:
