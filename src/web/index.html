@@ -229,7 +229,7 @@
                 <button class="btn-small btn-danger" id="btn-cancelar-descarga" onclick="cancelarDescargaOffline()">Cancelar</button>
               </div>
               <div style="margin-top:10px;display:none;gap:8px;flex-wrap:wrap" id="offline-actions-done">
-                <button class="btn-small btn-primary" onclick="descargarOtroMunicipio()">📍 Descargar otro municipio</button>
+                <button class="btn-small btn-primary" id="btn-descargar-otro" onclick="descargarOtroMunicipio()">📍 Descargar otro municipio</button>
                 <button class="btn-small btn-secondary" onclick="cerrarModalOffline()">Listo</button>
               </div>
             </div>
@@ -680,6 +680,10 @@
           </div>
           <div id="ruta-enlace-section" class="hidden">
             <button id="btn-volver-admin" class="btn-small btn-secondary hidden" style="margin-bottom:8px">← Volver</button>
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+              <button class="btn-small btn-primary" onclick="descargarMapaMiZona()" title="Descarga el mapa de tu municipio para trabajar sin internet">📥 Mapa offline</button>
+              <span style="font-size:11px;color:#888">Descarga el mapa antes de salir a campo para trabajar sin señal.</span>
+            </div>
             <div class="ruta-enlace-tabs">
               <button class="ruta-enlace-tab-btn active" data-enlace-tab="pendientes">Pendientes</button>
               <button class="ruta-enlace-tab-btn" data-enlace-tab="completadas">Completadas</button>
@@ -1246,6 +1250,6 @@
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
   <script src="js/api.js?v=101"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=237"></script>
+  <script src="js/app.js?v=238"></script>
 </body>
 </html>

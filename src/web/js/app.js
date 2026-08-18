@@ -224,13 +224,15 @@
     return { latMin: minLat - 0.005, latMax: maxLat + 0.005, lngMin: minLng - 0.005, lngMax: maxLng + 0.005 };
   }
 
-  async function descargarMunicipio() {
+  async function descargarMunicipio(muniIdParam) {
     if (_descargaOffline) return;
     var select = document.getElementById('dash-municipio');
     var todosMuni = typeof todosMunicipios !== 'undefined' ? todosMunicipios : [];
-    var muniId = parseInt(select?.value || '', 10) || (todosMuni.find(m => m.es_default)?.id) || (todosMuni[0]?.id) || 11035;
+    var muniId = parseInt(muniIdParam || select?.value || '', 10) || (todosMuni.find(m => m.es_default)?.id) || (todosMuni[0]?.id) || 11035;
     var muni = (typeof todosMunicipios !== 'undefined' ? todosMunicipios : []).find(function(m) { return m.id === muniId; });
     var nombre = muni?.nombre || 'Municipio seleccionado';
+    var btnOtro = document.getElementById('btn-descargar-otro');
+    if (btnOtro) btnOtro.style.display = muniIdParam ? 'none' : '';
     var modal = document.getElementById('offline-modal');
     document.getElementById('offline-nombre').textContent = 'Descargando: ' + nombre;
     document.getElementById('offline-status').textContent = 'Calculando área...';
@@ -472,6 +474,12 @@
       : String(document.getElementById('offline-status').textContent).replace('Pausado (', '').replace(')', '');
   };
   window.descargarMunicipio = descargarMunicipio;
+  window.descargarMapaMiZona = function() {
+    var user = API.getUser();
+    var todosMuni = typeof todosMunicipios !== 'undefined' ? todosMunicipios : [];
+    var muniId = parseInt(user?.municipio_id || '', 10) || (todosMuni.find(m => m.es_default)?.id) || (todosMuni[0]?.id) || 11035;
+    descargarMunicipio(muniId);
+  };
 
   async function tryGetPosition() {
     if (typeof Capacitor !== 'undefined' && Capacitor.Plugins?.Geolocation) {
