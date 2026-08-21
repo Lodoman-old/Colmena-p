@@ -21,13 +21,25 @@ export interface RutaOptimizada {
     polyline: number[][];
     advertencias: string[];
 }
+export interface FiltrosRuta {
+    sexo?: string;
+    discapacidad_ids?: number[];
+    ocupacion_ids?: number[];
+    motivo_puerta_presente?: boolean;
+    sin_intencion?: boolean;
+    edad_max?: number;
+}
 export declare class RoutingService {
     private pool;
     constructor(pool: Pool);
+    construirWhereFiltros(filtros: FiltrosRuta, params: any[]): {
+        sql: string;
+        algunaCondicion: boolean;
+    };
     calcularRutaOptima(origen: Coordenada, seccionId: string, tipo?: 'encuesta' | 'seguros', maxDistanciaKm?: number): Promise<RutaOptimizada>;
     private obtenerParadas;
     private calcularDistancias;
-    repartirRutas(seccionId: string, tipo: 'encuesta' | 'seguros', numGrupos: number): Promise<RutaOptimizada[]>;
+    repartirRutas(seccionId: string, tipo: 'encuesta' | 'seguros' | 'filtro', numGrupos: number, filtros?: FiltrosRuta): Promise<RutaOptimizada[]>;
     private optimizarConOSRM;
     private calcularOrdenTSP;
     obtenerCentroideSeccion(seccionId: string): Promise<Coordenada | null>;

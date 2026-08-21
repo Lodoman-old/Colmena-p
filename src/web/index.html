@@ -501,17 +501,19 @@
                       </div>
                       <div id="campana-fields-encuesta" style="display:none">
                         <div class="form-group" style="padding:12px;background:#f4faf4;border:1px solid #c8e6c9;border-radius:8px">
-                          <div style="font-weight:600;color:var(--pri-green);margin-bottom:4px">Encuesta de campo</div>
-                          <div style="font-size:12px;color:#666;margin-bottom:8px">Configura las preguntas y lanza la encuesta para que el enlace la responda en cada parada de la ruta. También podrás verla en el navegador para mostrarla al cliente.</div>
+                          <div style="font-weight:600;color:var(--pri-green);margin-bottom:4px">📋 Encuesta de campo</div>
+                          <div style="font-size:12px;color:#666;margin-bottom:8px">Pasos: 1) Guarda la campaña · 2) Agrega las preguntas · 3) Lánzala para que los enlaces la respondan en campo</div>
                           <div style="display:flex;gap:6px;flex-wrap:wrap">
-                            <button type="button" class="btn-small btn-primary" onclick="abrirEncuestaEditor()" style="font-size:11px">✏️ Configurar preguntas</button>
+                            <button type="button" class="btn-small btn-primary" onclick="abrirEncuestaEditor()" style="font-size:11px">✏️ Agregar / editar preguntas</button>
                             <button type="button" class="btn-small btn-secondary" onclick="verEnlaceDemoPropia()" style="font-size:11px">👁 Ver encuesta de prueba</button>
                           </div>
                           <div id="campana-encuesta-status" style="font-size:11px;color:#999;margin-top:8px"></div>
                         </div>
                       </div>
-                      <div class="form-group">
-                        <label class="checkbox-line"><input type="checkbox" id="campana-enviar" checked> Marcar como enviada al guardar</label>
+                      <div id="campana-enviar-wrap">
+                        <div class="form-group">
+                          <label class="checkbox-line"><input type="checkbox" id="campana-enviar" checked> Marcar como enviada al guardar</label>
+                        </div>
                       </div>
                       <button class="btn-primary" onclick="guardarCampana()" style="position:sticky;bottom:0;z-index:1;width:100%">Guardar campaña</button>
                     </div>
@@ -519,6 +521,24 @@
                       <div class="carrito-header">Filtros agregados <span id="carrito-count">0</span></div>
                       <div id="carrito-lista"></div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Selección de secciones para campañas -->
+            <div id="campana-secciones-modal" class="modal-overlay hidden">
+              <div class="modal" style="max-width:420px">
+                <div class="modal-header">
+                  <h3>Seleccionar secciones</h3>
+                  <button class="modal-close" onclick="document.getElementById('campana-secciones-modal').classList.add('hidden')">X</button>
+                </div>
+                <div class="modal-body">
+                  <input type="text" id="campana-secciones-buscar" placeholder="Buscar sección..." oninput="filtrarSeccionesCampana(this.value)" style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <div id="campana-secciones-list" style="max-height:320px;overflow-y:auto;border:1px solid #ddd;border-radius:8px;padding:4px 8px"></div>
+                  <div style="display:flex;gap:6px;margin-top:12px">
+                    <button type="button" class="btn-small btn-primary" id="btn-confirmar-secciones" style="flex:1" onclick="confirmarSeccionesCampana()">Agregar</button>
+                    <button type="button" class="btn-small btn-secondary" style="flex:1" onclick="document.getElementById('campana-secciones-modal').classList.add('hidden')">Cancelar</button>
                   </div>
                 </div>
               </div>
@@ -558,9 +578,13 @@
             <div id="ciu-barrido" class="hidden" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
               <div id="ciu-barrido-form" style="flex:1;min-width:280px;background:#fff;border-radius:8px;padding:12px;box-shadow:var(--shadow)">
                 <div style="display:flex;gap:6px;margin-bottom:6px;position:relative">
-                  <input type="text" id="bf-nombre" placeholder="Nombre completo" style="flex:2;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
-                  <input type="text" id="bf-telefono" placeholder="Telefono" style="width:110px;flex:none;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
-                  <input type="number" id="bf-edad" placeholder="Edad" min="0" max="150" style="width:55px;flex:none;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <input type="text" id="bf-nombre" placeholder="Nombre(s)" style="flex:1.4;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <input type="text" id="bf-apellido_paterno" placeholder="Ap. paterno" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <input type="text" id="bf-apellido_materno" placeholder="Ap. materno" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                </div>
+                <div style="display:flex;gap:6px;margin-bottom:6px">
+                  <input type="text" id="bf-telefono" placeholder="Telefono" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <input type="number" id="bf-edad" placeholder="Edad" min="0" max="150" style="width:60px;flex:none;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
                   <input type="text" id="bf-cp" placeholder="CP" style="width:55px;flex:none;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px" maxlength="5" inputmode="numeric" oninput="buscarColoniasPorCP(this.value)">
                 </div>
                 <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;position:relative">
@@ -574,8 +598,19 @@
                 <div style="display:flex;gap:6px;margin-bottom:6px">
                   <select id="bf-seccion" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Seccion</option></select>
                 </div>
+                <div style="display:flex;gap:6px;margin-bottom:6px">
+                  <select id="bf-sexo" style="width:90px;flex:none;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Sexo</option><option value="H">Hombre</option><option value="M">Mujer</option></select>
+                  <select id="bf-discapacidad" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Discapacidad</option></select>
+                  <select id="bf-ocupacion" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Ocupación</option></select>
+                </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                  <label style="display:flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;white-space:nowrap" title="No abrió la puerta"><input type="checkbox" id="bf-no_abrio"> No abrió</label>
+                  <select id="bf-motivo" style="flex:1;min-width:110px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:12px" title="Si la persona no abrió o no quiso dar información, elige el motivo">
+                    <option value="">Entrevista realizada</option>
+                    <option value="no_abrio">🚪 No abrió</option>
+                    <option value="sin_info">🤐 No proporcionó info</option>
+                    <option value="con_prisa">⏱️ Tenía prisa</option>
+                    <option value="otro">❓ Otro motivo</option>
+                  </select>
                   <select id="bf-partido-presidente" style="flex:1;min-width:80px;padding:5px;border:2px solid var(--border);border-radius:6px;font-size:11px"><option value="">Presidente</option></select>
                   <select id="bf-partido-diputado" style="flex:1;min-width:80px;padding:5px;border:2px solid var(--border);border-radius:6px;font-size:11px"><option value="">Diputado</option></select>
                   <input type="hidden" id="bf-lat" value="">
@@ -601,7 +636,7 @@
               <div id="ciu-barrido-mapa" style="flex:1;min-width:280px;height:250px;border-radius:8px;box-shadow:var(--shadow)"></div>
             </div>
             <div id="ciu-tabla-container" class="table-container">
-              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Colonia</th><th>Sección</th><th>Prioridad</th><th>Foto</th><th></th></tr></thead>
+              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Colonia</th><th>Sección</th><th>Barrido</th><th>Prioridad</th><th>Foto</th><th></th></tr></thead>
                 <tbody id="ciudadanos-body"></tbody>
               </table>
             </div>
@@ -618,7 +653,7 @@
             </div>
             <div id="cpr-status" style="font-size:12px;color:var(--color-secondary);margin-bottom:6px"></div>
             <div class="table-container">
-              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>CURP</th><th>INE</th><th>Vigencia INE</th><th>Sección</th><th>Partido</th><th>Corrección</th><th></th></tr></thead>
+              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>CURP</th><th>INE</th><th>Vigencia INE</th><th>Sección</th><th>Perfil</th><th>Partido</th><th>Corrección</th><th></th></tr></thead>
                 <tbody id="comprometidos-body"></tbody>
               </table>
             </div>
@@ -767,6 +802,17 @@
             <div style="background:#f4f4f4;padding:8px 14px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border)">📈 Votación por hora <span style="font-size:11px;color:#777;font-weight:400">(últimas 48 h)</span></div>
             <div style="padding:10px"><canvas id="chart-horaria" style="max-height:240px;width:100%"></canvas></div>
           </div>
+          <div style="margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+            <div style="background:#f4f4f4;padding:8px 14px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+              <span>📊 Tendencias de actividad</span>
+              <select id="tend-dias" onchange="cargarTendencias()" style="padding:5px 8px;border:2px solid var(--border);border-radius:6px;font-size:12px">
+                <option value="7">Últimos 7 días</option>
+                <option value="30" selected>Últimos 30 días</option>
+                <option value="90">Últimos 90 días</option>
+              </select>
+            </div>
+            <div style="padding:10px"><canvas id="chart-tendencias" style="max-height:260px;width:100%"></canvas></div>
+          </div>
           <div id="rep-detalle" style="margin-top:16px"></div>
           <details style="margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
             <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#333;padding:10px 14px;background:#f8f8f8">📊 Seguimiento de votación <span style="font-size:11px;color:#777;font-weight:400">— registros del día de la elección (meta vs ya votaron)</span></summary>
@@ -782,6 +828,7 @@
           <h2>Respuestas de Encuestas</h2>
           <div class="toolbar">
             <select id="rep-encuesta-campana" onchange="cargarReporteEncuesta()"><option value="">Seleccionar encuesta...</option></select>
+            <button class="btn-small btn-primary" onclick="exportarRespuestasEncuesta()" title="Descargar Excel con las respuestas de la encuesta">⬇ Excel</button>
           </div>
           <div id="rep-encuesta-detalle" style="margin-top:12px;display:flex;flex-direction:column;gap:12px"></div>
         </div>
@@ -848,11 +895,33 @@
           <h2>Configuracion del Sistema</h2>
           <div class="cfg-tabs">
             <button class="cfg-tab active" data-panel="visual">Identidad visual</button>
+            <button class="cfg-tab" data-panel="catalogos">Catálogos</button>
             <button class="cfg-tab" data-panel="db">Base de datos</button>
             <button class="cfg-tab" data-panel="firebase">Firebase</button>
             <button class="cfg-tab" data-panel="twilio">Twilio</button>
             <button class="cfg-tab" data-panel="r2">Cloudflare R2</button>
             <button class="cfg-tab" data-panel="app">App y respaldo</button>
+          </div>
+          <div id="cfg-panel-catalogos" class="cfg-panel">
+            <p style="font-size:12px;color:#666;margin:0 0 12px">Estas opciones aparecen en los formularios de captura (barrido y simpatizantes). Si un elemento ya está usado por ciudadanos, se desactiva en lugar de eliminarse.</p>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div style="flex:1;min-width:260px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px">
+                <h3 style="margin:0 0 10px;font-size:15px">♿ Discapacidades</h3>
+                <div style="display:flex;gap:6px;margin-bottom:10px">
+                  <input type="text" id="cat-disc-nueva" placeholder="Nueva discapacidad" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <button class="btn-small btn-primary" onclick="catalogoAgregar('discapacidades')">+</button>
+                </div>
+                <ul id="cat-lista-discapacidades" class="cat-lista"></ul>
+              </div>
+              <div style="flex:1;min-width:260px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px">
+                <h3 style="margin:0 0 10px;font-size:15px">💼 Ocupaciones</h3>
+                <div style="display:flex;gap:6px;margin-bottom:10px">
+                  <input type="text" id="cat-ocu-nueva" placeholder="Nueva ocupación" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <button class="btn-small btn-primary" onclick="catalogoAgregar('ocupaciones')">+</button>
+                </div>
+                <ul id="cat-lista-ocupaciones" class="cat-lista"></ul>
+              </div>
+            </div>
           </div>
           <div id="cfg-panel-visual" class="cfg-panel active">
             <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
@@ -888,6 +957,7 @@
               <div class="form-group"><label for="cfg-firebase_api_key">Web API Key</label><input type="text" id="cfg-firebase_api_key" class="cfg-input" placeholder="AIza..."></div>
               <div class="form-group"><label for="cfg-firebase_project_id">Project ID</label><input type="text" id="cfg-firebase_project_id" class="cfg-input" placeholder="colmena-xxxxx"></div>
               <div class="form-group" style="grid-column:1/-1"><label for="cfg-firebase_app_id">App ID</label><input type="text" id="cfg-firebase_app_id" class="cfg-input" placeholder="1:123456789:android:abc123"></div>
+              <div class="form-group" style="grid-column:1/-1"><label for="cfg-firebase_service_account">Service Account JSON (Firebase Console → Project Settings → Service Accounts → Generate new private key)</label><textarea id="cfg-firebase_service_account" class="cfg-input" rows="6" style="font-family:monospace;font-size:10px" placeholder='{ "type": "service_account", "project_id": "...", "client_email": "...", "private_key": "-----BEGIN PRIVATE KEY-----..." }'></textarea></div>
             </div>
             <p style="font-size:11px;color:#999;margin:8px 0 0">Los cambios se aplican al instante. Para cambiar de proyecto Firebase (dev → prod), actualiza estos valores y regenera el APK con la nueva <code>google-services.json</code>.</p>
           </div>
@@ -1024,11 +1094,28 @@
             <div id="ruta-modal-crear" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.classList.add('hidden')">
               <div style="background:#fff;border-radius:12px;padding:20px;max-width:420px;width:90%;max-height:80vh;overflow-y:auto">
                 <h3 id="ruta-modal-titulo" style="margin:0 0 8px;font-size:14px">Asignar ruta - Seccion <span id="ruta-modal-sec"></span></h3>
-                <div style="display:flex;gap:6px;margin-bottom:6px">
+                <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
                   <button type="button" id="ruta-modal-tipo-seguros" class="btn-small btn-primary" onclick="setRutaModalTipo('seguros')">🛡 Simpatizantes</button>
                   <button type="button" id="ruta-modal-tipo-encuesta" class="btn-small btn-secondary" onclick="setRutaModalTipo('encuesta')">📋 Encuesta</button>
+                  <button type="button" id="ruta-modal-tipo-filtro" class="btn-small btn-secondary" onclick="setRutaModalTipo('filtro')">🎯 Por filtro</button>
                 </div>
                 <p id="ruta-modal-tipo-ayuda" style="font-size:11px;color:#666;margin:0 0 8px"></p>
+                <div id="ruta-modal-filtro-opts" class="hidden" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px">
+                  <div style="display:flex;gap:6px;margin-bottom:6px">
+                    <select id="rf-sexo" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px"><option value="">Cualquier sexo</option><option value="H">Hombres</option><option value="M">Mujeres</option></select>
+                    <input type="number" id="rf-edad-max" placeholder="Edad máx." min="16" max="120" style="width:90px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
+                  </div>
+                  <label style="display:block;font-size:11px;color:#666;margin:4px 0 2px">Discapacidad (vacío = todas):</label>
+                  <select id="rf-discapacidad" multiple size="4" style="width:100%;padding:4px;border:2px solid var(--border);border-radius:6px;font-size:12px"></select>
+                  <label style="display:block;font-size:11px;color:#666;margin:6px 0 2px">Ocupación (vacío = todas):</label>
+                  <select id="rf-ocupacion" multiple size="4" style="width:100%;padding:4px;border:2px solid var(--border);border-radius:6px;font-size:12px"></select>
+                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:8px;cursor:pointer"><input type="checkbox" id="rf-motivo"> Solo quienes no abrieron / no dieron info</label>
+                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:4px;cursor:pointer"><input type="checkbox" id="rf-sin-intencion"> Solo sin intención de voto registrada</label>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                    <button type="button" class="btn-small btn-secondary" onclick="previewRutaFiltro()">🔍 Previsualizar</button>
+                    <span id="rf-preview-count" style="font-size:12px;color:#333"></span>
+                  </div>
+                </div>
                 <div id="ruta-modal-encuesta-opts" class="hidden">
                   <label style="display:block;font-size:12px;margin-bottom:4px;color:#666">Encuesta para responder en cada parada</label>
                   <select id="ruta-modal-encuesta" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:10px"><option value="">Sin encuesta</option></select>
@@ -1246,10 +1333,27 @@
       </div>
     </div>
   </div>
+  <div id="alert-modal" class="alert-modal" style="display:none">
+    <div class="alert-box">
+      <div class="alert-icon" id="alert-icon">ℹ️</div>
+      <div class="alert-title" id="alert-title">Aviso</div>
+      <div class="alert-msg" id="alert-msg"></div>
+      <button class="btn-primary alert-ok" id="alert-ok">Entendido</button>
+    </div>
+  </div>
+  <div id="vc-resumen-modal" class="alert-modal" style="display:none">
+    <div class="alert-box" style="max-width:560px;text-align:left;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="alert-title" id="vc-resumen-titulo" style="margin:0">Votantes en casa</div>
+        <button onclick="document.getElementById('vc-resumen-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#666">×</button>
+      </div>
+      <div id="vc-resumen-body" style="font-size:13px;color:#374151"></div>
+    </div>
+  </div>
   <div id="notify-toast" class="notify-toast" style="display:none"></div>
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
-  <script src="js/api.js?v=101"></script>
+  <script src="js/api.js?v=249"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=238"></script>
+  <script src="js/app.js?v=258"></script>
 </body>
 </html>

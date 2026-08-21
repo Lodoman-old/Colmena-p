@@ -9,7 +9,22 @@ window.notify = function(msg, type) {
   clearTimeout(_notifyTimer);
   _notifyTimer = setTimeout(function(){ el.style.display = 'none'; }, 4000);
 };
-window.alert = function(msg) { window.notify(msg, 'info'); };
+window.alert = function(msg, opts) {
+  opts = opts || {};
+  var el = document.getElementById('alert-modal');
+  if (!el) { window.notify(msg, 'info'); return; }
+  var tipo = opts.type || 'info';
+  var iconos = { info: 'ℹ️', success: '✅', error: '⚠️', warn: '⚠️' };
+  var titulos = { info: 'Aviso', success: 'Listo', error: 'Atención', warn: 'Atención' };
+  document.getElementById('alert-icon').textContent = iconos[tipo] || iconos.info;
+  document.getElementById('alert-title').textContent = opts.title || titulos[tipo] || 'Aviso';
+  var msgEl = document.getElementById('alert-msg');
+  msgEl.textContent = String(msg == null ? '' : msg);
+  el.dataset.tipo = tipo;
+  el.style.display = 'flex';
+  var btn = document.getElementById('alert-ok');
+  btn.onclick = function() { el.style.display = 'none'; if (opts.onOk) opts.onOk(); };
+};
 window.confirmAsync = function(msg) {
   return new Promise(function(resolve) {
     var el = document.getElementById('confirm-modal');
@@ -25,6 +40,22 @@ const API = (() => {
   const BASE = localStorage.getItem('colmena_server') || '';
   const _getCache = new Map();
   const _getCacheTtl = 20000;
+  const _lsPathRe = /^\/api\/(secciones\/\d+|secciones|partidos|estados(\/default)?|municipios(\/\d+|\/default)?)$/;
+  function _lsKey(path) { return 'colmena_api_cache_' + path.replace(/[^a-z0-9]/gi, '_'); }
+  function lsCacheGet(path) {
+    if (!_lsPathRe.test(path)) return null;
+    try {
+      const raw = localStorage.getItem(_lsKey(path));
+      if (!raw) return null;
+      const c = JSON.parse(raw);
+      if (Date.now() - (c.ts || 0) > 7 * 86400000) { localStorage.removeItem(_lsKey(path)); return null; }
+      return c.data;
+    } catch { return null; }
+  }
+  function lsCacheSet(path, data) {
+    if (!_lsPathRe.test(path)) return;
+    try { localStorage.setItem(_lsKey(path), JSON.stringify({ ts: Date.now(), data })); } catch {}
+  }
   let _staleServed = false;
   let token = localStorage.getItem('colmena_token');
   let refreshToken = localStorage.getItem('colmena_refresh');
@@ -84,10 +115,29 @@ const API = (() => {
       const hit = _getCache.get(cacheKey);
       if (hit && Date.now() - hit.ts < _getCacheTtl) return hit.data;
     }
-    const res = await Promise.race([
-      fetch(`${BASE}${path}`, opts),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs))
-    ]);
+    let res;
+    if (method === 'GET' && !navigator.onLine) {
+      const cachedNow = lsCacheGet(path);
+      if (cachedNow) {
+        if (typeof window.notify === 'function') window.notify('Sin conexión: usando datos guardados', 'info');
+        return cachedNow;
+      }
+    }
+    try {
+      res = await Promise.race([
+        fetch(`${BASE}${path}`, opts),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs))
+      ]);
+    } catch (e) {
+      if (method === 'GET') {
+        const cached = lsCacheGet(path);
+        if (cached) {
+          if (typeof window.notify === 'function') window.notify('Sin conexión: usando datos guardados', 'info');
+          return cached;
+        }
+      }
+      throw e;
+    }
     const fromSwCache = res.headers.get('X-SW-Stale') === '1';
     const text = await res.text();
     let data;
@@ -97,12 +147,22 @@ const API = (() => {
         if (await renovarSesion()) return request(method, path, body, timeoutMs);
         cerrarSesionTokenExpirado();
       }
+      if (method === 'GET') {
+        const cached = lsCacheGet(path);
+        if (cached) {
+          if (typeof window.notify === 'function') window.notify('Sin conexión: usando datos guardados', 'info');
+          return cached;
+        }
+      }
       throw new Error(data.error || 'Error de conexión');
     }
     if (method === 'GET') {
       if (fromSwCache) _staleServed = true;
       else _staleServed = false;
-      if (!fromSwCache) _getCache.set(cacheKey, { ts: Date.now(), data });
+      if (!fromSwCache) {
+        _getCache.set(cacheKey, { ts: Date.now(), data });
+        lsCacheSet(path, data);
+      }
     } else _getCache.clear();
     return data;
   }
@@ -187,6 +247,12 @@ const API = (() => {
     eliminarComprometido(id) { return request('DELETE', `/api/comprometidos/${id}`); },
     solicitarCorreccionComprometido(id) { return request('POST', `/api/comprometidos/${id}/solicitar-correccion`); },
 
+    getCatalogo(tipo, todos) { return request('GET', `/api/catalogos/${tipo}${todos ? '?todos=1' : ''}`); },
+    crearCatalogoItem(tipo, data) { return request('POST', `/api/catalogos/${tipo}`, data); },
+    actualizarCatalogoItem(tipo, id, data) { return request('PUT', `/api/catalogos/${tipo}/${id}`, data); },
+    eliminarCatalogoItem(tipo, id) { return request('DELETE', `/api/catalogos/${tipo}/${id}`); },
+    previewRutaFiltro(seccionId, filtros) { return request('POST', '/api/rutas/preview-filtro', { seccion_id: seccionId, filtros }); },
+
     getSeccionalCapturistas() { return request('GET', '/api/seccional/capturistas'); },
     putSeccionalCapturistas(capturistaIds) { return request('PUT', '/api/seccional/capturistas', { capturista_ids: capturistaIds }); },
     getMetas() { return request('GET', '/api/metas'); },
@@ -236,7 +302,7 @@ const API = (() => {
     },
     request(method, path, body) { return request(method, path, body); },
     requestBlob(method, path, body) { return requestBlob(method, path, body); },
-    getGeometrias(municipioId) { return request('GET', `/api/secciones/${municipioId}/geometrias`); },
+    getGeometrias(municipioId, todas) { return request('GET', `/api/secciones/${municipioId}/geometrias${todas ? '?todas=1' : ''}`); },
     getSeccionesAlcanzadas(eventoId) { return request('GET', `/api/geocercas/${eventoId}/secciones-alcanzadas`); },
     getAlertasStats() { return request('GET', '/api/alertas/stats'); },
     getAlertasUltimas() { return request('GET', '/api/alertas/ultimas'); },

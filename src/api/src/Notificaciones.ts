@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { Pool } from 'pg';
+import jwt from 'jsonwebtoken';
 
 export class NotificacionService {
   private pool: Pool;
+  private _fcmToken: { token: string; exp: number } | null = null;
 
   constructor(pool: Pool) {
     this.pool = pool;
@@ -15,21 +17,53 @@ export class NotificacionService {
     } catch { return ''; }
   }
 
+  private async obtenerAccessTokenFCM(): Promise<string> {
+    try {
+      if (this._fcmToken && this._fcmToken.exp > Date.now() + 60000) return this._fcmToken.token;
+      const saRaw = await this.getConfig('firebase_service_account');
+      if (!saRaw) return '';
+      const sa = JSON.parse(saRaw);
+      const now = Math.floor(Date.now() / 1000);
+      const assertion = jwt.sign(
+        {
+          iss: sa.client_email,
+          sub: sa.client_email,
+          aud: 'https://oauth2.googleapis.com/token',
+          iat: now,
+          exp: now + 3300,
+          scope: 'https://www.googleapis.com/auth/firebase.messaging'
+        },
+        sa.private_key,
+        { algorithm: 'RS256' }
+      );
+      const r = await axios.post('https://oauth2.googleapis.com/token',
+        new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+      const t = r.data.access_token as string;
+      this._fcmToken = { token: t, exp: Date.now() + (parseInt(r.data.expires_in || '3300', 10) * 1000) };
+      return t;
+    } catch (e: any) { console.warn('FCM token:', e?.message || e); return ''; }
+  }
+
   async enviarPush(tokenFcm: string, titulo: string, cuerpo: string): Promise<void> {
     try {
-      const serverKey = await this.getConfig('firebase_key');
-      if (!serverKey || !tokenFcm) return;
-      await axios.post('https://fcm.googleapis.com/fcm/send', {
-        to: tokenFcm,
-        notification: { title: titulo, body: cuerpo }
-      }, { headers: { 'Authorization': 'key=' + serverKey, 'Content-Type': 'application/json' } });
-    } catch {}
+      const saRaw = await this.getConfig('firebase_service_account');
+      if (!saRaw || !tokenFcm) return;
+      const sa = JSON.parse(saRaw);
+      const accessToken = await this.obtenerAccessTokenFCM();
+      if (!accessToken) return;
+      await axios.post(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
+        { message: { token: tokenFcm, notification: { title: titulo, body: cuerpo } } },
+        { headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' } }
+      );
+    } catch (e: any) { console.warn('FCM v1:', e?.response?.data || e?.message || e); }
   }
 
   async enviarPushAUsuarios(userIds: string[], titulo: string, cuerpo: string): Promise<void> {
     try {
-      const serverKey = await this.getConfig('firebase_key');
-      if (!serverKey) return;
+      const saRaw = await this.getConfig('firebase_service_account');
+      if (!saRaw) return;
       const tokens = (await this.pool.query('SELECT DISTINCT token_fcm FROM dispositivos WHERE usuario_id = ANY($1)', [userIds])).rows;
       for (const t of tokens) {
         await this.enviarPush(t.token_fcm, titulo, cuerpo);

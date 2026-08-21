@@ -1,4 +1,4 @@
-package com.colmena.app;
+package com.prioridadterritorial.app;
 
 import android.Manifest;
 import android.content.Intent;

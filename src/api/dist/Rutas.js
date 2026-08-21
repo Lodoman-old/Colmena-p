@@ -10,6 +10,34 @@ class RoutingService {
     constructor(pool) {
         this.pool = pool;
     }
+    // Construye el WHERE dinámico para rutas por filtro sobre la tabla ciudadanos.
+    // params debe contener ya los parámetros previos ($1 = seccion_id).
+    construirWhereFiltros(filtros, params) {
+        const conds = [];
+        if (filtros.sexo === 'H' || filtros.sexo === 'M') {
+            params.push(filtros.sexo);
+            conds.push(`c.sexo = $${params.length}`);
+        }
+        if (Array.isArray(filtros.discapacidad_ids) && filtros.discapacidad_ids.length) {
+            params.push(filtros.discapacidad_ids.map((x) => parseInt(x)).filter((n) => !Number.isNaN(n)));
+            conds.push(`c.discapacidad_id = ANY($${params.length})`);
+        }
+        if (Array.isArray(filtros.ocupacion_ids) && filtros.ocupacion_ids.length) {
+            params.push(filtros.ocupacion_ids.map((x) => parseInt(x)).filter((n) => !Number.isNaN(n)));
+            conds.push(`c.ocupacion_id = ANY($${params.length})`);
+        }
+        if (filtros.motivo_puerta_presente) {
+            conds.push(`c.motivo_puerta IS NOT NULL`);
+        }
+        if (filtros.sin_intencion) {
+            conds.push(`c.intencion_voto_presidente IS NULL`);
+        }
+        if (filtros.edad_max != null && !Number.isNaN(parseInt(String(filtros.edad_max)))) {
+            params.push(parseInt(String(filtros.edad_max)));
+            conds.push(`c.edad <= $${params.length}`);
+        }
+        return { sql: conds.length ? ' AND ' + conds.join(' AND ') : '', algunaCondicion: conds.length > 0 };
+    }
     async calcularRutaOptima(origen, seccionId, tipo = 'encuesta', maxDistanciaKm = 25) {
         const paradas = await this.obtenerParadas(seccionId, tipo);
         const advertencias = [];
@@ -36,9 +64,10 @@ class RoutingService {
             advertencias
         };
     }
-    async obtenerParadas(seccionId, tipo) {
+    async obtenerParadas(seccionId, tipo, filtros) {
         let query;
         const params = [seccionId];
+        let filtrosSql = '';
         if (tipo === 'seguros') {
             query = `
         SELECT c.id, c.nombre, c.telefono,
@@ -53,27 +82,27 @@ class RoutingService {
         WHERE c.seccion_id = $1
           AND c.ubicacion IS NOT NULL
       `;
+            query += ` ORDER BY c.nombre`;
         }
         else {
+            if (tipo === 'filtro' && filtros) {
+                const w = this.construirWhereFiltros(filtros, params);
+                filtrosSql = w.sql;
+            }
             query = `
         SELECT c.id, c.nombre, c.telefono,
                ST_X(c.ubicacion::geometry) as lng,
                ST_Y(c.ubicacion::geometry) as lat,
-               c.simpatizante as es_simpatizante,
+               false as es_simpatizante,
                c.prioridad,
                c.calle, c.numero, c.colonia,
                (v.id IS NOT NULL) AS ya_voto
         FROM ciudadanos c
         LEFT JOIN votos v ON v.ciudadano_id = c.id
         WHERE c.seccion_id = $1
-          AND c.ubicacion IS NOT NULL
+          AND c.ubicacion IS NOT NULL${filtrosSql}
       `;
-        }
-        if (tipo === 'seguros') {
-            query += ` ORDER BY c.nombre`;
-        }
-        else {
-            query += ` ORDER BY c.prioridad DESC, c.simpatizante DESC`;
+            query += ` ORDER BY c.prioridad DESC, c.nombre`;
         }
         const result = await this.pool.query(query, params);
         return result.rows.map((row) => ({
@@ -112,8 +141,8 @@ class RoutingService {
         }
         return paradas;
     }
-    async repartirRutas(seccionId, tipo, numGrupos) {
-        const paradas = await this.obtenerParadas(seccionId, tipo);
+    async repartirRutas(seccionId, tipo, numGrupos, filtros) {
+        const paradas = await this.obtenerParadas(seccionId, tipo, filtros);
         if (!paradas.length || !numGrupos)
             return [];
         const centroid = await this.obtenerCentroideSeccion(seccionId);

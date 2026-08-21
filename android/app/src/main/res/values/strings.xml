@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">PRIoridad Territorial</string>
     <string name="title_activity_main">PRIoridad Territorial</string>
-    <string name="package_name">com.colmena.app</string>
-    <string name="custom_url_scheme">com.colmena.app</string>
+<string name="package_name">com.prioridadterritorial.app</string>
+    <string name="custom_url_scheme">com.prioridadterritorial.app</string>
 </resources>
 

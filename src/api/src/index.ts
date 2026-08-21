@@ -123,6 +123,35 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES ('url_publica', 'ht
 ON CONFLICT (clave) DO NOTHING;
 `).catch((e: any) => console.warn('Migration (visitas/encuestas/auditoria):', e?.message));
 
+// Migration: catalogos discapacidad/ocupacion + perfil del ciudadano
+pool.query(`
+CREATE TABLE IF NOT EXISTS cat_discapacidades (
+  id SERIAL PRIMARY KEY,
+  nombre VARCHAR(100) NOT NULL UNIQUE,
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  orden INTEGER NOT NULL DEFAULT 0,
+  creado_en TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS cat_ocupaciones (
+  id SERIAL PRIMARY KEY,
+  nombre VARCHAR(100) NOT NULL UNIQUE,
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  orden INTEGER NOT NULL DEFAULT 0,
+  creado_en TIMESTAMP DEFAULT NOW()
+);
+ALTER TABLE ciudadanos ADD COLUMN IF NOT EXISTS sexo CHAR(1);
+ALTER TABLE ciudadanos ADD COLUMN IF NOT EXISTS discapacidad_id INTEGER REFERENCES cat_discapacidades(id) ON DELETE SET NULL;
+ALTER TABLE ciudadanos ADD COLUMN IF NOT EXISTS ocupacion_id INTEGER REFERENCES cat_ocupaciones(id) ON DELETE SET NULL;
+ALTER TABLE ciudadanos ADD COLUMN IF NOT EXISTS motivo_puerta VARCHAR(30);
+ALTER TABLE ciudadanos_comprometidos ADD COLUMN IF NOT EXISTS sexo CHAR(1);
+ALTER TABLE ciudadanos_comprometidos ADD COLUMN IF NOT EXISTS discapacidad_id INTEGER REFERENCES cat_discapacidades(id) ON DELETE SET NULL;
+ALTER TABLE ciudadanos_comprometidos ADD COLUMN IF NOT EXISTS ocupacion_id INTEGER REFERENCES cat_ocupaciones(id) ON DELETE SET NULL;
+INSERT INTO cat_discapacidades (nombre, orden) VALUES ('Ninguna',0),('Visual',1),('Auditiva',2),('Motriz',3),('Cognitiva',4),('Otra',5)
+ON CONFLICT (nombre) DO NOTHING;
+INSERT INTO cat_ocupaciones (nombre, orden) VALUES ('Estudiante',0),('Hogar',1),('Empleado',2),('Comerciante',3),('Agricultor',4),('Jubilado / Pensionado',5),('Profesionista',6),('Otro',7)
+ON CONFLICT (nombre) DO NOTHING;
+`).catch((e: any) => console.warn('Migration (catalogos/perfil):', e?.message));
+
 async function logAuditoria(userId: string | undefined, usuarioNombre: string | undefined, accion: string, entidad: string, entidadId: string | undefined, detalle?: any) {
   try {
     await pool.query(
@@ -164,7 +193,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 4000, standardHeaders: true, legacyHeaders: false, skipFailedRequests: true, message: { error: 'Demasiadas solicitudes, intente más tarde' } }));
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 50000, standardHeaders: true, legacyHeaders: false, skipFailedRequests: true, message: { error: 'Demasiadas solicitudes, intente más tarde' } }));
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err.type === 'entity.parse.failed') { res.status(400).json({ error: 'Formato JSON inválido' }); return; }
   console.error('Error no manejado:', err);
@@ -739,8 +768,12 @@ app.post('/api/upload/migrate-r2', authenticateToken, requireAdmin, async (_req:
 
 app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
-    if (!seccion_id || (!nombre && !no_abrio)) { res.status(400).json({ error: 'seccion_id requerido; nombre requerido salvo que no haya abierto' }); return; }
+    const { seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, lat, lng, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
+    const motivoRaw = req.body.motivo_puerta;
+    const motivoPuerta = ['no_abrio', 'sin_info', 'con_prisa', 'otro'].includes(motivoRaw) ? motivoRaw : null;
+    const noAbrioFinal = !!no_abrio || !!motivoPuerta;
+    if (!seccion_id || (!nombre && !noAbrioFinal)) { res.status(400).json({ error: 'seccion_id requerido; nombre requerido salvo que no haya abierto' }); return; }
+    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : (nombre || null);
     const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
     const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : null);
     // Idempotency check: if key provided and already processed, return existing record
@@ -748,16 +781,20 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
       const existing = await pool.query('SELECT id FROM ciudadanos WHERE idempotency_key=$1', [idempotency_key]);
       if (existing.rows.length) {
         res.status(200).json({ id: existing.rows[0].id, message: 'Ya existe (idempotente)' });
-        try { io.emit('nuevo-ciudadano', { seccion_id, lat, lng, nombre }); } catch (e) { console.warn('io.emit error:', e); }
+        try { io.emit('nuevo-ciudadano', { seccion_id, lat, lng, nombre: nombreFinal }); } catch (e) { console.warn('io.emit error:', e); }
         return;
       }
     }
     const id = crypto.randomUUID();
-    const ubiSql = 'ST_SetSRID(ST_MakePoint($10,$11),4326)';
+    const ubiSql = 'ST_SetSRID(ST_MakePoint($12,$13),4326)';
     await pool.query(
-      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${ubiSql},$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
-      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacion ? +lng : null, tieneUbicacion ? +lat : null, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, idempotency_key||null, casillaAuto, votantes_casa ? parseInt(votantes_casa) : 1, !!no_abrio, (req as any).user?.userId || null]
+      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, ubicacion, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, created_by, sexo, discapacidad_id, ocupacion_id, motivo_puerta)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${ubiSql},$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+      [id, seccion_id, numero_hogar||null, nombreFinal, apellido_paterno||null, apellido_materno||null, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacion ? +lng : null, tieneUbicacion ? +lat : null, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, idempotency_key||null, casillaAuto, votantes_casa ? parseInt(votantes_casa) : 1, noAbrioFinal, (req as any).user?.userId || null,
+       ['H','M'].includes(req.body.sexo) ? req.body.sexo : null,
+       req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null,
+       req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null,
+       motivoPuerta]
     );
     if (encuesta_campana_id) {
       await pool.query(
@@ -797,22 +834,33 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
 
 app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
+    const { nombre, apellido_paterno, apellido_materno, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
+    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : (nombre || null);
     const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
     const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : (casilla_id === null ? null : undefined));
+    // Perfil: motivo_puerta controla no_abrio; se puede limpiar enviando null/''
+    let motivoPuerta: string | null | undefined = undefined;
+    if (req.body.motivo_puerta !== undefined) {
+      motivoPuerta = ['no_abrio', 'sin_info', 'con_prisa', 'otro'].includes(req.body.motivo_puerta) ? req.body.motivo_puerta : null;
+    }
     const parts: string[] = [];
     const params: any[] = [];
     const p = (v: any) => { params.push(v); return '$' + params.length; };
-    const cols = ['nombre', 'telefono', 'seccion_id', 'calle', 'numero', 'colonia', 'cp'];
-    const vals = [nombre||null, telefono||null, seccion_id||null, calle||null, numero||null, colonia||null, cp||null];
+    const cols = ['nombre', 'apellido_paterno', 'apellido_materno', 'telefono', 'seccion_id', 'calle', 'numero', 'colonia', 'cp'];
+    const vals = [nombreFinal, apellido_paterno||null, apellido_materno||null, telefono||null, seccion_id||null, calle||null, numero||null, colonia||null, cp||null];
     parts.push(cols.map((c,i) => c + '=COALESCE(' + p(vals[i]) + ',' + c + ')').join(','));
     if (lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng)) {
       parts.push('ubicacion=ST_SetSRID(ST_MakePoint(' + p(+lng) + ',' + p(+lat) + '),4326)');
     }
     if (casillaAuto !== undefined) parts.push('casilla_id=' + p(casillaAuto));
     const cols2 = ['prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'votantes_casa', 'no_abrio'];
-    const vals2 = [prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null, votantes_casa ? parseInt(votantes_casa) : null, no_abrio!=null?!!no_abrio:null];
+    const noAbrioPut = motivoPuerta !== undefined ? (!!no_abrio || !!motivoPuerta || null) : (no_abrio!=null?!!no_abrio:null);
+    const vals2 = [prioridad||0, numero_hogar||null, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad||null, votantes_casa ? parseInt(votantes_casa) : null, noAbrioPut];
     parts.push(cols2.map((c,i) => c + '=COALESCE(' + p(vals2[i]) + ',' + c + ')').join(','));
+    if (['H','M'].includes(req.body.sexo)) parts.push('sexo=' + p(req.body.sexo));
+    if (req.body.discapacidad_id !== undefined) parts.push('discapacidad_id=' + p(req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null));
+    if (req.body.ocupacion_id !== undefined) parts.push('ocupacion_id=' + p(req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null));
+    if (motivoPuerta !== undefined) parts.push('motivo_puerta=' + p(motivoPuerta));
     parts.push('updated_at=now()');
     parts.push('updated_by=' + p((req as any).user?.userId || null));
     params.push(req.params.id);
@@ -895,11 +943,12 @@ app.delete('/api/ciudadanos/:id/foto', authenticateToken, async (req: Request, r
 
 app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
     const seccionId = req.query.seccion_id;
-    let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.notas,
+    let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.apellido_paterno, c.apellido_materno, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.notas,
                   ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
-                  c.prioridad, c.timestamp_registro,
+                  c.prioridad, c.timestamp_registro, c.sexo, c.motivo_puerta,
+                  c.discapacidad_id, cd.nombre as discapacidad_nombre,
+                  c.ocupacion_id, co2.nombre as ocupacion_nombre,
                   c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
                   c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
                   c.casilla_id, cs.nombre as casilla_nombre, c.votantes_casa, c.no_abrio,
@@ -917,14 +966,11 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
                 LEFT JOIN usuarios ucb ON ucb.id = c.created_by
                 LEFT JOIN usuarios uub ON uub.id = c.updated_by
                 LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
-                LEFT JOIN votos v ON v.ciudadano_id = c.id`;
+                LEFT JOIN votos v ON v.ciudadano_id = c.id
+                LEFT JOIN cat_discapacidades cd ON cd.id = c.discapacidad_id
+                LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id`;
     const params: any[] = [];
     const conds: string[] = [];
-    if (user.rol === 'enlace') {
-      const secs = await getUserSecciones(user.userId);
-      if (!secs.length) { res.json([]); return; }
-      params.push(secs); conds.push(`c.seccion_id = ANY($${params.length})`);
-    }
     if (seccionId) { params.push(seccionId); conds.push(`c.seccion_id = $${params.length}`); }
     if (conds.length) query += ' WHERE ' + conds.join(' AND ');
     query += ' ORDER BY c.timestamp_registro DESC';
@@ -1107,9 +1153,11 @@ app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Respo
     const user = (req as any).user;
     if (!esAdminOCoordinador(user) && user.rol !== 'capturista' && user.rol !== 'seccional') { res.status(403).json({ error: 'Solo coordinadores, administradores, seccionales y capturistas' }); return; }
     const seccionId = req.query.seccion_id;
-    let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.fecha_nacimiento, c.notas,
+    let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.apellido_paterno, c.apellido_materno, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.fecha_nacimiento, c.notas,
                   ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
-                  c.timestamp_registro,
+                  c.timestamp_registro, c.sexo,
+                  c.discapacidad_id, cd.nombre as discapacidad_nombre,
+                  c.ocupacion_id, co2.nombre as ocupacion_nombre,
                   c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
                   c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
                   c.correo, c.curp, c.ine, c.vigencia_ine,
@@ -1128,7 +1176,9 @@ app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Respo
                 LEFT JOIN usuarios ucb ON ucb.id = c.created_by
                 LEFT JOIN usuarios uub ON uub.id = c.updated_by
                 LEFT JOIN usuarios ucb_corr ON ucb_corr.id = c.correccion_solicitada_by
-                LEFT JOIN votos v ON v.comprometido_id = c.id`;
+                LEFT JOIN votos v ON v.comprometido_id = c.id
+                LEFT JOIN cat_discapacidades cd ON cd.id = c.discapacidad_id
+                LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id`;
     const params: any[] = [];
     const conds: string[] = [];
     if (user.rol === 'capturista') {
@@ -1249,8 +1299,9 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
   try {
     const user = (req as any).user;
     if (!esAdminOCoordinador(user) && user.rol !== 'capturista') { res.status(403).json({ error: 'Solo coordinadores, administradores y capturistas' }); return; }
-    const { seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, lat, lng, intencion_voto_presidente, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, idempotency_key, casilla_id } = req.body;
+    const { seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, lat, lng, intencion_voto_presidente, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, idempotency_key, casilla_id } = req.body;
     if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
+    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : nombre;
     // Captura obligatoria: todos los campos salvo el correo
     if (user.rol === 'capturista') {
       if (!telefono || !curp || !ine || !vigencia_ine || !calle || !numero || !colonia || !cp || !fecha_nacimiento) {
@@ -1271,7 +1322,7 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
       if (!/^\d{4}-\d{2}-\d{2}$/.test(vigenciaIneVal) || Number.isNaN(new Date(vigenciaIneVal).getTime())) { res.status(400).json({ error: 'Vigencia de INE inválida' }); return; }
     }
     if (curpVal) {
-      const errSem = validarCurpSemantica(curpVal, nombre, fechaNacVal);
+      const errSem = validarCurpSemantica(curpVal, nombreFinal, fechaNacVal);
       if (errSem) { res.status(400).json({ error: errSem }); return; }
       const dup = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE UPPER(curp)=$1', [curpVal]);
       if (dup.rows.length) { res.status(400).json({ error: 'La CURP ya está registrada en ciudadanos seguros' }); return; }
@@ -1282,11 +1333,14 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
     }
     const id = crypto.randomUUID();
     const tieneUbicacionComp = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
-    const ubiSqlComp = 'ST_SetSRID(ST_MakePoint($10,$11),4326)';
+    const ubiSqlComp = 'ST_SetSRID(ST_MakePoint($12,$13),4326)';
     await pool.query(
-      `INSERT INTO ciudadanos_comprometidos (id, seccion_id, numero_hogar, nombre, telefono, calle, numero, colonia, cp, ubicacion, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, capturado_por, idempotency_key, casilla_id, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${ubiSqlComp},$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
-      [id, seccion_id, numero_hogar||null, nombre, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacionComp ? +lng : null, tieneUbicacionComp ? +lat : null, intencion_voto_presidente||null, null, notas||null, edad ? parseInt(edad) : null, fechaNacVal, correo||null, curpVal, ine||null, vigenciaIneVal, user.userId, idempotency_key||null, casillaAuto, user.userId]
+      `INSERT INTO ciudadanos_comprometidos (id, seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, ubicacion, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, capturado_por, idempotency_key, casilla_id, created_by, sexo, discapacidad_id, ocupacion_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${ubiSqlComp},$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+      [id, seccion_id, numero_hogar||null, nombreFinal, apellido_paterno||null, apellido_materno||null, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacionComp ? +lng : null, tieneUbicacionComp ? +lat : null, intencion_voto_presidente||null, null, notas||null, edad ? parseInt(edad) : null, fechaNacVal, correo||null, curpVal, ine||null, vigenciaIneVal, user.userId, idempotency_key||null, casillaAuto, user.userId,
+       ['H','M'].includes(req.body.sexo) ? req.body.sexo : null,
+       req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null,
+       req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null]
     );
     res.status(201).json({ id, message: 'Ciudadano comprometido creado' });
     try { io.emit('nuevo-comprometido', { id, seccion_id }); } catch (e) { console.warn('io.emit error:', e); }
@@ -1311,9 +1365,10 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
         }
       } else { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
     }
-    const { nombre, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, numero_hogar, intencion_voto_presidente, notas, edad, fecha_nacimiento, curp, vigencia_ine, casilla_id } = req.body;
+    const { nombre, apellido_paterno, apellido_materno, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, numero_hogar, intencion_voto_presidente, notas, edad, fecha_nacimiento, curp, vigencia_ine, casilla_id } = req.body;
     const curpVal = normalizarCurp(curp);
     if (curpVal && !validarCurp(curpVal)) { res.status(400).json({ error: 'CURP inválida: debe tener 18 caracteres con el formato oficial (ej. GODE561231HDFRRN09)' }); return; }
+    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : nombre;
     let fechaNacVal: string | null = null;
     if (fecha_nacimiento) {
       fechaNacVal = String(fecha_nacimiento).slice(0, 10);
@@ -1325,7 +1380,7 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
       if (!/^\d{4}-\d{2}-\d{2}$/.test(vigenciaIneVal) || Number.isNaN(new Date(vigenciaIneVal).getTime())) { res.status(400).json({ error: 'Vigencia de INE inválida' }); return; }
     }
     if (curpVal) {
-      const errSem = validarCurpSemantica(curpVal, nombre, fechaNacVal);
+      const errSem = validarCurpSemantica(curpVal, nombreFinal, fechaNacVal);
       if (errSem) { res.status(400).json({ error: errSem }); return; }
       const dup = await pool.query('SELECT id FROM ciudadanos_comprometidos WHERE UPPER(curp)=$1 AND id<>$2', [curpVal, req.params.id]);
       if (dup.rows.length) { res.status(400).json({ error: 'La CURP ya está registrada en ciudadanos seguros' }); return; }
@@ -1333,8 +1388,8 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
     const parts: string[] = [];
     const params: any[] = [];
     const p = (v: any) => { params.push(v); return '$' + params.length; };
-    const cols = ['nombre', 'telefono', 'seccion_id', 'calle', 'numero', 'colonia', 'cp'];
-    const vals = [nombre||null, telefono||null, seccion_id||null, calle||null, numero||null, colonia||null, cp||null];
+    const cols = ['nombre', 'apellido_paterno', 'apellido_materno', 'telefono', 'seccion_id', 'calle', 'numero', 'colonia', 'cp'];
+    const vals = [nombreFinal, apellido_paterno||null, apellido_materno||null, telefono||null, seccion_id||null, calle||null, numero||null, colonia||null, cp||null];
     parts.push(cols.map((c,i) => c + '=COALESCE(' + p(vals[i]) + ',' + c + ')').join(','));
     const colsLimpiables = ['correo', 'curp', 'ine'].filter(c => (req.body as any)[c] !== undefined);
     const valsLimpiables = colsLimpiables.map(c => c === 'curp' ? curpVal : ((req.body as any)[c] || null));
@@ -1348,6 +1403,9 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
     const cols2 = ['numero_hogar', 'intencion_voto_presidente', 'notas', 'edad', 'fecha_nacimiento', 'vigencia_ine'];
     const vals2 = [numero_hogar||null, intencion_voto_presidente||null, notas||null, edad||null, fechaNacVal, vigenciaIneVal];
     parts.push(cols2.map((c,i) => c + '=COALESCE(' + p(vals2[i]) + ',' + c + ')').join(','));
+    if (['H','M'].includes(req.body.sexo)) parts.push('sexo=' + p(req.body.sexo));
+    if (req.body.discapacidad_id !== undefined) parts.push('discapacidad_id=' + p(req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null));
+    if (req.body.ocupacion_id !== undefined) parts.push('ocupacion_id=' + p(req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null));
     parts.push('updated_at=now()');
     parts.push('updated_by=' + p(user.userId || null));
     params.push(req.params.id);
@@ -1691,6 +1749,93 @@ app.post('/api/dispositivos', authenticateToken, async (req: Request, res: Respo
   } catch { res.status(500).json({ error: 'Error' }); }
 });
 
+// ── Catálogos: discapacidades y ocupaciones ──
+const catalogoConfig: Record<string, { tabla: string }> = {
+  discapacidades: { tabla: 'cat_discapacidades' },
+  ocupaciones: { tabla: 'cat_ocupaciones' }
+};
+
+app.get('/api/catalogos/:tipo', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const cfg = catalogoConfig[req.params.tipo];
+    if (!cfg) { res.status(404).json({ error: 'Catálogo no encontrado' }); return; }
+    const soloActivos = req.query.todos !== '1';
+    const r = await pool.query(`SELECT * FROM ${cfg.tabla} ${soloActivos ? 'WHERE activo = TRUE' : ''} ORDER BY orden, nombre`);
+    res.json(r.rows);
+  } catch (e: any) { res.status(500).json({ error: e.message || 'Error' }); }
+});
+
+app.post('/api/catalogos/:tipo', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const cfg = catalogoConfig[req.params.tipo];
+    if (!cfg) { res.status(404).json({ error: 'Catálogo no encontrado' }); return; }
+    const nombre = String(req.body.nombre || '').trim();
+    if (!nombre) { res.status(400).json({ error: 'El nombre es requerido' }); return; }
+    const dup = await pool.query(`SELECT id FROM ${cfg.tabla} WHERE LOWER(nombre)=LOWER($1)`, [nombre]);
+    if (dup.rows.length) { res.status(400).json({ error: 'Ya existe un elemento con ese nombre' }); return; }
+    const maxR = await pool.query(`SELECT COALESCE(MAX(orden),0)+1 AS n FROM ${cfg.tabla}`);
+    const r = await pool.query(`INSERT INTO ${cfg.tabla} (nombre, orden) VALUES ($1,$2) RETURNING *`, [nombre, maxR.rows[0].n]);
+    try { if (user?.nombre) await logAuditoria(user.userId, user.nombre, `crear_${req.params.tipo}`, cfg.tabla, r.rows[0].id, { nombre }); } catch {}
+    res.status(201).json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message || 'Error' }); }
+});
+
+app.put('/api/catalogos/:tipo/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const cfg = catalogoConfig[req.params.tipo];
+    if (!cfg) { res.status(404).json({ error: 'Catálogo no encontrado' }); return; }
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (req.body.nombre !== undefined) {
+      const nombre = String(req.body.nombre).trim();
+      if (!nombre) { res.status(400).json({ error: 'El nombre es requerido' }); return; }
+      const dup = await pool.query(`SELECT id FROM ${cfg.tabla} WHERE LOWER(nombre)=LOWER($1) AND id<>$2`, [nombre, req.params.id]);
+      if (dup.rows.length) { res.status(400).json({ error: 'Ya existe un elemento con ese nombre' }); return; }
+      params.push(nombre); sets.push('nombre=$' + params.length);
+    }
+    if (req.body.activo !== undefined) { params.push(!!req.body.activo); sets.push('activo=$' + params.length); }
+    if (req.body.orden !== undefined) { params.push(parseInt(req.body.orden) || 0); sets.push('orden=$' + params.length); }
+    if (!sets.length) { res.status(400).json({ error: 'Nada que actualizar' }); return; }
+    params.push(req.params.id);
+    const r = await pool.query(`UPDATE ${cfg.tabla} SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params);
+    if (!r.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
+    try { if (user?.nombre) await logAuditoria(user.userId, user.nombre, `editar_${req.params.tipo}`, cfg.tabla, req.params.id, req.body); } catch {}
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message || 'Error' } as any); }
+});
+
+app.delete('/api/catalogos/:tipo/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
+    const cfg = catalogoConfig[req.params.tipo];
+    if (!cfg) { res.status(404).json({ error: 'Catálogo no encontrado' }); return; }
+    // Borrado lógico si está en uso por ciudadanos
+    const uso = await pool.query(
+      `SELECT
+        (SELECT COUNT(*) FROM ciudadanos WHERE discapacidad_id=$1) +
+        (SELECT COUNT(*) FROM ciudadanos_comprometidos WHERE discapacidad_id=$1) +
+        (SELECT COUNT(*) FROM ciudadanos WHERE ocupacion_id=$1) +
+        (SELECT COUNT(*) FROM ciudadanos_comprometidos WHERE ocupacion_id=$1) AS n`,
+      [req.params.id]
+    );
+    if (parseInt(uso.rows[0].n) > 0) {
+      const r = await pool.query(`UPDATE ${cfg.tabla} SET activo=FALSE WHERE id=$1 RETURNING *`, [req.params.id]);
+      if (!r.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
+      res.json({ ...r.rows[0], desactivado: true, message: 'En uso por ciudadanos: se desactivó en lugar de eliminar' });
+      return;
+    }
+    const r = await pool.query(`DELETE FROM ${cfg.tabla} WHERE id=$1 RETURNING id`, [req.params.id]);
+    if (!r.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
+    try { if (user?.nombre) await logAuditoria(user.userId, user.nombre, `eliminar_${req.params.tipo}`, cfg.tabla, req.params.id, {}); } catch {}
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message || 'Error' }); }
+});
+
 app.get('/api/rutas', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -1713,23 +1858,31 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
   try {
     const user = (req as any).user;
     if (user.rol !== 'admin' && user.rol !== 'coordinador') { res.status(403).json({ error: 'No autorizado' }); return; }
-    const { enlace_ids, seccion_id, tipo, encuesta_campana_id } = req.body;
+    const { enlace_ids, seccion_id, tipo, encuesta_campana_id, filtros } = req.body;
     if (!enlace_ids?.length || !seccion_id) { res.status(400).json({ error: 'enlace_ids[] y seccion_id requeridos' }); return; }
-    const tipoRuta = tipo === 'encuesta' ? 'encuesta' : 'seguros';
+    const tipoRuta = ['encuesta', 'seguros', 'filtro'].includes(tipo) ? tipo : 'seguros';
     if (tipoRuta === 'encuesta' && encuesta_campana_id) {
       const ec = (await pool.query('SELECT tipo FROM campanas WHERE id=$1', [encuesta_campana_id])).rows[0];
       if (!ec || ec.tipo !== 'encuesta') { res.status(400).json({ error: 'La encuesta asignada no existe o no es tipo encuesta' }); return; }
     }
-    const tablaParadas = tipoRuta === 'seguros' ? 'ciudadanos_comprometidos' : 'ciudadanos';
+    let tablaParadas = tipoRuta === 'seguros' ? 'ciudadanos_comprometidos' : 'ciudadanos';
+    if (tipoRuta === 'filtro') tablaParadas = 'ciudadanos';
+    let whereSql = 'seccion_id=$1';
+    const countParams: any[] = [seccion_id];
+    if (tipoRuta === 'filtro') {
+      const w = routingService.construirWhereFiltros(filtros || {}, countParams);
+      whereSql += w.sql;
+      if (!w.algunaCondicion) { res.status(400).json({ error: 'Define al menos un filtro para crear una ruta por filtro' }); return; }
+    }
     const countRes = await pool.query(
-      `SELECT COUNT(*) FROM ${tablaParadas} WHERE seccion_id=$1`,
-      [seccion_id]
+      `SELECT COUNT(*) FROM ${tablaParadas} c WHERE ${whereSql}`,
+      countParams
     );
     if (parseInt(countRes.rows[0].count) === 0) {
-      res.status(400).json({ error: `No hay ${tipoRuta === 'seguros' ? 'seguros (voto seguro)' : 'ciudadanos'} en esta seccion para asignar` });
+      res.status(400).json({ error: `No hay ciudadanos que cumplan los filtros en esta sección` });
       return;
     }
-    const misiones = await routingService.repartirRutas(seccion_id.toString(), tipoRuta, enlace_ids.length);
+    const misiones = await routingService.repartirRutas(seccion_id.toString(), tipoRuta, enlace_ids.length, tipoRuta === 'filtro' ? filtros : undefined);
     const ids: string[] = [];
     for (let i = 0; i < enlace_ids.length; i++) {
       const mision = misiones[i] || { paradas: [], distancia_total_km: 0, tiempo_total_minutos: 0 };
@@ -1745,12 +1898,26 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
     const sockets = await io.fetchSockets();
     enlace_ids.forEach((eid: string) => sockets.forEach(s => { if ((s as any).userId === eid) s.emit('nueva-ruta', { ids }); }));
     // Send push notification to each enlace
-    const tipoLabel = tipoRuta === 'seguros' ? 'de seguros' : 'de encuesta';
+    const tipoLabel = tipoRuta === 'seguros' ? 'de seguros' : (tipoRuta === 'filtro' ? 'por filtro' : 'de encuesta');
     for (const eid of enlace_ids) {
       await sendPushToUser(eid, 'Nueva ruta asignada', `Se te ha asignado una ruta ${tipoLabel}`, '/mi-ruta');
     }
     res.status(201).json({ ids, message: `Rutas ${tipoLabel} creadas para ${enlace_ids.length} enlace(s) con paradas distribuidas` });
   } catch (e: any) { res.status(500).json({ error: 'Error al crear rutas: ' + (e.message || '') }); }
+});
+
+// Preview de conteo para rutas por filtro
+app.post('/api/rutas/preview-filtro', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (user.rol !== 'admin' && user.rol !== 'coordinador') { res.status(403).json({ error: 'No autorizado' }); return; }
+    const { seccion_id, filtros } = req.body;
+    if (!seccion_id) { res.status(400).json({ error: 'seccion_id requerido' }); return; }
+    const params: any[] = [seccion_id];
+    const w = routingService.construirWhereFiltros(filtros || {}, params);
+    const r = await pool.query(`SELECT COUNT(*)::int AS total FROM ciudadanos c WHERE c.seccion_id=$1${w.sql}`, params);
+    res.json({ total: r.rows[0]?.total || 0 });
+  } catch (e: any) { res.status(500).json({ error: e.message || 'Error' }); }
 });
 
 app.get('/api/rutas/:id', authenticateToken, async (req: Request, res: Response) => {
@@ -1913,76 +2080,90 @@ app.delete('/api/partidos/:id', authenticateToken, requireAdminOCoordinador, asy
 });
 
 app.get('/api/casillas', authenticateToken, async (req, res) => {
-  const { seccion_id } = req.query;
-  const user = (req as any).user;
-  let query = `SELECT c.id, c.seccion_id, c.nombre, c.direccion, c.lat, c.lng, c.meta_votos, m.nombre as municipio
-               FROM casillas c
-               JOIN secciones_electorales s ON s.id = c.seccion_id
-               JOIN municipios m ON m.id = s.municipio_id`;
-  const params: any[] = [];
-  const conds: string[] = [];
-  if (user.rol === 'enlace') {
-    const secs = await getUserSecciones(user.userId);
-    if (!secs.length) { res.json([]); return; }
-    params.push(secs); conds.push(`c.seccion_id = ANY($${params.length})`);
-  }
-  if (seccion_id) { params.push(seccion_id); conds.push(`c.seccion_id = $${params.length}`); }
-  if (conds.length) query += ' WHERE ' + conds.join(' AND ');
-  query += ' ORDER BY c.seccion_id, c.nombre';
-  const result = await pool.query(query, params);
-  res.json(result.rows);
+  try {
+    const { seccion_id } = req.query;
+    const user = (req as any).user;
+    let query = `SELECT c.id, c.seccion_id, c.nombre, c.direccion, c.lat, c.lng, c.meta_votos, m.nombre as municipio
+                 FROM casillas c
+                 JOIN secciones_electorales s ON s.id = c.seccion_id
+                 JOIN municipios m ON m.id = s.municipio_id`;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (user.rol === 'enlace') {
+      const secs = await getUserSecciones(user.userId);
+      if (!secs.length) { res.json([]); return; }
+      params.push(secs); conds.push(`c.seccion_id = ANY($${params.length})`);
+    }
+    if (seccion_id) { params.push(seccion_id); conds.push(`c.seccion_id = $${params.length}`); }
+    if (conds.length) query += ' WHERE ' + conds.join(' AND ');
+    query += ' ORDER BY c.seccion_id, c.nombre';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (e: any) { console.error('GET /api/casillas error:', e?.message || e); res.status(500).json({ error: 'Error al obtener casillas' }); }
 });
 
 app.post('/api/casillas', authenticateToken, requireAdminOCoordinador, async (req, res) => {
-  const { seccion_id, nombre, direccion, lat, lng, meta_votos } = req.body;
-  if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
-  await pool.query('INSERT INTO casillas (seccion_id, nombre, direccion, lat, lng, meta_votos) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (seccion_id,nombre) DO UPDATE SET direccion=$3, lat=$4, lng=$5, meta_votos=$6', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0]);
-  res.status(201).json({ message: 'Casilla guardada' });
+  try {
+    const { seccion_id, nombre, direccion, lat, lng, meta_votos } = req.body;
+    if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
+    await pool.query('INSERT INTO casillas (seccion_id, nombre, direccion, lat, lng, meta_votos) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (seccion_id,nombre) DO UPDATE SET direccion=$3, lat=$4, lng=$5, meta_votos=$6', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0]);
+    res.status(201).json({ message: 'Casilla guardada' });
+  } catch (e: any) { console.error('POST /api/casillas error:', e?.message || e); res.status(500).json({ error: 'Error al guardar casilla' }); }
 });
 
 app.put('/api/casillas/:id', authenticateToken, requireAdminOCoordinador, async (req, res) => {
-  const { nombre, direccion, seccion_id, lat, lng, meta_votos } = req.body;
-  await pool.query('UPDATE casillas SET seccion_id=$1, nombre=$2, direccion=$3, lat=$4, lng=$5, meta_votos=$6 WHERE id=$7', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0, req.params.id]);
-  res.json({ message: 'Casilla actualizada' });
+  try {
+    const { nombre, direccion, seccion_id, lat, lng, meta_votos } = req.body;
+    await pool.query('UPDATE casillas SET seccion_id=$1, nombre=$2, direccion=$3, lat=$4, lng=$5, meta_votos=$6 WHERE id=$7', [seccion_id, nombre, direccion||'', lat!=null?parseFloat(lat):null, lng!=null?parseFloat(lng):null, meta_votos||0, req.params.id]);
+    res.json({ message: 'Casilla actualizada' });
+  } catch (e: any) { console.error('PUT /api/casillas error:', e?.message || e); res.status(500).json({ error: 'Error al actualizar casilla' }); }
 });
 
 app.delete('/api/casillas/:id', authenticateToken, requireAdminOCoordinador, async (req, res) => {
-  await pool.query('DELETE FROM casillas WHERE id=$1', [req.params.id]);
-  res.json({ message: 'Casilla eliminada' });
+  try {
+    await pool.query('DELETE FROM casillas WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Casilla eliminada' });
+  } catch (e: any) { console.error('DELETE /api/casillas error:', e?.message || e); res.status(500).json({ error: 'Error al eliminar casilla' }); }
 });
 
 app.get('/api/resultados', authenticateToken, async (req, res) => {
-  const { seccion_id, casilla_id, tipo } = req.query;
-  let query = `SELECT r.id, r.casilla_id, r.partido_id, r.votos, r.tipo, c.seccion_id,
-               p.nombre as partido, p.abreviatura, p.color
-               FROM resultados_casilla r
-               JOIN casillas c ON c.id = r.casilla_id
-               JOIN partidos_politicos p ON p.id = r.partido_id`;
-  const params: any[] = [];
-  const conds: string[] = [];
-  if (tipo) { params.push(tipo); conds.push(`r.tipo = $${params.length}`); }
-  if (casilla_id) { params.push(casilla_id); conds.push(`r.casilla_id = $${params.length}`); }
-  else if (seccion_id) { params.push(seccion_id); conds.push(`c.seccion_id = $${params.length}`); }
-  if (conds.length) query += ' WHERE ' + conds.join(' AND ');
-  query += ' ORDER BY c.seccion_id, c.nombre, p.nombre';
-  const result = await pool.query(query, params);
-  res.json(result.rows);
+  try {
+    const { seccion_id, casilla_id, tipo } = req.query;
+    let query = `SELECT r.id, r.casilla_id, r.partido_id, r.votos, r.tipo, c.seccion_id,
+                 p.nombre as partido, p.abreviatura, p.color
+                 FROM resultados_casilla r
+                 JOIN casillas c ON c.id = r.casilla_id
+                 JOIN partidos_politicos p ON p.id = r.partido_id`;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (tipo) { params.push(tipo); conds.push(`r.tipo = $${params.length}`); }
+    if (casilla_id) { params.push(casilla_id); conds.push(`r.casilla_id = $${params.length}`); }
+    else if (seccion_id) { params.push(seccion_id); conds.push(`c.seccion_id = $${params.length}`); }
+    if (conds.length) query += ' WHERE ' + conds.join(' AND ');
+    query += ' ORDER BY c.seccion_id, c.nombre, p.nombre';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (e: any) { console.error('GET /api/resultados error:', e?.message || e); res.status(500).json({ error: 'Error al obtener resultados' }); }
 });
 
 app.post('/api/resultados', authenticateToken, async (req, res) => {
-  const { casilla_id, partido_id, votos, tipo } = req.body;
-  await pool.query(
-    `INSERT INTO resultados_casilla (casilla_id, partido_id, votos, tipo)
-     VALUES ($1,$2,$3,$4)
-     ON CONFLICT (casilla_id, partido_id, tipo) DO UPDATE SET votos=$3`,
-    [casilla_id, partido_id, votos, tipo || 'presidente_municipal']
-  );
-  res.status(201).json({ message: 'Resultado guardado' });
+  try {
+    const { casilla_id, partido_id, votos, tipo } = req.body;
+    await pool.query(
+      `INSERT INTO resultados_casilla (casilla_id, partido_id, votos, tipo)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (casilla_id, partido_id, tipo) DO UPDATE SET votos=$3`,
+      [casilla_id, partido_id, votos, tipo || 'presidente_municipal']
+    );
+    res.status(201).json({ message: 'Resultado guardado' });
+  } catch (e: any) { console.error('POST /api/resultados error:', e?.message || e); res.status(500).json({ error: 'Error al guardar resultado' }); }
 });
 
 app.delete('/api/resultados/:id', authenticateToken, async (req, res) => {
-  await pool.query('DELETE FROM resultados_casilla WHERE id=$1', [req.params.id]);
-  res.json({ message: 'Resultado eliminado' });
+  try {
+    await pool.query('DELETE FROM resultados_casilla WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Resultado eliminado' });
+  } catch (e: any) { console.error('DELETE /api/resultados error:', e?.message || e); res.status(500).json({ error: 'Error al eliminar resultado' }); }
 });
 
 // ---- Votos (ya votaron) ----
@@ -2136,6 +2317,56 @@ app.get('/api/reportes/votacion-horaria', authenticateToken, async (req: Request
     let acum = 0;
     res.json(rows.map((r: any) => { acum += Number(r.votos || 0); return { hora: r.hora, votos: Number(r.votos || 0), acumulado: acum }; }));
   } catch (e: any) { console.error('GET /api/reportes/votacion-horaria error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
+// Reporte de tendencias: serie diaria de capturas, seguros y votos en un rango
+app.get('/api/reportes/tendencias', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const dias = Math.min(Math.max(parseInt(String(req.query.dias || '30')) || 30, 1), 365);
+    const seccionId = req.query.seccion_id;
+    const municipioId = req.query.municipio_id;
+    const params: any[] = [];
+    let filtroSecCiud = '';
+    let filtroSecSeg = '';
+    if (seccionId) { params.push(seccionId); filtroSecCiud = ` AND c.seccion_id=$${params.length}`; filtroSecSeg = ` AND c.seccion_id=$${params.length}`; }
+    else if (municipioId) {
+      params.push(municipioId);
+      filtroSecCiud = ` AND s.municipio_id=$${params.length}`;
+      filtroSecSeg = ` AND s.municipio_id=$${params.length}`;
+    }
+    const rCapturas = await pool.query(
+      `SELECT date(c.created_at) AS dia, COUNT(*)::int AS total
+       FROM ciudadanos c JOIN secciones_electorales s ON s.id=c.seccion_id
+       WHERE c.created_at >= NOW() - ($${params.length + 1} || ' days')::interval ${filtroSecCiud}
+       GROUP BY 1`, [...params, dias]);
+    const rSeguros = await pool.query(
+      `SELECT date(c.created_at) AS dia, COUNT(*)::int AS total
+       FROM ciudadanos_comprometidos c JOIN secciones_electorales s ON s.id=c.seccion_id
+       WHERE c.created_at >= NOW() - ($${params.length + 1} || ' days')::interval ${filtroSecSeg}
+       GROUP BY 1`, [...params, dias]);
+    const paramsVotos: any[] = [dias];
+    let filtroVotos = '';
+    if (seccionId) { paramsVotos.push(seccionId); filtroVotos = ` AND s.id=$${paramsVotos.length}`; }
+    else if (municipioId) { paramsVotos.push(municipioId); filtroVotos = ` AND s.municipio_id=$${paramsVotos.length}`; }
+    const rVotos = await pool.query(
+      `SELECT date(v.created_at) AS dia, COUNT(*)::int AS total
+       FROM votos v
+       JOIN casillas cas ON cas.id=v.casilla_id
+       JOIN secciones_electorales s ON s.id=cas.seccion_id
+       WHERE v.created_at >= NOW() - ($1 || ' days')::interval ${filtroVotos}
+       GROUP BY 1`, paramsVotos
+    );
+    // Serie completa de días
+    const mapa: Record<string, any> = {};
+    for (let i = dias - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      mapa[d] = { fecha: d, capturas: 0, seguros: 0, votos: 0 };
+    }
+    rCapturas.rows.forEach((r: any) => { const k = String(r.dia).slice(0, 10); if (mapa[k]) mapa[k].capturas = Number(r.total); });
+    rSeguros.rows.forEach((r: any) => { const k = String(r.dia).slice(0, 10); if (mapa[k]) mapa[k].seguros = Number(r.total); });
+    rVotos.rows.forEach((r: any) => { const k = String(r.dia).slice(0, 10); if (mapa[k]) mapa[k].votos = Number(r.total); });
+    res.json(Object.values(mapa));
+  } catch (e: any) { console.error('GET /api/reportes/tendencias error:', e?.message || e); res.status(500).json({ error: 'Error' }); }
 });
 
 // ---- Incidencias de casilla ----
@@ -2345,6 +2576,55 @@ app.delete('/api/filtros-campana/:id', authenticateToken, async (req, res) => {
 });
 
 // Campañas
+async function construirFiltrosCampana(filtros: any[]): Promise<{ where: string; params: any[] }> {
+  const defs = (await pool.query('SELECT * FROM filtros_campana')).rows;
+  const defMap: Record<string, any> = {};
+  for (const fd of defs) defMap[fd.id] = fd;
+  const byCol: Record<string, { col: string; items: { op: string; valor: any }[] }> = {};
+  for (const f of (filtros || [])) {
+    const def = defMap[f.campo];
+    if (!def) continue;
+    const col = def.campo_bd;
+    const op = def.operador_sql;
+    let valor = f.valor;
+    if (def.tipo_input === 'boolean' && op === '=') {
+      if (valor === 'si' || valor === 'true') valor = true;
+      else if (valor === 'no' || valor === 'false') valor = false;
+    }
+    if (!byCol[col]) byCol[col] = { col, items: [] };
+    byCol[col].items.push({ op, valor });
+  }
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let idx = 1;
+  for (const key of Object.keys(byCol)) {
+    const { col, items } = byCol[key];
+    const sub: string[] = [];
+    for (const it of items) {
+      const { op, valor } = it;
+      const arr = Array.isArray(valor) ? valor : (op === 'IN' ? [valor] : null);
+      if (arr) {
+        const clean = arr.filter((v: any) => v !== '' && v != null);
+        if (!clean.length) continue;
+        sub.push(`ciudadanos.${col} = ANY($${idx++})`);
+        params.push(clean);
+        continue;
+      }
+      if (op === 'LIKE') { sub.push(`ciudadanos.${col} ILIKE $${idx++}`); params.push(`%${valor}%`); }
+      else if (op === 'BETWEEN') {
+        const parts = String(valor || '').split('-');
+        if (parts.length === 2) { sub.push(`ciudadanos.${col} BETWEEN $${idx++} AND $${idx++}`); params.push(parseInt(parts[0]), parseInt(parts[1])); }
+      }
+      else if (op === 'IS_NULL') { sub.push(valor === 'si' ? `ciudadanos.${col} IS NULL` : `ciudadanos.${col} IS NOT NULL`); }
+      else if (op === '>=') { sub.push(`ciudadanos.${col} >= $${idx++}`); params.push(valor); }
+      else if (op === '<=') { sub.push(`ciudadanos.${col} <= $${idx++}`); params.push(valor); }
+      else { sub.push(`ciudadanos.${col} ${op} $${idx++}`); params.push(valor); }
+    }
+    if (sub.length) conditions.push('(' + sub.join(' OR ') + ')');
+  }
+  return { where: conditions.length ? 'WHERE ' + conditions.join(' AND ') : '', params };
+}
+
 app.get('/api/campanas', authenticateToken, async (_req, res) => {
   const result = await pool.query(`
     SELECT c.*, p.nombre as plantilla_nombre
@@ -2356,8 +2636,14 @@ app.get('/api/campanas', authenticateToken, async (_req, res) => {
 
 app.post('/api/campanas', authenticateToken, async (req, res) => {
   const { nombre, plantilla_id, filtros, scheduled_at, tipo, encuesta_id } = req.body;
-  const countResult = await pool.query('SELECT COUNT(*) FROM ciudadanos');
-  const total = parseInt(countResult.rows[0].count);
+  let total = 0;
+  if ((tipo || 'whatsapp') === 'whatsapp') {
+    try {
+      const { where, params } = await construirFiltrosCampana(filtros || []);
+      const countResult = await pool.query(`SELECT COUNT(*) FROM ciudadanos ${where}`, params);
+      total = parseInt(countResult.rows[0].count);
+    } catch (e: any) { console.warn('total campaña:', e); }
+  }
   const result = await pool.query(
     'INSERT INTO campanas (nombre, plantilla_id, filtros, scheduled_at, status, total_ciudadanos, tipo, encuesta_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
     [nombre, plantilla_id || null, JSON.stringify(filtros || []), scheduled_at || null, 'pending', total, tipo || 'whatsapp', encuesta_id || null]
@@ -2366,22 +2652,32 @@ app.post('/api/campanas', authenticateToken, async (req, res) => {
 });
 
 app.put('/api/campanas/:id', authenticateToken, async (req, res) => {
+  try {
   const { nombre, plantilla_id, filtros, scheduled_at, status, encuesta_lanzada, tipo, encuesta_id } = req.body;
   const user = (req as any).user;
   if (req.body.encuesta_barrido !== undefined && !esAdminOCoordinador(user)) {
     res.status(403).json({ error: 'Solo coordinadores y administradores' }); return;
   }
   const actual = (await pool.query('SELECT * FROM campanas WHERE id=$1', [req.params.id])).rows[0];
+  if (!actual) { res.status(404).json({ error: 'Campaña no encontrada' }); return; }
   const nombreFinal = nombre !== undefined ? nombre : (actual?.nombre ?? null);
-  const plantillaFinal = plantilla_id !== undefined ? plantilla_id : (actual?.plantilla_id ?? null);
+  const plantillaFinal = plantilla_id !== undefined && plantilla_id ? plantilla_id : (actual?.plantilla_id ?? null);
   const filtrosFinal = filtros !== undefined ? filtros : (actual?.filtros ?? []);
   const fechaFinal = scheduled_at !== undefined ? scheduled_at : (actual?.scheduled_at ?? null);
   const statusFinal = status !== undefined ? status : (actual?.status ?? 'pending');
   const tipoFinal = tipo !== undefined ? tipo : (actual?.tipo || 'whatsapp');
-  const encuestaFinal = encuesta_id !== undefined ? encuesta_id : (actual?.encuesta_id || null);
+  const encuestaFinal = encuesta_id ? encuesta_id : (actual?.encuesta_id || null);
+  let totalFinal = actual?.total_ciudadanos ?? 0;
+  if (tipoFinal === 'whatsapp') {
+    try {
+      const { where, params } = await construirFiltrosCampana(filtrosFinal || []);
+      const countResult = await pool.query(`SELECT COUNT(*) FROM ciudadanos ${where}`, params);
+      totalFinal = parseInt(countResult.rows[0].count);
+    } catch (e: any) { console.warn('total campaña:', e); }
+  } else totalFinal = 0;
   await pool.query(
-    'UPDATE campanas SET nombre=$1, plantilla_id=$2, filtros=$3, scheduled_at=$4, status=$5, encuesta_lanzada=$6, tipo=$7, encuesta_id=$8 WHERE id=$9',
-    [nombreFinal, plantillaFinal, JSON.stringify(filtrosFinal || []), fechaFinal, statusFinal, !!encuesta_lanzada, tipoFinal, encuestaFinal, req.params.id]
+    'UPDATE campanas SET nombre=$1, plantilla_id=$2, filtros=$3, scheduled_at=$4, status=$5, encuesta_lanzada=$6, tipo=$7, encuesta_id=$8, total_ciudadanos=$9 WHERE id=$10',
+    [nombreFinal, plantillaFinal, JSON.stringify(filtrosFinal || []), fechaFinal, statusFinal, !!encuesta_lanzada, tipoFinal, encuestaFinal, totalFinal, req.params.id]
   );
   if (req.body.encuesta_barrido !== undefined) {
     // Una sola encuesta de barrido: desmarca las demás
@@ -2393,6 +2689,7 @@ app.put('/api/campanas/:id', authenticateToken, async (req, res) => {
     if (u?.nombre) await logAuditoria(u.userId, u.nombre, 'encuesta_barrido', 'campanas', req.params.id, { encuesta_barrido: !!req.body.encuesta_barrido });
   }
   res.json({ message: 'Campaña actualizada' });
+  } catch (e: any) { console.error('PUT campana:', e); res.status(500).json({ error: 'Error al actualizar campaña' }); }
 });
 
 app.delete('/api/campanas/:id', authenticateToken, async (req, res) => {
@@ -2403,55 +2700,7 @@ app.delete('/api/campanas/:id', authenticateToken, async (req, res) => {
 app.post('/api/campanas/preview', authenticateToken, async (req, res) => {
   try {
     const { filtros } = req.body;
-    const conditions: string[] = [];
-    const params: any[] = [];
-    let idx = 1;
-
-    const filtrosDef = await pool.query('SELECT * FROM filtros_campana');
-    const defMap: Record<string, any> = {};
-    for (const fd of filtrosDef.rows) defMap[fd.id] = fd;
-
-    for (const f of filtros || []) {
-      const def = defMap[f.campo];
-      if (!def) continue;
-      const col = def.campo_bd;
-      const op = def.operador_sql;
-      let valor = f.valor;
-      if (def.tipo_input === 'boolean' && op === '=') {
-        if (valor === 'si' || valor === 'true') valor = true;
-        else if (valor === 'no' || valor === 'false') valor = false;
-      }
-
-      if (op === 'LIKE') {
-        conditions.push(`ciudadanos.${col} ILIKE $${idx++}`);
-        params.push(`%${valor}%`);
-      } else if (op === 'IN') {
-        const vals = Array.isArray(valor) ? valor : [valor];
-        const placeholders = vals.map(() => `$${idx++}`).join(',');
-        conditions.push(`ciudadanos.${col} IN (${placeholders})`);
-        params.push(...vals);
-      } else if (op === 'BETWEEN') {
-        const parts = (valor || '').split('-');
-        if (parts.length === 2) {
-          conditions.push(`ciudadanos.${col} BETWEEN $${idx++} AND $${idx++}`);
-          params.push(parseInt(parts[0]), parseInt(parts[1]));
-        }
-      } else if (op === 'IS_NULL') {
-        if (valor === 'si') conditions.push(`ciudadanos.${col} IS NULL`);
-        else conditions.push(`ciudadanos.${col} IS NOT NULL`);
-      } else if (op === '>=') {
-        conditions.push(`ciudadanos.${col} >= $${idx++}`);
-        params.push(valor);
-      } else if (op === '<=') {
-        conditions.push(`ciudadanos.${col} <= $${idx++}`);
-        params.push(valor);
-      } else {
-        conditions.push(`ciudadanos.${col} ${op} $${idx++}`);
-        params.push(valor);
-      }
-    }
-
-    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const { where, params } = await construirFiltrosCampana(filtros || []);
     const countResult = await pool.query(`SELECT COUNT(*) FROM ciudadanos ${where}`, params);
     const total = parseInt(countResult.rows[0].count);
     const dataResult = await pool.query(
@@ -2504,7 +2753,7 @@ app.get('/api/secciones/:municipioId/geometrias', authenticateToken, async (req:
     const ineMuni = muniId % 100;
     const params: any[] = [ineMuni];
     let extra = '';
-    if (user?.rol === 'enlace') {
+    if (user?.rol === 'enlace' && req.query.todas !== '1') {
       const secs = await getUserSecciones(user.userId);
       if (!secs.length) { res.json({ type: 'FeatureCollection', features: [] }); return; }
       params.push(secs);
@@ -2883,7 +3132,7 @@ app.get('/api/geo/avance-barrido', authenticateToken, async (req: Request, res: 
     if (qm) { params.push(qm); conds.push(`s.municipio_id = $${params.length}`); }
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
     const rows = await pool.query(
-      `WITH vis AS (SELECT ciudadano_id FROM visitas WHERE created_at >= NOW() - INTERVAL '24 hours')
+      `WITH vis AS (SELECT DISTINCT ciudadano_id FROM visitas WHERE created_at >= NOW() - INTERVAL '24 hours')
        SELECT s.id as seccion_id, s.id as seccion_num, m.nombre as municipio, m.id as municipio_id,
               COUNT(c.id) as total_ciudadanos,
               COUNT(v.ciudadano_id) as visitados_24h,
@@ -3063,8 +3312,8 @@ function verificarTokenEncuesta(token: string): { c: string; u: string | null; d
 async function getUrlPublica(): Promise<string> {
   try {
     const r = await pool.query("SELECT valor FROM configuracion WHERE clave='url_publica'");
-    return (r.rows[0]?.valor || 'http://192.168.0.16').replace(/\/+$/, '');
-  } catch { return 'http://192.168.0.16'; }
+    return (r.rows[0]?.valor || 'https://www.prioridadterritorial.com').replace(/\/+$/, '');
+  } catch { return 'https://www.prioridadterritorial.com'; }
 }
 
 app.get('/api/publico/encuesta/:token', async (req: Request, res: Response) => {
@@ -3168,70 +3417,117 @@ app.get('/api/exportar/excel', authenticateToken, async (req: Request, res: Resp
   try {
     const user = (req as any).user;
     const tipo = String(req.query.tipo || 'ciudadanos');
-    const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const XLSX = require('xlsx');
+    const nombreExpr = (tbl: string) => `
+      CASE WHEN ${tbl}.apellido_paterno IS NOT NULL OR ${tbl}.apellido_materno IS NOT NULL THEN ${tbl}.nombre
+           WHEN array_length(p.t, 1) >= 3 THEN array_to_string(p.t[1:(array_length(p.t, 1) - 2)], ' ')
+           WHEN array_length(p.t, 1) = 2 THEN p.t[1]
+           ELSE ${tbl}.nombre END`;
+    const apellidosExpr = (tbl: string) => `
+      COALESCE(${tbl}.apellido_paterno, CASE WHEN array_length(p.t, 1) >= 3 THEN p.t[array_length(p.t, 1) - 1] WHEN array_length(p.t, 1) = 2 THEN p.t[2] END) as apellido_paterno,
+      COALESCE(${tbl}.apellido_materno, CASE WHEN array_length(p.t, 1) >= 3 THEN p.t[array_length(p.t, 1)] END) as apellido_materno`;
+    const joinPartes = (tbl: string, alias: string) => `
+      JOIN (SELECT id, string_to_array(btrim(regexp_replace(${tbl}.nombre, '\\s+', ' ', 'g')), ' ') AS t FROM ${tbl}) p ON p.id = ${alias}.id`;
+    const excelResponse = (sheetName: string, filename: string, header: string[], rows: any[][]) => {
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      ws['!cols'] = header.map((h, i) => {
+        const maxLen = rows.reduce((m, r) => Math.max(m, String(r[i] ?? '').length), h.length);
+        return { wch: Math.min(Math.max(maxLen + 2, h.length + 2), 40) };
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buf);
+    };
+    if (tipo === 'respuestas') {
+      const campanaId = String(req.query.campana_id || '');
+      if (!campanaId) { res.status(400).json({ error: 'campana_id requerido' }); return; }
+      const preguntas = (await pool.query(
+        `SELECT id, pregunta FROM encuesta_preguntas WHERE campana_id=$1 ORDER BY orden ASC, created_at ASC`,
+        [campanaId]
+      )).rows;
+      const data = (await pool.query(
+        `SELECT c.id, ${nombreExpr('c')} as nombre, ${apellidosExpr('c')}, c.telefono, s.id as seccion_num, m.nombre as municipio, r.pregunta_id, r.valor
+         FROM encuesta_respuestas r
+         JOIN ciudadanos c ON c.id = r.ciudadano_id
+         ${joinPartes('ciudadanos', 'c')}
+         LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+         LEFT JOIN municipios m ON m.id = s.municipio_id
+         WHERE r.campana_id = $1
+         ORDER BY c.nombre, r.created_at`,
+        [campanaId]
+      )).rows;
+const porCiudadano = new Map<string, any>();
+      for (const r of data) {
+        if (!porCiudadano.has(r.id)) porCiudadano.set(r.id, { r, vals: {} });
+        porCiudadano.get(r.id).vals[r.pregunta_id] = r.valor;
+      }
+      const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Seccion', 'Municipio', ...preguntas.map((p: any) => String(p.pregunta || ''))];
+      const body = Array.from(porCiudadano.values()).map(({ r, vals }) => {
+        return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.seccion_num, r.municipio, ...preguntas.map((p: any) => vals[p.id] ?? '')];
+      });
+      excelResponse('Respuestas', 'respuestas-encuesta.xlsx', header, body);
+      return;
+    }
     if (tipo === 'encuesta' || tipo === 'general') {
       const campanaId = String(req.query.campana_id || '');
       const rowsCampanaQuery = campanaId
         ? `WHERE ce.campana_id = $1`
         : '';
       const rows = (await pool.query(
-        `SELECT c.id, c.nombre, c.telefono, c.no_abrio, c.edad, s.id as seccion_num, m.nombre as municipio,
+        `SELECT c.id, ${nombreExpr('c')} as nombre, ${apellidosExpr('c')}, c.telefono, c.no_abrio, c.edad, c.sexo, c.motivo_puerta,
+                cd.nombre as discapacidad, co2.nombre as ocupacion,
+                s.id as seccion_num, m.nombre as municipio,
                 u.nombre as capturado_por, cam.nombre as encuesta_nombre, c.created_at, c.updated_at
          FROM ciudadanos c
+         ${joinPartes('ciudadanos', 'c')}
          LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
          LEFT JOIN campanas cam ON cam.id = ce.campana_id
          LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
          LEFT JOIN municipios m ON m.id = s.municipio_id
          LEFT JOIN usuarios u ON u.id = c.created_by
+         LEFT JOIN cat_discapacidades cd ON cd.id = c.discapacidad_id
+         LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id
          ${rowsCampanaQuery}
          ORDER BY c.created_at DESC`, campanaId ? [campanaId] : []
       )).rows;
-      const header = ['Nombre', 'Telefono', 'Abrio', 'Edad', 'Seccion', 'Municipio', 'Encuesta asignada', 'Capturado por', 'Capturado el', 'Actualizado el'];
-      const headCells = header.map(h => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join('');
+const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Abrio', 'Motivo puerta', 'Edad', 'Sexo', 'Discapacidad', 'Ocupación', 'Seccion', 'Municipio', 'Encuesta asignada', 'Capturado por', 'Capturado el', 'Actualizado el'];
+      const motivoTxt: Record<string, string> = { no_abrio: 'No abrió', sin_info: 'No proporcionó info', con_prisa: 'Tenía prisa', otro: 'Otro' };
       const body = rows.map(r => {
-        const vals = [r.nombre, r.telefono, r.no_abrio ? 'NO' : 'SI', r.edad, r.seccion_num, r.municipio, r.encuesta_nombre, r.capturado_por, r.created_at, r.updated_at];
-        return '<Row>' + vals.map(v => `<Cell><Data ss:Type="String">${esc(v)}</Data></Cell>`).join('') + '</Row>';
-      }).join('');
-      const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Styles><Style ss:ID="h"><Font ss:Bold="1"/></Style></Styles>
- <Worksheet ss:Name="Ciudadanos generales"><Table>${headCells}${body}</Table></Worksheet></Workbook>`;
-      res.setHeader('Content-Type', 'application/vnd.ms-excel');
-      res.setHeader('Content-Disposition', 'attachment; filename="ciudadanos-general.xls"');
-      res.send(Buffer.from(xml, 'utf8'));
+        return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.no_abrio ? 'NO' : 'SI', r.motivo_puerta ? (motivoTxt[r.motivo_puerta] || r.motivo_puerta) : '', r.edad, r.sexo === 'H' ? 'Hombre' : (r.sexo === 'M' ? 'Mujer' : ''), r.discapacidad || '', r.ocupacion || '', r.seccion_num, r.municipio, r.encuesta_nombre, r.capturado_por, r.created_at, r.updated_at];
+      });
+      excelResponse('Ciudadanos generales', 'ciudadanos-general.xlsx', header, body);
       return;
     }
     if (tipo === 'seguros' || tipo === 'simpatizantes') {
       const rows = (await pool.query(
-        `SELECT c.nombre, c.telefono, c.correo, c.curp, c.ine, c.vigencia_ine, c.edad, s.id as seccion_num, m.nombre as municipio,
+        `SELECT ${nombreExpr('c')} as nombre, ${apellidosExpr('c')}, c.telefono, c.correo, c.curp, c.ine, c.vigencia_ine, c.edad, c.sexo,
+                cd.nombre as discapacidad, co2.nombre as ocupacion,
+                s.id as seccion_num, m.nombre as municipio,
                 u.nombre as capturado_por, c.created_at, c.updated_at
          FROM ciudadanos_comprometidos c
+         ${joinPartes('ciudadanos_comprometidos', 'c')}
          LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
          LEFT JOIN municipios m ON m.id = s.municipio_id
          LEFT JOIN usuarios u ON u.id = c.created_by
+         LEFT JOIN cat_discapacidades cd ON cd.id = c.discapacidad_id
+         LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id
          ORDER BY c.created_at DESC`
       )).rows;
-      const header = ['Nombre', 'Telefono', 'Correo', 'CURP', 'INE', 'Vigencia INE', 'Edad', 'Seccion', 'Municipio', 'Capturado por', 'Capturado el', 'Actualizado el'];
-      const headCells = header.map(h => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join('');
+const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Correo', 'CURP', 'INE', 'Vigencia INE', 'Edad', 'Sexo', 'Discapacidad', 'Ocupación', 'Seccion', 'Municipio', 'Capturado por', 'Capturado el', 'Actualizado el'];
       const body = rows.map(r => {
-        const vals = [r.nombre, r.telefono, r.correo, r.curp, r.ine, r.vigencia_ine, r.edad, r.seccion_num, r.municipio, r.capturado_por, r.created_at, r.updated_at];
-        return '<Row>' + vals.map(v => `<Cell><Data ss:Type="String">${esc(v)}</Data></Cell>`).join('') + '</Row>';
-      }).join('');
-      const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Styles><Style ss:ID="h"><Font ss:Bold="1"/></Style></Styles>
- <Worksheet ss:Name="Simpatizantes"><Table>${headCells}${body}</Table></Worksheet></Workbook>`;
-      res.setHeader('Content-Type', 'application/vnd.ms-excel');
-      res.setHeader('Content-Disposition', 'attachment; filename="simpatizantes.xls"');
-      res.send(Buffer.from(xml, 'utf8'));
+        return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.correo, r.curp, r.ine, r.vigencia_ine, r.edad, r.sexo === 'H' ? 'Hombre' : (r.sexo === 'M' ? 'Mujer' : ''), r.discapacidad || '', r.ocupacion || '', r.seccion_num, r.municipio, r.capturado_por, r.created_at, r.updated_at];
+      });
+      excelResponse('Simpatizantes', 'simpatizantes.xlsx', header, body);
       return;
     }
-    const query = `SELECT c.nombre, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad,
+    const query = `SELECT ${nombreExpr('c')} as nombre, ${apellidosExpr('c')}, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad,
               s.id as seccion_num, m.nombre as municipio, c.prioridad, c.notas,
               c.timestamp_registro
             FROM ciudadanos c
+            ${joinPartes('ciudadanos', 'c')}
             JOIN secciones_electorales s ON s.id = c.seccion_id
             JOIN municipios m ON m.id = s.municipio_id`;
     const params: any[] = [];
@@ -3242,20 +3538,11 @@ app.get('/api/exportar/excel', authenticateToken, async (req: Request, res: Resp
     const rows = params.length
       ? (await pool.query(query + ' WHERE c.seccion_id = ANY($1) ORDER BY c.nombre', params)).rows
       : (await pool.query(query + ' ORDER BY c.nombre')).rows;
-    const header = ['Nombre', 'Telefono', 'Calle', 'Numero', 'Colonia', 'CP', 'Edad', 'Seccion', 'Municipio', 'Prioridad', 'Notas', 'Registrado'];
-    const headCells = header.map(h => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join('');
+const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Calle', 'Numero', 'Colonia', 'CP', 'Edad', 'Seccion', 'Municipio', 'Prioridad', 'Notas', 'Registrado'];
     const body = rows.map(r => {
-      const vals = [r.nombre, r.telefono, r.calle, r.numero, r.colonia, r.cp, r.edad, r.seccion_num, r.municipio, r.prioridad, r.notas, r.timestamp_registro];
-      return '<Row>' + vals.map(v => `<Cell><Data ss:Type="String">${esc(v)}</Data></Cell>`).join('') + '</Row>';
-    }).join('');
-    const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Styles><Style ss:ID="h"><Font ss:Bold="1"/></Style></Styles>
- <Worksheet ss:Name="Ciudadanos"><Table>${headCells}${body}</Table></Worksheet></Workbook>`;
-    res.setHeader('Content-Type', 'application/vnd.ms-excel');
-    res.setHeader('Content-Disposition', 'attachment; filename="ciudadanos.xls"');
-    res.send(Buffer.from(xml, 'utf8'));
+      return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.calle, r.numero, r.colonia, r.cp, r.edad, r.seccion_num, r.municipio, r.prioridad, r.notas, r.timestamp_registro];
+    });
+    excelResponse('Ciudadanos', 'ciudadanos.xlsx', header, body);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

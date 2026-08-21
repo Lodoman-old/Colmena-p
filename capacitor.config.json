@@ -1,5 +1,5 @@
 {
-  "appId": "com.colmena.app",
+  "appId": "com.prioridadterritorial.app",
   "appName": "PRIoridad Territorial",
   "webDir": "src/web",
   "bundledWebRuntime": false,

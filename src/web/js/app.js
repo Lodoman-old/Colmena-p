@@ -1,4 +1,4 @@
-(function() {
+﻿(function() {
   let dashboardMap = null;
   let _dashLoadSeq = 0;
   let dashboardClusterGroup = null;
@@ -264,26 +264,38 @@
       })();
     }
 
-    var bbox = null;
-    try { bbox = bboxDeGeometrias(await API.getGeometrias(muniId)); } catch (e) { console.warn(e); }
-    if (!bbox && muni?.lat && muni?.lng) {
-      bbox = { latMin: muni.lat - 0.14, latMax: muni.lat + 0.14, lngMin: muni.lng - 0.14, lngMax: muni.lng + 0.14 };
-    }
-    if (!bbox) {
-      document.getElementById('offline-status').textContent = 'No se pudo calcular el área del municipio.';
-      document.getElementById('offline-actions').style.display = 'none';
-      return;
-    }
-
     var urls = [];
-    for (var z = 13; z <= 19; z++) {
-      var n = Math.pow(2, z);
-      var x0 = Math.max(0, Math.floor(((bbox.lngMin + 180) / 360) * n));
-      var x1 = Math.min(n - 1, Math.floor(((bbox.lngMax + 180) / 360) * n));
-      function tileY(lat, zz) { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, zz)); }
-      var y0 = Math.max(0, tileY(bbox.latMax, z));
-      var y1 = Math.min(n - 1, tileY(bbox.latMin, z));
-      for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) urls.push(TILE_URL_BASE + z + '/' + y + '/' + x);
+    try {
+      var covResp = await fetch((localStorage.getItem('colmena_server') || '') + '/tiles/coverage.json', { cache: 'no-store' });
+      var cov = covResp.ok ? await covResp.json() : null;
+      if (cov) {
+        for (var z = 13; z <= 18; z++) {
+          var c = cov[String(z)];
+          if (!c) continue;
+          for (var x = c.xmin; x <= c.xmax; x++) for (var y = c.ymin; y <= c.ymax; y++) urls.push(TILE_URL_BASE + z + '/' + y + '/' + x);
+        }
+      }
+    } catch (e) { console.warn(e); }
+    if (!urls.length) {
+      var bbox = null;
+      try { bbox = bboxDeGeometrias(await API.getGeometrias(muniId)); } catch (e) { console.warn(e); }
+      if (!bbox && muni?.lat && muni?.lng) {
+        bbox = { latMin: muni.lat - 0.14, latMax: muni.lat + 0.14, lngMin: muni.lng - 0.14, lngMax: muni.lng + 0.14 };
+      }
+      if (!bbox) {
+        document.getElementById('offline-status').textContent = 'No se pudo calcular el área del municipio.';
+        document.getElementById('offline-actions').style.display = 'none';
+        return;
+      }
+      for (var zz = 13; zz <= 18; zz++) {
+        var n = Math.pow(2, zz);
+        var x0 = Math.max(0, Math.floor(((bbox.lngMin + 180) / 360) * n));
+        var x1 = Math.min(n - 1, Math.floor(((bbox.lngMax + 180) / 360) * n));
+        function tileY(lat, zzz) { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, zzz)); }
+        var y0 = Math.max(0, tileY(bbox.latMax, zz));
+        var y1 = Math.min(n - 1, tileY(bbox.latMin, zz));
+        for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) urls.push(TILE_URL_BASE + zz + '/' + y + '/' + x);
+      }
     }
 
     var total = urls.length;
@@ -1005,12 +1017,13 @@
       mostrarQR();
     });
     function mostrarQR() {
-      const url = API.getBase() + '/apk/Colmena.apk';
+      const base = API.getBase() || window.location.origin;
+      const url = base + '/descargar.html';
       document.getElementById('qr-url-input').value = url;
       document.getElementById('qr-url').textContent = url;
       document.getElementById('qr-container').innerHTML = '';
       new QRCode(document.getElementById('qr-container'), { text: url, width: 256, height: 256 });
-      document.getElementById('pwa-url').textContent = API.getBase() + '/';
+      document.getElementById('pwa-url').textContent = base + '/';
       cambiarPestanaCompartir('android');
       document.getElementById('qr-modal').classList.remove('hidden');
     }
@@ -1024,10 +1037,10 @@
       btnI.className = 'btn-small ' + (esAndroid ? 'btn-secondary' : 'btn-primary');
     }
     window.descargarApkDirecto = function() {
-      const url = document.getElementById('qr-url-input').value.trim() || (API.getBase() + '/apk/Colmena.apk');
+      const url = document.getElementById('qr-url-input').value.trim() || (API.getBase() + '/apk/PRIoridadTerritorial.apk');
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'Colmena.apk';
+      a.download = 'PRIoridadTerritorial.apk';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1370,10 +1383,15 @@
         if (editId) await API.request('PUT', '/api/usuarios/' + editId, data);
         else await API.request('POST', '/api/usuarios', data);
       } else if (tipo === 'ciudadano') {
+        const nmNombre = document.getElementById('f-nombre').value;
+        const nmPaterno = document.getElementById('f-apellido_paterno')?.value || '';
+        const nmMaterno = document.getElementById('f-apellido_materno')?.value || '';
         const data = {
           seccion_id: parseInt(document.getElementById('f-seccion').value),
           numero_hogar: document.getElementById('f-hogar')?.value || '',
-          nombre: document.getElementById('f-nombre').value,
+          nombre: nombreCompleto(nmNombre, nmPaterno, nmMaterno),
+          apellido_paterno: nmPaterno || null,
+          apellido_materno: nmMaterno || null,
           telefono: document.getElementById('f-telefono').value,
           edad: parseInt(document.getElementById('f-edad').value) || null,
           calle: document.getElementById('f-calle').value,
@@ -1387,7 +1405,11 @@
           intencion_voto_diputado: parseInt(document.getElementById('f-intencion_voto_diputado').value) || null,
           casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null,
           votantes_casa: (parseInt(document.getElementById('f-votantes_casa').value) || 0) + 1,
-          no_abrio: document.getElementById('f-no_abrio').checked
+          motivo_puerta: document.getElementById('f-motivo_puerta') ? document.getElementById('f-motivo_puerta').value : null,
+          no_abrio: document.getElementById('f-motivo_puerta') ? !!document.getElementById('f-motivo_puerta').value : (document.getElementById('f-no_abrio') ? document.getElementById('f-no_abrio').checked : false),
+          sexo: (document.getElementById('f-sexo')?.value) || null,
+          discapacidad_id: (document.getElementById('f-discapacidad')?.value) ? parseInt(document.getElementById('f-discapacidad').value) : null,
+          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null
         };
         const vcDef = Array.isArray(window._vcList) ? window._vcList.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
         if (vcDef.length) {
@@ -1395,8 +1417,9 @@
         }
         const errTel = validarTelefono(data.telefono);
         if (errTel) { msg.textContent = errTel; msg.style.color = 'var(--pri-red)'; return; }
-        const noAbrioModal = document.getElementById('f-no_abrio').checked;
-        if (!data.nombre && !noAbrioModal) { msg.textContent = 'Nombre requerido (o marca "No abrió")'; msg.style.color = 'var(--pri-red)'; return; }
+        const motivoModal = document.getElementById('f-motivo_puerta')?.value;
+        const noAbrioModal = !!motivoModal;
+        if (!data.nombre && !noAbrioModal) { msg.textContent = 'Nombre requerido (o elige un motivo de puerta si no entrevistaste)'; msg.style.color = 'var(--pri-red)'; return; }
         const edadVal = document.getElementById('f-edad').value;
         if (edadVal && (data.edad === null || data.edad < 18 || data.edad > 130)) { msg.textContent = 'Edad invalida (18-130)'; msg.style.color = 'var(--pri-red)'; return; }
         let ciudadanoId = editId;
@@ -1414,12 +1437,17 @@
           if (!edadVal) edadVal = anios;
         }
         if (edadVal !== null && (edadVal < 18 || edadVal > 130)) { msg.textContent = 'Edad invalida (18-130)'; msg.style.color = 'var(--pri-red)'; return; }
-        const errCurpSem = validarCurpSemanticaFront(curpVal, document.getElementById('f-nombre').value, fechaNac);
+        const errCurpSem = validarCurpSemanticaFront(curpVal, nombreCompleto(document.getElementById('f-nombre').value, document.getElementById('f-apellido_paterno')?.value, document.getElementById('f-apellido_materno')?.value), fechaNac);
         if (errCurpSem) { msg.textContent = errCurpSem; msg.style.color = 'var(--pri-red)'; return; }
+        const nmNombre = document.getElementById('f-nombre').value;
+        const nmPaterno = document.getElementById('f-apellido_paterno')?.value || '';
+        const nmMaterno = document.getElementById('f-apellido_materno')?.value || '';
         const data = {
           seccion_id: parseInt(document.getElementById('f-seccion').value),
           numero_hogar: document.getElementById('f-hogar')?.value || '',
-          nombre: document.getElementById('f-nombre').value,
+          nombre: nombreCompleto(nmNombre, nmPaterno, nmMaterno),
+          apellido_paterno: nmPaterno || null,
+          apellido_materno: nmMaterno || null,
           telefono: document.getElementById('f-telefono').value,
           edad: edadVal,
           fecha_nacimiento: fechaNac,
@@ -1435,7 +1463,10 @@
           lng: parseFloat(document.getElementById('f-lng').value) || null,
           intencion_voto_presidente: parseInt(document.getElementById('f-intencion_voto_presidente').value) || null,
           intencion_voto_diputado: null,
-          casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null
+          casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null,
+          sexo: (document.getElementById('f-sexo')?.value) || null,
+          discapacidad_id: (document.getElementById('f-discapacidad')?.value) ? parseInt(document.getElementById('f-discapacidad').value) : null,
+          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null
         };
         const errTel = validarTelefono(data.telefono);
         if (errTel) { msg.textContent = errTel; msg.style.color = 'var(--pri-red)'; return; }
@@ -1605,7 +1636,7 @@
       document.querySelectorAll('.nav-btn[data-view]').forEach(b => { if (!permitidos.includes(b.dataset.view)) b.style.display = 'none'; });
       document.querySelectorAll('.dropdown-item[data-view]').forEach(b => { if (!permitidos.includes(b.dataset.view)) b.style.display = 'none'; });
       document.querySelectorAll('.nav-dropdown').forEach(d => {
-        const items = d.querySelectorAll('.dropdown-item[data-view]');
+        const items = d.querySelectorAll('.dropdown-item');
         const visibles = Array.from(items).filter(i => i.style.display !== 'none').length;
         if (visibles === 0) d.style.display = 'none';
       });
@@ -1741,6 +1772,8 @@
         tabFiltered = geoFiltered.filter(c => c.partido_presidente?.nombre === partidoFiltro || c.partido_diputado?.nombre === partidoFiltro);
       }
       window._exportData = tabFiltered;
+      window._dashCiudadanos = tabFiltered;
+      window._partidosDash = partidos;
 
       const munFiltrados = filtroEstado ? todosMunicipios.filter(m => m.estado_id === filtroEstado) : todosMunicipios;
       const secsUnicas = [...new Set(tabFiltered.map(c => c.seccion_id).filter(Boolean))];
@@ -1790,9 +1823,10 @@
           .map(([k, n]) => `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #f0f0f0"><span>${k}</span><strong>${n}</strong></div>`)
           .join('');
         cont.innerHTML = `
-          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
             <div><strong style="font-size:15px">${totalCasa}</strong> votantes en casa</div>
             <div><strong style="font-size:15px">${parte}</strong> hogares sin abrir (re-visitar)</div>
+            <button class="btn-small btn-secondary" style="margin-left:auto" onclick="expandirVotantesCasa()" title="Ver detalle completo">⤢ Expandir</button>
           </div>
           <div style="margin-bottom:4px;color:#666">Distribución (encuestado + acompañantes):</div>
           ${filas || '<span style="color:#999">Sin datos</span>'}`;
@@ -1892,15 +1926,24 @@
         // Add seccion polygons
         if (dashboardGeoLayer) { dashboardMap.removeLayer(dashboardGeoLayer); dashboardGeoLayer = null; }
         if (geojsonData?.features?.length) {
-          // Calculate dominant party per seccion
-          const secPartyCounts = {};
-          tabFiltered.forEach(c => {
-            const p = intencionTipo === 'intencion_voto_presidente' ? c.partido_presidente : c.partido_diputado;
-            if (p?.nombre) {
+        // Calculate dominant party per seccion
+        const secPartyCounts = {};
+        tabFiltered.forEach(c => {
+          const p = intencionTipo === 'intencion_voto_presidente' ? c.partido_presidente : c.partido_diputado;
+          if (p?.nombre) {
+            if (!secPartyCounts[c.seccion_id]) secPartyCounts[c.seccion_id] = {};
+            secPartyCounts[c.seccion_id][p.nombre] = (secPartyCounts[c.seccion_id][p.nombre] || 0) + 1;
+          }
+          // Los votantes extra de la casa también colorean el mapa
+          (Array.isArray(c.votantes_casa_list) ? c.votantes_casa_list : []).forEach(v => {
+            const pid = intencionTipo === 'intencion_voto_presidente' ? v.partido_id : v.partido_diputado_id;
+            const pv = pid ? partidos.find(pp => pp.id === pid) : null;
+            if (pv?.nombre) {
               if (!secPartyCounts[c.seccion_id]) secPartyCounts[c.seccion_id] = {};
-              secPartyCounts[c.seccion_id][p.nombre] = (secPartyCounts[c.seccion_id][p.nombre] || 0) + 1;
+              secPartyCounts[c.seccion_id][pv.nombre] = (secPartyCounts[c.seccion_id][pv.nombre] || 0) + 1;
             }
           });
+        });
           const secDominantColor = {};
           Object.keys(secPartyCounts).forEach(secId => {
             const counts = secPartyCounts[secId];
@@ -1922,8 +1965,9 @@
             onEachFeature: (feature, layer) => {
               const sec = Math.round(feature.properties.seccion);
               const ciudadanosSec = tabFiltered.filter(c => c.seccion_id === sec);
+              const vcSec = ciudadanosSec.reduce((s, c) => s + (parseInt(c.votantes_casa) || 1), 0);
               layer.bindTooltip(String(sec), { permanent: true, direction: 'center', className: 'sec-label', offset: [0, 0] });
-              layer.bindPopup(`<b>Sección ${sec}</b><br>Ciudadanos: ${ciudadanosSec.length}`);
+              layer.bindPopup(`<b>Sección ${sec}</b><br>Ciudadanos: ${ciudadanosSec.length}<br>👥 Votantes en casa: ${vcSec}<br><button class="btn-small btn-primary" style="margin-top:6px" onclick="verVotantesCasaSeccion(${sec})">👥 Ver votantes</button>`);
               layer.on('mouseover', function() {
                 this.setStyle({ weight: 3, opacity: 1, fillOpacity: 0.25 });
               });
@@ -1949,9 +1993,11 @@
           if (c.ubicacion?.lat && c.ubicacion?.lng) {
             const partidoColor = intencionTipo === 'intencion_voto_presidente' ? c.partido_presidente : c.partido_diputado;
             let color = partidoColor?.color || '#000';
+            const vcTotal = parseInt(c.votantes_casa) || 1;
+            const vcExtras = Array.isArray(c.votantes_casa_list) ? c.votantes_casa_list.length : 0;
             dashboardClusterGroup.addLayer(L.circleMarker([c.ubicacion.lat, c.ubicacion.lng], {
               radius: 6, fillColor: color, color: '#fff', weight: 2, fillOpacity: 0.8
-            }).bindPopup(`<b>${c.nombre}</b><br>Tel: ${c.telefono || '-'}<br>Dir: ${[c.calle, c.numero].filter(Boolean).join(' ')}${c.colonia ? ', '+c.colonia : ''}<br>Pres: ${c.partido_presidente?.abreviatura || '-'}<br>Dip: ${c.partido_diputado?.abreviatura || '-'}${c.notas ? (function(){var u=fotoUrlFromNotas(c.notas);return u?'<br><img src="'+u+'" style="width:100%;max-width:120px;border-radius:4px;border:1px solid #ddd;margin-top:4px">':'';})() : ''}`));
+            }).bindPopup(`<b>${c.nombre}</b><br>Tel: ${c.telefono || '-'}<br>Dir: ${[c.calle, c.numero].filter(Boolean).join(' ')}${c.colonia ? ', '+c.colonia : ''}<br>Pres: ${c.partido_presidente?.abreviatura || '-'}<br>Dip: ${c.partido_diputado?.abreviatura || '-'}${vcTotal > 1 || vcExtras ? `<br>👥 Votantes en casa: ${vcTotal}` : ''}<br><button class="btn-small btn-primary" style="margin-top:4px" onclick="verDetalleVotantesCasa('${c.id}')">👥 Ver casa</button>${c.notas ? (function(){var u=fotoUrlFromNotas(c.notas);return u?'<br><img src="'+u+'" style="width:100%;max-width:120px;border-radius:4px;border:1px solid #ddd;margin-top:4px">':'';})() : ''}`));
           }
         });
         // Re-add enlaces if checkbox still checked
@@ -1967,6 +2013,43 @@
     const container = document.getElementById('dash-enlaces-container');
     if (container) container.style.display = (user?.rol === 'admin' || user?.rol === 'coordinador') ? '' : 'none';
   }
+
+  // ── Resumen de votantes en casa (dashboard / mapa) ──
+  function mostrarModalVotantesCasaResumen(titulo, lista) {
+    const modal = document.getElementById('vc-resumen-modal');
+    if (!modal) return;
+    document.getElementById('vc-resumen-titulo').textContent = titulo;
+    const body = document.getElementById('vc-resumen-body');
+    if (!lista.length) { body.innerHTML = '<span style="color:#999">Sin ciudadanos en este filtro.</span>'; modal.style.display = 'flex'; return; }
+    body.innerHTML = lista.map(c => {
+      const extras = Array.isArray(c.votantes_casa_list) ? c.votantes_casa_list : [];
+      const filasExtras = extras.map(v => {
+        const pv = v.partido_id ? (window._partidosDash || []).find(p => p.id === v.partido_id) : null;
+        const pd = v.partido_diputado_id ? (window._partidosDash || []).find(p => p.id === v.partido_diputado_id) : null;
+        return `<div style="display:flex;justify-content:space-between;padding:2px 0 2px 14px;border-bottom:1px dashed #eee"><span>↳ ${v.nombre || '(sin nombre)'}</span><span>${pv?.abreviatura || pd?.abreviatura || '<span style="color:#b45309">pendiente</span>'}</span></div>`;
+      }).join('');
+      return `<div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #e5e7eb">
+          <strong>${c.nombre || (c.no_abrio ? '🚪 No abrió' : '(sin nombre)')}</strong>
+          <span style="color:#666">Sec. ${c.seccion_num || c.seccion_id} · ${c.partido_presidente?.abreviatura || '-'}${c.no_abrio ? ' · 🚪' : ''}</span>
+        </div>
+        ${filasExtras || '<div style="padding:2px 0 2px 14px;color:#999;font-size:12px">Sin acompañantes registrados</div>'}
+      </div>`;
+    }).join('');
+    modal.style.display = 'flex';
+  }
+  window.verVotantesCasaSeccion = function(secId) {
+    const lista = (window._dashCiudadanos || []).filter(c => String(c.seccion_id) === String(secId));
+    mostrarModalVotantesCasaResumen('👥 Votantes en casa — Sección ' + secId, lista);
+  };
+  window.verDetalleVotantesCasa = function(cid) {
+    const c = (window._dashCiudadanos || []).find(x => x.id === cid);
+    if (!c) { alert('No se encontró el ciudadano en el filtro actual'); return; }
+    mostrarModalVotantesCasaResumen('👥 Casa de ' + (c.nombre || 'ciudadano'), [c]);
+  };
+  window.expandirVotantesCasa = function() {
+    mostrarModalVotantesCasaResumen('👥 Votantes en casa — filtro actual', window._dashCiudadanos || []);
+  };
 
   window.toggleUbicacionesEnlace = async function() {
     const checked = document.getElementById('dash-ver-enlaces').checked;
@@ -2338,6 +2421,8 @@
     document.getElementById('campana-tipo').value = tipo;
     document.getElementById('campana-fields-whatsapp').style.display = tipo === 'whatsapp' ? '' : 'none';
     document.getElementById('campana-fields-encuesta').style.display = tipo === 'encuesta' ? '' : 'none';
+    const enviarWrap = document.getElementById('campana-enviar-wrap');
+    if (enviarWrap) enviarWrap.style.display = tipo === 'whatsapp' ? '' : 'none';
     if (tipo === 'encuesta') actualizarEstadoEncuestaModal();
   };
 
@@ -2608,8 +2693,9 @@
     if (!def) { container.innerHTML = ''; return; }
 
     if (def.campo_bd === 'seccion_id') {
-      const secciones = window._campanasSecciones || [];
-      container.innerHTML = `<select style="flex:1">${secciones.map(function(s) { return '<option value="' + s.id + '">Sec. ' + s.id + ' - ' + s.municipio + '</option>'; }).join('')}</select>`;
+      const nSel = (window._campanasSeccionesSel || []).length;
+      container.innerHTML = `<button type="button" class="btn-small btn-secondary" style="flex:1" onclick="abrirModalSeccionesCampana()">☑ Elegir secciones${nSel ? ` (${nSel})` : ''}</button>
+        <small id="campana-secciones-resumen" style="width:100%;color:#999;font-size:10px;display:block">${nSel ? 'Seleccionadas: ' + window._campanasSeccionesSel.map(s => 'Sec. ' + s.id).join(', ') : 'Marca las secciones que quieras incluir'}</small>`;
     } else if (def.campo_bd === 'intencion_voto') {
       const partidos = window._campanasPartidos || [];
       container.innerHTML = `<select style="flex:1"><option value="indefinido">Indeciso / Sin definir</option>${partidos.map(function(p) { return '<option value="' + p.id + '">' + p.abreviatura + '</option>'; }).join('')}</select>`;
@@ -2624,6 +2710,44 @@
       container.innerHTML = `<input type="${def.tipo_input === 'number' ? 'number' : 'text'}" placeholder="Valor..." style="flex:1">`;
     }
   }
+
+  function actualizarResumenSeccionesModal() {
+    const n = document.querySelectorAll('#campana-secciones-list input:checked').length;
+    const btn = document.getElementById('btn-confirmar-secciones');
+    if (btn) { btn.textContent = n ? `Agregar ${n} sección(es)` : 'Agregar'; btn.disabled = !n; }
+  }
+
+  window.abrirModalSeccionesCampana = function() {
+    const secciones = window._campanasSecciones || [];
+    const sel = window._campanasSeccionesSel || [];
+    const ids = sel.map(s => String(s.id));
+    const list = document.getElementById('campana-secciones-list');
+    list.innerHTML = secciones.map(s => `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:13px;cursor:pointer">
+      <input type="checkbox" value="${s.id}" ${ids.includes(String(s.id)) ? 'checked' : ''}> Sec. ${s.id} - ${s.municipio}
+    </label>`).join('') || '<div style="color:#999;font-size:12px;padding:10px">Sin secciones</div>';
+    list.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', actualizarResumenSeccionesModal));
+    document.getElementById('campana-secciones-buscar').value = '';
+    document.querySelectorAll('#campana-secciones-list label').forEach(l => l.style.display = '');
+    actualizarResumenSeccionesModal();
+    document.getElementById('campana-secciones-modal').classList.remove('hidden');
+  };
+
+  window.filtrarSeccionesCampana = function(v) {
+    const q = (v || '').trim();
+    document.querySelectorAll('#campana-secciones-list label').forEach(l => {
+      l.style.display = l.textContent.includes(q) ? '' : 'none';
+    });
+  };
+
+  window.confirmarSeccionesCampana = function() {
+    const checked = [...document.querySelectorAll('#campana-secciones-list input:checked')].map(i => ({ id: i.value }));
+    window._campanasSeccionesSel = checked;
+    document.getElementById('campana-secciones-modal').classList.add('hidden');
+    const btn = document.querySelector('#campana-filtro-valor button');
+    if (btn) btn.textContent = checked.length ? `☑ Elegir secciones (${checked.length})` : '☑ Elegir secciones...';
+    const resumen = document.getElementById('campana-secciones-resumen');
+    if (resumen) resumen.textContent = checked.length ? 'Seleccionadas: ' + checked.map(s => 'Sec. ' + s.id).join(', ') : 'Marca las secciones que quieras incluir';
+  };
 
   window.actualizarValorFiltro = function(campoEl) {
     renderFiltroInput(campoEl?.value || document.getElementById('campana-filtro-campo').value);
@@ -2643,6 +2767,12 @@
       if (!min && !max) { alert('Completa el rango'); return; }
       valor = `${min || '0'}-${max || '999'}`;
       etiquetaValor = `${min || '0'} a ${max || '999'}`;
+    } else if (def.campo_bd === 'seccion_id') {
+      const selSecs = window._campanasSeccionesSel || [];
+      if (!selSecs.length) { alert('Elige al menos una sección'); return; }
+      valor = selSecs.map(s => s.id);
+      etiquetaValor = `${selSecs.length} sección(es): ${selSecs.map(s => 'Sec. ' + s.id).join(', ')}`;
+      window._campanaFiltrosCarrito = (window._campanaFiltrosCarrito || []).filter(x => x.campo !== filtroId);
     } else {
       const input = container.querySelector('input, select');
       if (!input || !input.value) { alert('Selecciona un valor'); return; }
@@ -2660,7 +2790,15 @@
 
   window.quitarFiltroCarrito = function(idx) {
     if (!window._campanaFiltrosCarrito) return;
+    const removed = window._campanaFiltrosCarrito[idx];
     window._campanaFiltrosCarrito.splice(idx, 1);
+    if (removed && removed.campo && (window._campanaFiltrosDef || []).find(d => d.id === removed.campo)?.campo_bd === 'seccion_id') {
+      window._campanasSeccionesSel = [];
+      const btn = document.querySelector('#campana-filtro-valor button');
+      if (btn) btn.textContent = '☑ Elegir secciones...';
+      const resumen = document.getElementById('campana-secciones-resumen');
+      if (resumen) resumen.textContent = 'Marca las secciones que quieras incluir';
+    }
     renderCarritoCampana();
   };
 
@@ -2727,7 +2865,7 @@
 
     try {
       if (id) {
-        await API.actualizarCampana(id, { nombre, plantilla_id, filtros, scheduled_at, status: enviar ? 'sent' : 'pending', tipo, encuesta_id });
+        await API.actualizarCampana(id, { nombre, plantilla_id: plantilla_id || null, filtros, scheduled_at, status: enviar ? 'sent' : 'pending', tipo, encuesta_id });
       } else {
         await API.crearCampana({ nombre, plantilla_id, filtros, scheduled_at, tipo, encuesta_id });
         if (enviar) {
@@ -2737,6 +2875,7 @@
         }
       }
       cerrarModal('campana');
+      document.getElementById('encuesta-modal')?.classList.add('hidden');
       loadCampanas();
     } catch (err) { alert(err.message); }
   };
@@ -2769,12 +2908,14 @@
         const def = filtrosDef.find(x => x.id === f.campo);
         if (def) {
           let etiquetaValor = f.valor;
-          if (def.tipo_input === 'range') {
-            const parts = f.valor.split('-');
+          if (def.campo_bd === 'seccion_id' && Array.isArray(f.valor)) {
+            etiquetaValor = `${f.valor.length} sección(es): ${f.valor.join(', ')}`;
+          } else if (def.tipo_input === 'range') {
+            const parts = String(f.valor).split('-');
             etiquetaValor = `${parts[0]} a ${parts[1]}`;
           } else if (def.opciones) {
             const opt = (def.opciones || []).find(function(o) { return o.valor == f.valor; });
-          if (opt) etiquetaValor = opt.etiqueta;
+            if (opt) etiquetaValor = opt.etiqueta;
           }
           window._campanaFiltrosCarrito.push({ campo: f.campo, valor: f.valor, etiqueta: `${def.nombre}: ${etiquetaValor}` });
         } else {
@@ -2782,6 +2923,14 @@
         }
       }
       renderCarritoCampana();
+      const secFilter = window._campanaFiltrosCarrito.find(f => filtrosDef.find(x => x.id === f.campo)?.campo_bd === 'seccion_id');
+      if (secFilter && Array.isArray(secFilter.valor)) {
+        window._campanasSeccionesSel = secFilter.valor.map(v => ({ id: String(v) }));
+        const btn = document.querySelector('#campana-filtro-valor button');
+        if (btn) btn.textContent = `☑ Elegir secciones (${window._campanasSeccionesSel.length})`;
+        const resumen = document.getElementById('campana-secciones-resumen');
+        if (resumen) resumen.textContent = 'Seleccionadas: ' + window._campanasSeccionesSel.map(s => 'Sec. ' + s.id).join(', ');
+      }
       if (c.scheduled_at) {
         document.getElementById('campana-cuando').value = 'fecha';
         toggleCampanaFecha();
@@ -2790,6 +2939,37 @@
       document.getElementById('campana-enviar').checked = c.status === 'sent';
       document.getElementById('campana-modal').classList.remove('hidden');
     } catch (err) { console.error(err); }
+  };
+
+  // ── Tendencias de actividad (capturas / seguros / votos por día) ──
+  window.cargarTendencias = async function(seccionId) {
+    const canvas = document.getElementById('chart-tendencias');
+    if (!canvas) return;
+    try {
+      const dias = document.getElementById('tend-dias')?.value || '30';
+      const qs = new URLSearchParams({ dias });
+      if (seccionId) qs.set('seccion_id', seccionId);
+      const data = await API.request('GET', '/api/reportes/tendencias?' + qs.toString());
+      if (window.tendenciasChart) { window.tendenciasChart.destroy(); window.tendenciasChart = null; }
+      if (!data.length) return;
+      const labels = data.map(d => String(d.fecha).slice(5));
+      window.tendenciasChart = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Capturas', data: data.map(d => d.capturas), borderColor: '#009639', backgroundColor: 'rgba(0,150,57,.12)', borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true },
+            { label: 'Simpatizantes', data: data.map(d => d.seguros), borderColor: '#CC0000', backgroundColor: 'rgba(204,0,0,.10)', borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true },
+            { label: 'Votos', data: data.map(d => d.votos), borderColor: '#1e88e5', backgroundColor: 'rgba(30,136,229,.10)', borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    } catch (e) { console.warn('Tendencias no disponibles:', e?.message || e); }
   };
 
   async function loadReportes() {
@@ -2939,6 +3119,9 @@
           });
         }
       } catch (e) { console.warn('Horaria no disponible:', e?.message || e); }
+
+      // Tendencias de actividad (capturas / seguros / votos por día)
+      cargarTendencias(secId || null);
 
       let casillasHtml = '';
       const casillasMostrar = casId ? casillasSec.filter(c => c.id === casId) : (secId ? casillasSec : casillas);
@@ -3759,7 +3942,7 @@
       const blob = await API.requestBlob('GET', '/api/exportar/excel?tipo=general' + (campanaId ? '&campana_id=' + campanaId : ''));
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'ciudadanos-general.xls';
+      a.download = 'ciudadanos-general.xlsx';
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e) { notify('Error: ' + e.message, 'error'); }
@@ -3770,7 +3953,7 @@
       const blob = await API.requestBlob('GET', '/api/exportar/excel?tipo=simpatizantes');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'simpatizantes.xls';
+      a.download = 'simpatizantes.xlsx';
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e) { notify('Error: ' + e.message, 'error'); }
@@ -3904,16 +4087,21 @@
         filtro.value = '';
       }
       const filtrados = filtro.value ? ciudadanos.filter(c => c.seccion_id == filtro.value) : ciudadanos;
+      const motivoLabels = { no_abrio: '🚪 No abrió', sin_info: '🤐 Sin info', con_prisa: '⏱️ Prisa', otro: '❓ Otro' };
       document.getElementById('ciudadanos-body').innerHTML = filtrados.length ? filtrados.map(c => {
         var fotoUrl = fotoUrlFromNotas(c.notas);
         const encBtn = c.encuesta_campana_id ? `<button class="btn-small btn-secondary" onclick="abrirEncuestaCiudadano('${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}','${c.encuesta_campana_id}')" title="Responder encuesta asignada">📋 Encuesta</button> ` : '';
+        const barridoCell = c.motivo_puerta
+          ? `<span style="font-size:11px;background:#fff3cd;border:1px solid #d4a017;color:#6b4f00;border-radius:4px;padding:1px 5px;white-space:nowrap">${motivoLabels[c.motivo_puerta] || c.motivo_puerta}</span>`
+          : `<span style="font-size:11px;color:${c.sexo || c.discapacidad_nombre || c.ocupacion_nombre ? '#333' : '#bbb'};white-space:nowrap">${[c.sexo === 'H' ? '♂ H' : (c.sexo === 'M' ? '♀ M' : ''), c.discapacidad_nombre ? '♿ ' + c.discapacidad_nombre : '', c.ocupacion_nombre ? '💼 ' + c.ocupacion_nombre : ''].filter(Boolean).join(' · ') || '—'}</span>`;
         return `<tr><td><strong>${c.nombre || (c.no_abrio ? '🚪 No abrió' : '—')}</strong></td><td>${c.telefono || '-'}</td>
         <td>${[c.calle, c.numero].filter(Boolean).join(' ') || '-'}</td><td>${c.colonia || '-'}</td>
         <td>Sec. ${c.seccion_num}</td>
+        <td>${barridoCell}</td>
         <td>${c.prioridad || 0}</td>
         <td>${fotoUrl ? '<div style="position:relative;display:inline-block"><img src="'+fotoUrl+'" style="height:32px;width:32px;object-fit:cover;border-radius:4px;border:1px solid #ddd;cursor:pointer" onclick="window.open(\''+fotoUrl+'\',\'_blank\')"><span style="position:absolute;top:-4px;right:-4px;background:var(--pri-red);color:#fff;border-radius:50%;width:14px;height:14px;font-size:10px;line-height:14px;text-align:center;cursor:pointer" onclick="event.stopPropagation();eliminarFotoCiudadano(\''+c.id+'\',\''+c.nombre+'\',this)">×</span></div>' : '-'}</td>
         <td style="white-space:nowrap">${encBtn}<button class="btn-small btn-primary" onclick="abrirModal('ciudadano','${c.id}')">Editar</button> <button class="btn-small btn-secondary" onclick="mostrarHistorialCiudadano('${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}')" title="Historial de visitas">Hist</button> <button class="btn-small btn-danger" onclick="eliminarItem('ciudadano','${c.id}','${c.nombre}')">X</button></td></tr>`;
-      }).join('') : '<tr><td colspan="8" style="text-align:center;color:#999">No hay ciudadanos registrados</td></tr>';
+      }).join('') : '<tr><td colspan="9" style="text-align:center;color:#999">No hay ciudadanos registrados</td></tr>';
       if (barridoActivo) actualizarMapaBarrido(ciudadanos);
       verificarDuplicados();
       finalizarStatus();
@@ -3995,10 +4183,11 @@
         <td>${c.telefono || '-'}</td><td>${c.correo || '-'}</td><td>${c.curp || '-'}</td><td>${c.ine || '-'}</td>
         <td>${vig}</td>
         <td>Sec. ${c.seccion_num}</td>
+        <td><span style="font-size:11px;color:${c.sexo || c.discapacidad_nombre || c.ocupacion_nombre ? '#333' : '#bbb'};white-space:nowrap">${[c.sexo === 'H' ? '♂ H' : (c.sexo === 'M' ? '♀ M' : ''), c.discapacidad_nombre ? '♿ ' + c.discapacidad_nombre : '', c.ocupacion_nombre ? '💼 ' + c.ocupacion_nombre : ''].filter(Boolean).join(' · ') || '—'}</span></td>
         <td>${c.partido_presidente?.abreviatura || '-'}</td>
         <td>${corrBadge}</td>
         <td style="white-space:nowrap">${accion}</td></tr>`;
-      }).join('') : `<tr><td colspan="10" style="text-align:center;color:#999">${busqueda || filtro.value ? 'Sin resultados para la búsqueda' : 'No hay simpatizantes registrados'}</td></tr>`;
+      }).join('') : `<tr><td colspan="11" style="text-align:center;color:#999">${busqueda || filtro.value ? 'Sin resultados para la búsqueda' : 'No hay simpatizantes registrados'}</td></tr>`;
       finalizarStatus();
     } catch (err) { console.error(err); finalizarStatus(); }
   }
@@ -4266,17 +4455,19 @@
     if (!barridoMap || !barridoActivo) return;
     if (barridoGeoLayer) { barridoMap.removeLayer(barridoGeoLayer); barridoGeoLayer = null; }
     if (!secId) return;
-    API.getSecciones().then(secciones => {
+    const usr = API.getUser();
+    const promSecs = usr?.municipio_id ? API.getSeccionesPorMunicipio(usr.municipio_id) : API.getSecciones();
+    promSecs.then(secciones => {
       const sec = secciones.find(s => s.id == secId);
       if (sec?.municipio_id) {
-        API.getGeometrias(sec.municipio_id).then(data => {
+        API.getGeometrias(sec.municipio_id, true).then(data => {
           const feat = data.features?.find(f => Math.round(f.properties.seccion) == secId);
           if (feat && barridoMap) {
             barridoGeoLayer = L.geoJSON(feat, {
               style: { fillColor: '#f5d0d0', fillOpacity: 0.12, color: '#e8a0a0', weight: 2, opacity: 0.8 }
             }).addTo(barridoMap);
             setTimeout(() => { try { barridoMap.fitBounds(barridoGeoLayer.getBounds(), { padding: [40,40], maxZoom: 16 }); } catch (e) { console.warn(e); } }, 200);
-          }
+          } else if (barridoMap) { barridoMap.setView([20.6434, -100.9929], 13); }
         }).catch(e => console.warn(e));
       }
     }).catch(e => console.warn(e));
@@ -4291,6 +4482,8 @@
     window._vcListBf = [];
     actualizarBtnVotantesCasa();
     document.getElementById('bf-nombre').value = '';
+    document.getElementById('bf-apellido_paterno').value = '';
+    document.getElementById('bf-apellido_materno').value = '';
     document.getElementById('bf-telefono').value = '';
     document.getElementById('bf-calle').value = '';
     document.getElementById('bf-numero').value = '';
@@ -4298,12 +4491,30 @@
     document.getElementById('bf-cp').value = '';
     document.getElementById('bf-edad').value = '';
     const bfNoAbrio = document.getElementById('bf-no_abrio'); if (bfNoAbrio) bfNoAbrio.checked = false;
+    const bfMotivo = document.getElementById('bf-motivo'); if (bfMotivo) bfMotivo.value = '';
+    const bfSexo = document.getElementById('bf-sexo'); if (bfSexo) bfSexo.value = '';
+    const bfDisc = document.getElementById('bf-discapacidad'); if (bfDisc) bfDisc.value = '';
+    const bfOcu = document.getElementById('bf-ocupacion'); if (bfOcu) bfOcu.value = '';
     document.getElementById('bf-partido-presidente').selectedIndex = 0;
     document.getElementById('bf-partido-diputado').selectedIndex = 0;
     document.getElementById('bf-lat').value = '';
     document.getElementById('bf-lng').value = '';
     limpiarEvidenciaBarrido();
     actualizarEstadoGuardarBarrido();
+  }
+
+  async function refrescarEncuestaBarridoUI() {
+    if (!barridoActivo) return;
+    const encInfo = document.getElementById('bf-encuesta-info');
+    try {
+      const camps = await API.getCampanas();
+      const barrido = camps.find(c => c.encuesta_barrido);
+      window._encuestaBarrido = barrido ? { id: barrido.id, nombre: barrido.nombre } : null;
+      window._encuestaDraft = null;
+      if (encInfo) encInfo.innerHTML = barrido
+        ? `<button type="button" class="btn-small btn-secondary" style="font-size:11px" title="Encuesta de barrido: ${barrido.nombre}" onclick="abrirEncuestaBarrido()">🚪 Encuesta de barrido</button>`
+        : '<span style="font-size:11px;color:var(--text-muted)">Sin encuesta de barrido asignada</span>';
+    } catch (e) { /* noop */ }
   }
 
   function toggleBarrido() {
@@ -4315,12 +4526,22 @@
     document.getElementById('btn-barrido').textContent = barridoActivo ? 'Ver tabla' : 'Modo Barrido';
     if (barridoActivo) {
       const sel = document.getElementById('bf-seccion');
-      API.getSecciones().then(secs => { sel.innerHTML = '<option value="">Seccion</option>' + secs.map(s => `<option value="${s.id}">Sec. ${s.id}</option>`).join(''); });
+      const userSec = API.getUser();
+      const cargarSecs = userSec?.municipio_id ? API.getSeccionesPorMunicipio(userSec.municipio_id) : API.getSecciones();
+      cargarSecs.then(secs => { sel.innerHTML = '<option value="">Seccion</option>' + secs.map(s => `<option value="${s.id}">Sec. ${s.id}</option>`).join(''); })
+        .catch(err => { console.error(err); alert('Error cargando secciones: ' + (err?.message || err) + ' | servidor: ' + (API.getBase() || '(vacio)')); });
       API.getPartidos().then(partidos => {
         const opts = '<option value="">-</option>' + partidos.map(p => `<option value="${p.id}">${p.abreviatura}</option>`).join('');
         document.getElementById('bf-partido-presidente').innerHTML = opts;
         document.getElementById('bf-partido-diputado').innerHTML = opts;
       });
+      Promise.all([API.getCatalogo('discapacidades'), API.getCatalogo('ocupaciones')]).then(([discs, ocus]) => {
+        window._catDiscapacidades = discs; window._catOcupaciones = ocus;
+        const dSel = document.getElementById('bf-discapacidad');
+        const oSel = document.getElementById('bf-ocupacion');
+        if (dSel) dSel.innerHTML = '<option value="">Discapacidad</option>' + discs.map(d => `<option value="${d.id}">${d.nombre}</option>`).join('');
+        if (oSel) oSel.innerHTML = '<option value="">Ocupación</option>' + ocus.map(o => `<option value="${o.id}">${o.nombre}</option>`).join('');
+      }).catch(e => console.warn('catalogos barrido:', e));
       const encInfo = document.getElementById('bf-encuesta-info');
       API.getCampanas().then(camps => {
         const barrido = camps.find(c => c.encuesta_barrido);
@@ -4622,8 +4843,11 @@
 
   document.getElementById('btn-guardar-barrido')?.addEventListener('click', async () => {
     const nombre = document.getElementById('bf-nombre').value.trim();
-    const noAbrio = document.getElementById('bf-no_abrio').checked;
-    if (!nombre && !noAbrio) { document.getElementById('bf-status').textContent = 'Nombre requerido (o marca "No abrió")'; document.getElementById('bf-status').style.color = 'var(--pri-red)'; return; }
+    const apellidoPaterno = document.getElementById('bf-apellido_paterno').value.trim();
+    const apellidoMaterno = document.getElementById('bf-apellido_materno').value.trim();
+    const motivoPuerta = document.getElementById('bf-motivo') ? document.getElementById('bf-motivo').value : '';
+    const noAbrio = !!motivoPuerta;
+    if (!nombreCompleto(nombre, apellidoPaterno, apellidoMaterno) && !noAbrio) { document.getElementById('bf-status').textContent = 'Nombre requerido (o elige un motivo de puerta)'; document.getElementById('bf-status').style.color = 'var(--pri-red)'; return; }
     const telefono = document.getElementById('bf-telefono').value.trim();
     const errTel = validarTelefono(telefono);
     if (errTel) { document.getElementById('bf-status').textContent = errTel; document.getElementById('bf-status').style.color = 'var(--pri-red)'; return; }
@@ -4640,7 +4864,7 @@
     const gpsIndicator = document.getElementById('bf-gps-indicator');
     const gpsText = document.getElementById('bf-gps-text');
     const status = document.getElementById('bf-status');
-    const data = { nombre, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado, no_abrio: document.getElementById('bf-no_abrio').checked, encuesta_campana_id: (window._encuestaBarrido && window._encuestaBarrido.id) || null };
+    const data = { nombre: nombreCompleto(nombre, apellidoPaterno, apellidoMaterno), apellido_paterno: apellidoPaterno || null, apellido_materno: apellidoMaterno || null, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado, motivo_puerta: motivoPuerta || null, no_abrio: noAbrio, sexo: (document.getElementById('bf-sexo')?.value) || null, discapacidad_id: (document.getElementById('bf-discapacidad')?.value) ? parseInt(document.getElementById('bf-discapacidad').value) : null, ocupacion_id: (document.getElementById('bf-ocupacion')?.value) ? parseInt(document.getElementById('bf-ocupacion').value) : null, encuesta_campana_id: (window._encuestaBarrido && window._encuestaBarrido.id) || null };
     const bfExtras = parseInt(document.getElementById('bf-votantes_casa').value) || 0;
     if (bfExtras > 0) data.votantes_casa = bfExtras + 1;
     const bfVcDef = Array.isArray(window._vcListBf) ? window._vcListBf.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
@@ -4661,7 +4885,7 @@
         data.lat = pos.coords.latitude; data.lng = pos.coords.longitude;
         gpsOk = true;
         _gpsFixObtained = true;
-        autoDetectarSeccion(data.lat, data.lng);
+        if (!document.getElementById('bf-seccion').value) autoDetectarSeccion(data.lat, data.lng);
       }
       if (!gpsOk) {
         var geo = await geocodeAddress(calle, numero, colonia, seccionId);
@@ -5133,22 +5357,68 @@
   let rutaCreandoSeccion = null;
   let rutaModalTipo = 'seguros';
 
-  function tipoRutaLabel(t) { return t === 'encuesta' ? '📋 Encuesta' : '🛡 Simpatizantes'; }
+  function tipoRutaLabel(t) { return t === 'encuesta' ? '📋 Encuesta' : (t === 'filtro' ? '🎯 Por filtro' : '🛡 Simpatizantes'); }
 
   window.setRutaModalTipo = function(tipo) {
-    rutaModalTipo = tipo === 'encuesta' ? 'encuesta' : 'seguros';
+    rutaModalTipo = ['encuesta', 'seguros', 'filtro'].includes(tipo) ? tipo : 'seguros';
     const bS = document.getElementById('ruta-modal-tipo-seguros');
     const bE = document.getElementById('ruta-modal-tipo-encuesta');
+    const bF = document.getElementById('ruta-modal-tipo-filtro');
     if (!bS) return;
     bS.classList.toggle('btn-primary', rutaModalTipo === 'seguros');
     bS.classList.toggle('btn-secondary', rutaModalTipo !== 'seguros');
     bE.classList.toggle('btn-primary', rutaModalTipo === 'encuesta');
     bE.classList.toggle('btn-secondary', rutaModalTipo !== 'encuesta');
+    bF.classList.toggle('btn-primary', rutaModalTipo === 'filtro');
+    bF.classList.toggle('btn-secondary', rutaModalTipo !== 'filtro');
     const ayuda = document.getElementById('ruta-modal-tipo-ayuda');
     ayuda.textContent = rutaModalTipo === 'seguros'
       ? 'Visitar a los simpatizantes (voto seguro) de la sección para confirmar sus datos y su voto.'
-      : 'Visitar a todos los ciudadanos de la sección para aplicar la encuesta.';
+      : (rutaModalTipo === 'filtro'
+        ? 'Visitar solo a los ciudadanos que cumplan los filtros elegidos (sexo, edad, discapacidad, ocupación, etc.).'
+        : 'Visitar a todos los ciudadanos de la sección para aplicar la encuesta.');
     document.getElementById('ruta-modal-encuesta-opts').classList.toggle('hidden', rutaModalTipo !== 'encuesta');
+    const filtroOpts = document.getElementById('ruta-modal-filtro-opts');
+    if (filtroOpts) {
+      filtroOpts.classList.toggle('hidden', rutaModalTipo !== 'filtro');
+      if (rutaModalTipo === 'filtro') llenarSelectsFiltroRuta();
+    }
+  };
+
+  async function llenarSelectsFiltroRuta() {
+    try {
+      const [discs, ocus] = await Promise.all([API.getCatalogo('discapacidades'), API.getCatalogo('ocupaciones')]);
+      const dSel = document.getElementById('rf-discapacidad');
+      const oSel = document.getElementById('rf-ocupacion');
+      if (dSel && !dSel.options.length) dSel.innerHTML = discs.map(d => `<option value="${d.id}">${d.nombre}</option>`).join('');
+      if (oSel && !oSel.options.length) oSel.innerHTML = ocus.map(o => `<option value="${o.id}">${o.nombre}</option>`).join('');
+    } catch (e) { console.warn(e); }
+  }
+
+  function filtrosRutaActuales() {
+    const f = {};
+    const sexo = document.getElementById('rf-sexo')?.value;
+    if (sexo) f.sexo = sexo;
+    const edadMax = parseInt(document.getElementById('rf-edad-max')?.value);
+    if (!Number.isNaN(edadMax)) f.edad_max = edadMax;
+    const discs = [...(document.getElementById('rf-discapacidad')?.selectedOptions || [])].map(o => parseInt(o.value)).filter(Boolean);
+    if (discs.length) f.discapacidad_ids = discs;
+    const ocus = [...(document.getElementById('rf-ocupacion')?.selectedOptions || [])].map(o => parseInt(o.value)).filter(Boolean);
+    if (ocus.length) f.ocupacion_ids = ocus;
+    if (document.getElementById('rf-motivo')?.checked) f.motivo_puerta_presente = true;
+    if (document.getElementById('rf-sin-intencion')?.checked) f.sin_intencion = true;
+    return f;
+  }
+
+  window.previewRutaFiltro = async function() {
+    const out = document.getElementById('rf-preview-count');
+    if (!out) return;
+    try {
+      out.textContent = 'Contando...'; out.style.color = '#666';
+      const r = await API.previewRutaFiltro(rutaCreandoSeccion, filtrosRutaActuales());
+      out.textContent = `${r.total} ciudadano(s) cumplen los filtros`;
+      out.style.color = r.total ? 'var(--pri-green)' : 'var(--pri-red)';
+    } catch (e) { out.textContent = 'Error al contar'; out.style.color = 'var(--pri-red)'; }
   };
 
   async function loadRutasAdmin() {
@@ -5180,7 +5450,7 @@
             <div><strong style="font-size:14px">Seccion ${s.id}</strong> <span style="color:#999;font-size:11px">${s.municipio || ''}</span></div>
           </div>
           ${enl.length ? `<div style="font-size:11px;color:#666;margin-bottom:4px">Enlaces disponibles: ${enl.map(e => e.nombre).join(', ')}</div>` : '<div style="font-size:11px;color:#999">Sin enlaces asignados</div>'}
-          ${enl.length ? filaTipo('encuesta') + filaTipo('seguros') : ''}
+          ${enl.length ? filaTipo('encuesta') + filaTipo('seguros') + filaTipo('filtro') : ''}
         </div>`;
       }).join('');
     } catch (err) { console.error(err); }
@@ -5212,10 +5482,16 @@
       const selected = [...document.querySelectorAll('.ruta-enlace-cb:checked')].map(cb => cb.value);
       if (!selected.length) { document.getElementById('ruta-modal-status').textContent = 'Selecciona al menos un enlace'; return; }
       const encuestaId = rutaModalTipo === 'encuesta' ? (document.getElementById('ruta-modal-encuesta').value || null) : null;
+      const filtros = rutaModalTipo === 'filtro' ? filtrosRutaActuales() : undefined;
+      if (rutaModalTipo === 'filtro' && !Object.keys(filtros).length) {
+        status.textContent = 'Elige al menos un filtro (o usa otro tipo de ruta)';
+        status.style.color = 'var(--pri-red)';
+        return;
+      }
       const status = document.getElementById('ruta-modal-status');
       try {
         status.textContent = 'Creando rutas...';
-        await API.request('POST', '/api/rutas', { enlace_ids: selected, seccion_id: seccionId, tipo: rutaModalTipo, encuesta_campana_id: encuestaId });
+        await API.request('POST', '/api/rutas', { enlace_ids: selected, seccion_id: seccionId, tipo: rutaModalTipo, encuesta_campana_id: encuestaId, filtros });
         status.textContent = `Ruta ${tipoRutaLabel(rutaModalTipo)} creada para ${selected.length} enlace(s)`;
         status.style.color = 'var(--pri-green)';
         setTimeout(() => { document.getElementById('ruta-modal-crear').classList.add('hidden'); loadRutasAdmin(); }, 1000);
@@ -5915,7 +6191,16 @@
     const nb = Array.isArray(window._vcListBf) ? window._vcListBf.length : 0;
     const fb = document.getElementById('f-btn-vc'); if (fb) fb.textContent = `👥 Votantes de la casa${nf ? ` (${nf})` : ''}`;
     const bb = document.getElementById('bf-btn-vc'); if (bb) bb.textContent = `👥 Votantes de la casa${nb ? ` (${nb})` : ''}`;
+    const fi = document.getElementById('f-votantes_casa');
+    const bi = document.getElementById('bf-votantes_casa');
+    const fOn = !!(parseInt(fi?.value) || 0) || nf > 0;
+    const bOn = !!(parseInt(bi?.value) || 0) || nb > 0;
+    if (fb) { fb.disabled = !fOn; fb.style.opacity = fOn ? '' : '0.45'; fb.style.cursor = fOn ? '' : 'not-allowed'; }
+    if (bb) { bb.disabled = !bOn; bb.style.opacity = bOn ? '' : '0.45'; bb.style.cursor = bOn ? '' : 'not-allowed'; }
   }
+
+  const bfVcInput = document.getElementById('bf-votantes_casa');
+  if (bfVcInput) bfVcInput.addEventListener('input', actualizarBtnVotantesCasa);
 
   function initVotantesCasaModal(list, extras) {
     const l = Array.isArray(list) ? list : [];
@@ -5927,21 +6212,32 @@
 
   window.abrirModalVotantesCasa = async function(prefix) {
     _vcPrefix = prefix || 'f';
+    const btn = document.getElementById(prefix + '-btn-vc');
+    if (btn && btn.disabled) return;
     const cur = _vcPrefix === 'bf' ? (Array.isArray(window._vcListBf) ? window._vcListBf : []) : (Array.isArray(window._vcList) ? window._vcList : []);
     const input = document.getElementById(prefix + '-votantes_casa');
     const extras = Math.max(0, parseInt(input.value) || 0);
     const rowsArr = Array.from({ length: extras }, (_, i) => cur[i] || { nombre: '', partido_id: null, partido_diputado_id: null });
     if (_vcPrefix === 'bf') window._vcListBf = rowsArr; else window._vcList = rowsArr;
-    const partidos = await API.getPartidos();
     const rows = rowsArr.map((v, i) => `
-      <div class="vc-row" style="display:flex;gap:6px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
+      <div class="vc-row" data-vp="${v.partido_id ?? ''}" data-vd="${v.partido_diputado_id ?? ''}" style="display:flex;gap:6px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:bold;width:64px;flex:none">Votante ${i + 1}</span>
         <input class="vc-nombre" placeholder="Nombre (opcional)" value="${(v.nombre || '').replace(/"/g, '&quot;')}" style="flex:1;min-width:90px;font-size:12px">
-        <select class="vc-p" style="flex:1;min-width:80px;font-size:12px"><option value="">Presidente: Sin definir</option>${partidos.map(p => `<option value="${p.id}" ${v.partido_id == p.id ? 'selected' : ''}>${p.abreviatura}</option>`).join('')}</select>
-        <select class="vc-d" style="flex:1;min-width:80px;font-size:12px"><option value="">Diputado: Sin definir</option>${partidos.map(p => `<option value="${p.id}" ${v.partido_diputado_id == p.id ? 'selected' : ''}>${p.abreviatura}</option>`).join('')}</select>
+        <select class="vc-p" style="flex:1;min-width:80px;font-size:12px"><option value="">Presidente: Sin definir</option></select>
+        <select class="vc-d" style="flex:1;min-width:80px;font-size:12px"><option value="">Diputado: Sin definir</option></select>
       </div>`).join('');
     document.getElementById('vc-body').innerHTML = rows.length ? rows : '<p style="font-size:12px;color:#999;text-align:center">Aumenta "Votantes extra" para registrar a las demás personas de la casa</p>';
     document.getElementById('vc-casa-modal').classList.remove('hidden');
+    API.getPartidos().then(partidos => {
+      document.querySelectorAll('#vc-body .vc-row').forEach(row => {
+        const vp = row.dataset.vp, vd = row.dataset.vd;
+        const opts = partidos.map(p => `<option value="${p.id}">${p.abreviatura}</option>`).join('');
+        const ps = row.querySelector('.vc-p'), ds = row.querySelector('.vc-d');
+        ps.innerHTML = '<option value="">Presidente: Sin definir</option>' + opts;
+        ds.innerHTML = '<option value="">Diputado: Sin definir</option>' + opts;
+        ps.value = vp; ds.value = vd;
+      });
+    }).catch(() => {});
   };
 
   window.guardarVotantesCasa = function() {
@@ -6041,6 +6337,24 @@
           lngField.value = p.lng.toFixed(6);
           if (tipo === 'evento') detectarSeccionEvento(p.lat, p.lng);
           if (tipo === 'casilla') detectarSeccionCasilla(p.lat, p.lng);
+          if (tipo === 'ciudadano' || tipo === 'comprometido') {
+            const fc = document.getElementById('f-calle');
+            if (fc && !fc.value.trim()) {
+              fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.lat}&lon=${p.lng}&addressdetails=1`)
+                .then(r => r.json())
+                .then(d => {
+                  if (!d?.address) return;
+                  const addr = d.address;
+                  if (!fc.value.trim()) fc.value = addr.road || addr.pedestrian || '';
+                  const fn = document.getElementById('f-numero');
+                  if (fn && !fn.value.trim()) fn.value = addr.house_number || '';
+                  const coloniaVal = addr.suburb || addr.neighbourhood || addr.hamlet || addr.village || addr.town || '';
+                  const fco = document.getElementById('f-colonia');
+                  if (fco && coloniaVal && !fco.value.trim()) fco.value = coloniaVal;
+                })
+                .catch(() => {});
+            }
+          }
         });
         setTimeout(() => mapaAjuste.invalidateSize(), 100);
         resaltarSeccionEnMapaAjuste();
@@ -6274,6 +6588,21 @@
       sel.innerHTML = municipios.map(m => `<option value="${m.id}" ${m.id == (data.municipio_id || municipios.find(x => x.es_default)?.id) ? 'selected' : ''}>${m.nombre}</option>`).join('');
     }
     if (tipo === 'ciudadano' || tipo === 'comprometido') {
+      // Catálogos de perfil: discapacidad y ocupación
+      try {
+        const [discs,ocus] = await Promise.all([API.getCatalogo('discapacidades'), API.getCatalogo('ocupaciones')]);
+        window._catDiscapacidades = discs; window._catOcupaciones = ocus;
+        const dSel = document.getElementById('f-discapacidad');
+        const oSel = document.getElementById('f-ocupacion');
+        if (dSel) {
+          dSel.innerHTML = '<option value=""></option>' + discs.map(d => `<option value="${d.id}">${d.nombre}</option>`).join('');
+          if (dSel.dataset.valor) dSel.value = String(dSel.dataset.valor);
+        }
+        if (oSel) {
+          oSel.innerHTML = '<option value=""></option>' + ocus.map(o => `<option value="${o.id}">${o.nombre}</option>`).join('');
+          if (oSel.dataset.valor) oSel.value = String(oSel.dataset.valor);
+        }
+      } catch (e) { console.warn('Catálogos no disponibles:', e); }
       const estados = await API.getEstados();
       const eSel = document.getElementById('f-estado');
       const muniSel = document.getElementById('f-municipio');
@@ -6307,8 +6636,26 @@
         }
       });
       if (data.seccion_id) {
-        const secciones = await API.getSecciones();
-        const sec = secciones.find(s => s.id == data.seccion_id);
+        let secciones = await API.getSecciones();
+        let sec = secciones.find(s => s.id == data.seccion_id);
+        if (!sec) {
+          const usrMuni = API.getUser()?.municipio_id;
+          if (usrMuni) {
+            const secsMuni = await API.getSeccionesPorMunicipio(usrMuni);
+            sec = secsMuni.find(s => s.id == data.seccion_id);
+            if (sec) secciones = secsMuni;
+          }
+        }
+        if (!sec) {
+          try {
+            const munis = await API.getMunicipios();
+            for (const m of munis) {
+              const secsM = await API.getSeccionesPorMunicipio(m.id);
+              const sm = secsM.find(s => s.id == data.seccion_id);
+              if (sm) { sec = sm; secciones = secsM; break; }
+            }
+          } catch (e) { console.warn(e); }
+        }
         const muniId = sec?.municipio_id;
         if (muniId) {
           const muni = (await API.getMunicipios()).find(m => m.id == muniId);
@@ -6327,7 +6674,8 @@
           eSel.value = estDefault.id;
           eSel.dispatchEvent(new Event('change'));
           setTimeout(async () => {
-            const muniDefault = await API.getMunicipioDefault();
+            const userMuni = API.getUser();
+            const muniDefault = userMuni?.municipio_id ? { id: userMuni.municipio_id } : await API.getMunicipioDefault();
             if (muniDefault && [...muniSel.options].some(o => o.value == muniDefault.id)) {
               muniSel.value = muniDefault.id;
               muniSel.dispatchEvent(new Event('change'));
@@ -6394,6 +6742,7 @@
       if (vcInput) {
         const extras = Math.max(0, parseInt(vcInput.value) || 0);
         initVotantesCasaModal(data.votantes_casa_list, extras);
+        vcInput.addEventListener('input', actualizarBtnVotantesCasa);
       }
 
       // CP → colonia auto-suggest
@@ -6532,6 +6881,33 @@
     }
   }
 
+  function partesNombre(nombre, apPaterno, apMaterno) {
+    if (apPaterno || apMaterno) return { nombre: nombre || '', apPaterno: apPaterno || '', apMaterno: apMaterno || '' };
+    const t = String(nombre || '').trim().split(/\s+/).filter(Boolean);
+    if (t.length >= 3) return { nombre: t.slice(0, t.length - 2).join(' '), apPaterno: t[t.length - 2], apMaterno: t[t.length - 1] };
+    if (t.length === 2) return { nombre: t[0], apPaterno: t[1], apMaterno: '' };
+    return { nombre: t[0] || '', apPaterno: '', apMaterno: '' };
+  }
+  function nombreCompleto(nombre, apPaterno, apMaterno) {
+    return [nombre, apPaterno, apMaterno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+  function aplicarMayusculas(el) {
+    if (!el) return;
+    if (el.closest && el.closest('#login-screen')) return;
+    const tag = el.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA') return;
+    const type = (el.type || '').toLowerCase();
+    if (['number', 'date', 'datetime-local', 'time', 'month', 'week', 'color', 'password', 'range', 'checkbox', 'radio', 'file', 'hidden', 'email'].includes(type)) return;
+    if (el.readOnly) return;
+    if (el.value && el.value !== el.value.toUpperCase()) {
+      const pos = el.selectionStart;
+      el.value = el.value.toUpperCase();
+      if (pos != null) { try { el.setSelectionRange(pos, pos); } catch (e) { /* noop */ } }
+    }
+  }
+  document.addEventListener('input', e => aplicarMayusculas(e.target));
+  document.addEventListener('change', e => aplicarMayusculas(e.target));
+
   function renderForm(tipo, data) {
     if (tipo === 'usuario') return `
       <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre completo" value="${data.nombre || ''}" required style="flex:2">
@@ -6574,9 +6950,13 @@
       <label style="flex:1.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Municipio</span><select id="f-municipio_id"></select></label>
       <label style="flex:0.8;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Tipo</span><select id="f-tipo"><option value="urbana" ${data.tipo==='urbana'?'selected':''}>Urbana</option><option value="rural" ${data.tipo==='rural'?'selected':''}>Rural</option></select></label>
       <label style="flex:0.8;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Meta (votos esperados)</span><input type="number" id="f-meta" value="${data.meta || 0}" min="0"></label></div>`;
-    if (tipo === 'ciudadano') return `
-      <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre completo (opcional si no abrió)" value="${data.nombre || ''}" style="flex:2">
-      <input type="text" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" style="flex:1">
+    if (tipo === 'ciudadano') {
+      const nm = partesNombre(data.nombre, data.apellido_paterno, data.apellido_materno);
+      return `
+      <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre(s) (opcional si no abrió)" value="${nm.nombre}" style="flex:1.4">
+      <input type="text" id="f-apellido_paterno" placeholder="Apellido paterno" value="${nm.apPaterno}" style="flex:1">
+      <input type="text" id="f-apellido_materno" placeholder="Apellido materno" value="${nm.apMaterno}" style="flex:1"></div>
+      <div class="form-row"><input type="text" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" style="flex:1">
       <input type="number" id="f-edad" placeholder="Edad" value="${data.edad || ''}" min="0" max="150" style="flex:0.3"></div>
       <div class="form-row"><select id="f-estado" required style="flex:1"></select><select id="f-municipio" required style="flex:1"></select>
       <input type="text" id="f-cp" placeholder="CP" value="${data.cp || ''}" style="flex:0.5"></div>
@@ -6591,21 +6971,39 @@
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:26px">
-        <label style="flex:2;min-width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
+      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:26px">
+        <label style="flex:none;width:130px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
         <select id="f-casilla" style="flex:none;width:100%;box-sizing:border-box;height:40px;padding:0 8px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
-        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:8px"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:0;width:18px;height:18px;flex:none;margin-bottom:0"></label>
-        <label style="flex:none;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
-        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:60px;height:40px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
+        <label style="flex:none;width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Motivo puerta</span>
+        <select id="f-motivo_puerta" style="width:100%;height:40px;padding:0 6px;margin-bottom:0" title="Si la persona no abrió o no quiso dar información, elige el motivo">
+          <option value="">Entrevista realizada</option>
+          <option value="no_abrio" ${data.motivo_puerta==='no_abrio'?'selected':''}>🚪 No abrió</option>
+          <option value="sin_info" ${data.motivo_puerta==='sin_info'?'selected':''}>🤐 No proporcionó info</option>
+          <option value="con_prisa" ${data.motivo_puerta==='con_prisa'?'selected':''}>⏱️ Tenía prisa</option>
+          <option value="otro" ${data.motivo_puerta==='otro'?'selected':''}>❓ Otro motivo</option>
+        </select></label>
+        <input type="hidden" id="f-no_abrio" value="${data.no_abrio ? '1' : ''}">
+        <label style="flex:none;width:96px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
+        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:100%;height:40px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
         <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:40px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
+      </div>
+      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%"><option value=""></option></select></label>
       </div>
       <div class="form-row" style="align-items:stretch"><label style="flex:0.4;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%"></select></label>
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado Local</span><select id="f-intencion_voto_diputado" style="width:100%"></select></label></div>
       <input type="hidden" id="f-hogar" value="${data.numero_hogar || ''}">`;
-    if (tipo === 'comprometido') return `
-      <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre completo" value="${data.nombre || ''}" required style="flex:2">
-      <input type="text" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" required style="flex:1"></div>
+    }
+    if (tipo === 'comprometido') {
+      const nm = partesNombre(data.nombre, data.apellido_paterno, data.apellido_materno);
+      return `
+      <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre(s)" value="${nm.nombre}" required style="flex:1.4">
+      <input type="text" id="f-apellido_paterno" placeholder="Apellido paterno" value="${nm.apPaterno}" style="flex:1">
+      <input type="text" id="f-apellido_materno" placeholder="Apellido materno" value="${nm.apMaterno}" style="flex:1"></div>
+      <div class="form-row"><input type="text" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" required style="flex:1"></div>
       <div class="form-row"><input type="date" id="f-fecha_nacimiento" placeholder="Fecha de nacimiento" value="${data.fecha_nacimiento ? String(data.fecha_nacimiento).slice(0,10) : ''}" max="${new Date().toISOString().slice(0,10)}" required style="flex:1">
       <input type="number" id="f-edad" placeholder="Edad (auto si dejas vacío)" value="${data.edad || ''}" min="0" max="150" style="flex:1"></div>
       <div class="form-row"><input type="email" id="f-correo" placeholder="Correo electronico (opcional)" value="${data.correo || ''}" style="flex:1">
@@ -6625,11 +7023,17 @@
       <input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box">
       <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
+      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%"><option value=""></option></select></label>
+      </div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
       <div class="form-row" style="align-items:center"><label style="flex:1;font-size:11px">Casilla (auto por cercanía, ajustable)</label><select id="f-casilla" style="flex:3;box-sizing:border-box"><option value="">Auto-detectar</option></select></div>
       <input type="hidden" id="f-hogar" value="${data.numero_hogar || ''}">
       <input type="hidden" id="f-intencion_voto_diputado" value="${data.intencion_voto_diputado || ''}">`;
+    }
     function toDatetimeLocal(d) {
       if (!d) return '';
       const dt = new Date(d);
@@ -6729,6 +7133,57 @@
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   }
 
+  // ── Administración de catálogos (discapacidades / ocupaciones) ──
+  async function renderCatalogosAdmin() {
+    for (const tipo of ['discapacidades', 'ocupaciones']) {
+      const ul = document.getElementById('cat-lista-' + tipo);
+      if (!ul) continue;
+      ul.style.listStyle = 'none'; ul.style.padding = '0'; ul.style.margin = '0';
+      ul.innerHTML = '<li style="color:#999;font-size:12px">Cargando...</li>';
+      try {
+        const items = await API.getCatalogo(tipo, true);
+        ul.innerHTML = items.length ? items.map(i => `
+          <li style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:13px;${i.activo ? '' : 'opacity:.45'}">
+            <input type="text" value="${(i.nombre || '').replace(/"/g, '&quot;')}" data-cat-input style="flex:1;padding:4px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px" ${i.activo ? '' : 'disabled'}>
+            <button class="btn-small btn-primary" style="font-size:10px;padding:2px 7px" onclick="catalogoGuardar('${tipo}',${i.id},this)" title="Guardar cambios">💾</button>
+            <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" data-cat-activo ${i.activo ? 'checked' : ''}> Activo</label>
+            <button class="btn-small btn-danger" style="font-size:10px;padding:2px 7px" onclick="catalogoEliminar('${tipo}',${i.id},'${(i.nombre || '').replace(/'/g, "\\'")}')" title="Eliminar">×</button>
+          </li>`).join('') : '<li style="color:#999;font-size:12px">Sin elementos</li>';
+      } catch (e) { console.warn(e); ul.innerHTML = '<li style="color:red;font-size:12px">Error al cargar</li>'; }
+    }
+  }
+  window.catalogoAgregar = async function(tipo) {
+    const input = document.getElementById(tipo === 'discapacidades' ? 'cat-disc-nueva' : 'cat-ocu-nueva');
+    const nombre = (input?.value || '').trim();
+    if (!nombre) { alert('Escribe un nombre'); return; }
+    try {
+      await API.crearCatalogoItem(tipo, { nombre });
+      input.value = '';
+      await renderCatalogosAdmin();
+      alert('Elemento agregado al catálogo', { type: 'success' });
+    } catch (e) { alert('Error: ' + (e.message || e)); }
+  };
+  window.catalogoGuardar = async function(tipo, id, btn) {
+    const li = btn.closest('li');
+    const nombre = li.querySelector('[data-cat-input]').value.trim();
+    const activo = li.querySelector('[data-cat-activo]').checked;
+    if (!nombre) { alert('El nombre no puede quedar vacío'); return; }
+    try {
+      await API.actualizarCatalogoItem(tipo, id, { nombre, activo });
+      await renderCatalogosAdmin();
+      alert('Cambios guardados', { type: 'success' });
+    } catch (e) { alert('Error: ' + (e.message || e)); }
+  };
+  window.catalogoEliminar = async function(tipo, id, nombre) {
+    if (!(await confirmAsync(`¿Eliminar "${nombre}" del catálogo? Si ya está en uso por ciudadanos solo se desactivará.`))) return;
+    try {
+      const r = await API.eliminarCatalogoItem(tipo, id);
+      if (r && r.desactivado) alert(r.message || 'Está en uso: se desactivó en lugar de eliminarse');
+      else alert('Elemento eliminado', { type: 'success' });
+      await renderCatalogosAdmin();
+    } catch (e) { alert('Error: ' + (e.message || e)); }
+  };
+
   async function loadConfiguracion() {
     let cfg = {};
     try { cfg = await API.request('GET', '/api/configuracion'); } catch (e) { console.warn(e); }
@@ -6740,6 +7195,7 @@
         this.classList.add('active');
         const panel = document.getElementById('cfg-panel-' + this.dataset.panel);
         if (panel) panel.classList.add('active');
+        if (this.dataset.panel === 'catalogos') renderCatalogosAdmin();
       };
     });
     try {
@@ -6997,7 +7453,19 @@
       const blob = await API.requestBlob('GET', '/api/exportar/excel');
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = `ciudadanos_${new Date().toISOString().slice(0,10)}.xls`;
+      a.href = url; a.download = `ciudadanos_${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e) { notify('Error al exportar Excel: ' + (e.message || e), 'error'); }
+  };
+
+  window.exportarRespuestasEncuesta = async function() {
+    const campanaId = document.getElementById('rep-encuesta-campana')?.value;
+    if (!campanaId) { notify('Selecciona una encuesta primero', 'error'); return; }
+    try {
+      const blob = await API.requestBlob('GET', '/api/exportar/excel?tipo=respuestas&campana_id=' + campanaId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `respuestas_encuesta_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch (e) { notify('Error al exportar Excel: ' + (e.message || e), 'error'); }
   };
@@ -7087,6 +7555,7 @@
       });
       notify(nuevo ? 'Encuesta asignada al barrido inicial' : 'Encuesta desasignada del barrido', 'success');
       loadCampanas();
+      refrescarEncuestaBarridoUI();
     } catch (e) { notify('Error: ' + e.message, 'error'); }
   };
   window.abrirEncuesta = async function(campanaId, campanaNombre) {
@@ -7113,6 +7582,8 @@
     try {
       await API.request('PUT', '/api/campanas/' + _encuestaCampanaId, { encuesta_barrido: valor === 'barrido' });
       notify(valor === 'barrido' ? 'Encuesta asignada al barrido inicial' : 'Encuesta desasignada del barrido', 'success');
+      loadCampanas();
+      refrescarEncuestaBarridoUI();
     } catch (e) { notify('Error: ' + e.message, 'error'); }
   };
   async function cargarPreguntasEncuesta() {
@@ -7184,6 +7655,10 @@
       }
       limpiarFormPregunta();
       await cargarPreguntasEncuesta();
+      if (editandoId) {
+        document.getElementById('encuesta-modal').classList.add('hidden');
+        notify('Pregunta actualizada', 'success');
+      }
     } catch (e) { notify('Error: ' + e.message, 'error'); }
   });
   document.getElementById('enc-tipo').addEventListener('change', function() {

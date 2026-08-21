@@ -305,6 +305,8 @@ tr:hover { background: var(--bg-light); }
 #modal-overlay.modal-wide .modal .form-row { flex-wrap: nowrap; }
 #modal-overlay.modal-wide .modal .form-group { flex-wrap: nowrap; }
 #modal-form > button[type="submit"] { box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
+/* Evita que el botón Guardar (sticky) tape la última fila del formulario */
+#modal-form { padding-bottom: 56px; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--border); }
 .modal-header h3 { font-size: 18px; margin: 0; }
 .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); padding: 4px 8px; border-radius: 4px; }
@@ -607,6 +609,37 @@ tr:hover { background: var(--bg-light); }
   from { opacity:0; transform:translateY(20px); }
   to { opacity:1; transform:translateY(0); }
 }
+
+/* ---- Alerta bonita global ---- */
+.alert-modal {
+  position: fixed; top:0; left:0; right:0; bottom:0; z-index:1000000;
+  background:rgba(15,23,42,0.45); display:flex; align-items:center; justify-content:center;
+  backdrop-filter: blur(2px); animation: alertFade .18s ease;
+}
+.alert-box {
+  background:#fff; border-radius:16px; padding:26px 24px 20px; max-width:380px;
+  width:88%; text-align:center; box-shadow:0 12px 48px rgba(0,0,0,0.28);
+  animation: alertPop .22s cubic-bezier(.34,1.56,.64,1);
+}
+.alert-icon {
+  width:60px; height:60px; margin:0 auto 12px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:30px;
+  background:#f1f5f9;
+}
+.alert-modal[data-tipo="success"] .alert-icon { background:#f0fdf4; }
+.alert-modal[data-tipo="error"] .alert-icon,
+.alert-modal[data-tipo="warn"] .alert-icon { background:#fef2f2; }
+.alert-title { font-size:17px; font-weight:700; color:#111827; margin-bottom:6px; }
+.alert-msg { font-size:14px; color:#4b5563; line-height:1.5; margin-bottom:18px; word-wrap:break-word; white-space:pre-line; }
+.alert-ok {
+  min-width:140px; padding:11px 20px; border:none; border-radius:10px;
+  font-size:14px; font-weight:600; color:#fff; cursor:pointer;
+  background:linear-gradient(135deg, var(--pri-red), #a31227);
+  box-shadow:0 2px 8px rgba(196,18,48,.35);
+}
+.alert-ok:active { transform:scale(.97); }
+@keyframes alertFade { from { opacity:0; } to { opacity:1; } }
+@keyframes alertPop { from { opacity:0; transform:scale(.85) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
 
 /* ---- Metas de captura ---- */
 .meta-card {

@@ -66,7 +66,7 @@ echo ""
 echo "============================================================="
 echo " LISTO"
 echo " - Web:                http://<IP-del-servidor>/"
-echo " - APK para descarga:  http://<IP-del-servidor>/apk/Colmena.apk"
+echo " - APK para descarga:  http://<IP-del-servidor>/apk/PRIoridadTerritorial.apk"
 echo " - Admin:              admin@colmena.app"
 docker compose logs postgres 2>/dev/null | grep -E 'ADMIN_PASSWORD' | tail -1 || true
 echo "   (si no sale arriba: docker compose logs postgres | grep ADMIN_PASSWORD)"

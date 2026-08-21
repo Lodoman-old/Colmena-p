@@ -33,7 +33,7 @@ APK, poligonos, migraciones y datos OSRM.
   Usuario: `admin@colmena.app`.
 - Entrar a `http://<dominio-o-IP>/`, cambiar la password y en **Configuracion**
   poner la URL publica real (se usa en los enlaces de encuesta).
-- APK para descarga directa: `http://<dominio-o-IP>/apk/Colmena.apk`.
+- APK para descarga directa: `http://<dominio-o-IP>/apk/PRIoridadTerritorial.apk`.
 
 ## 3) Persistencia (lo conserva Coolify)
 
@@ -43,7 +43,7 @@ APK, poligonos, migraciones y datos OSRM.
 ## 4) Subir una version nueva (APK)
 
 1. Local: reconstruir el APK (`npx cap sync android` + `gradlew.bat assembleRelease`)
-   y copiarlo a `src/web/apk/Colmena.apk` (e `infrastructure/nginx/apk/Colmena.apk`).
+   y copiarlo a `src/web/apk/PRIoridadTerritorial.apk` (e `infrastructure/nginx/apk/PRIoridadTerritorial.apk`).
 2. `git add` + `git commit` + `git push`. El APK se actualiza solo en el siguiente
    deploy (git solo sube el archivo que cambio, no los tiles ni el pbf).
 
