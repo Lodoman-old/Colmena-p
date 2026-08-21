@@ -3,6 +3,12 @@ export interface Coordenada {
     lat: number;
     lng: number;
 }
+export interface VotanteCasaInfo {
+    nombre?: string | null;
+    pendiente: boolean;
+    pres?: string | null;
+    dip?: string | null;
+}
 export interface Parada {
     id: string;
     nombre: string;
@@ -13,6 +19,7 @@ export interface Parada {
     distancia_desde_origen?: number;
     direccion?: string;
     colonia?: string;
+    votantes_casa?: VotanteCasaInfo[];
 }
 export interface RutaOptimizada {
     paradas: Parada[];
@@ -28,6 +35,8 @@ export interface FiltrosRuta {
     motivo_puerta_presente?: boolean;
     sin_intencion?: boolean;
     edad_max?: number;
+    indecisos_en_casa?: boolean;
+    sin_visita_desde_dias?: number;
 }
 export declare class RoutingService {
     private pool;

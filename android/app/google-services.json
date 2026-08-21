@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "669027234473",
+    "project_id": "prioridadterritorial-push",
+    "storage_bucket": "prioridadterritorial-push.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:669027234473:android:0bbb7e4d929311c8b2afb8",
+        "android_client_info": {
+          "package_name": "com.prioridadterritorial.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApiuNWQ0y4dk_qsaaz3WfulM9pwjPX6wY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

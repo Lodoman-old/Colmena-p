@@ -9,22 +9,7 @@ window.notify = function(msg, type) {
   clearTimeout(_notifyTimer);
   _notifyTimer = setTimeout(function(){ el.style.display = 'none'; }, 4000);
 };
-window.alert = function(msg, opts) {
-  opts = opts || {};
-  var el = document.getElementById('alert-modal');
-  if (!el) { window.notify(msg, 'info'); return; }
-  var tipo = opts.type || 'info';
-  var iconos = { info: 'ℹ️', success: '✅', error: '⚠️', warn: '⚠️' };
-  var titulos = { info: 'Aviso', success: 'Listo', error: 'Atención', warn: 'Atención' };
-  document.getElementById('alert-icon').textContent = iconos[tipo] || iconos.info;
-  document.getElementById('alert-title').textContent = opts.title || titulos[tipo] || 'Aviso';
-  var msgEl = document.getElementById('alert-msg');
-  msgEl.textContent = String(msg == null ? '' : msg);
-  el.dataset.tipo = tipo;
-  el.style.display = 'flex';
-  var btn = document.getElementById('alert-ok');
-  btn.onclick = function() { el.style.display = 'none'; if (opts.onOk) opts.onOk(); };
-};
+window.alert = function(msg) { window.notify(msg, 'info'); };
 window.confirmAsync = function(msg) {
   return new Promise(function(resolve) {
     var el = document.getElementById('confirm-modal');
@@ -246,13 +231,6 @@ const API = (() => {
     actualizarComprometido(id, data) { return request('PUT', `/api/comprometidos/${id}`, data); },
     eliminarComprometido(id) { return request('DELETE', `/api/comprometidos/${id}`); },
     solicitarCorreccionComprometido(id) { return request('POST', `/api/comprometidos/${id}/solicitar-correccion`); },
-
-    getCatalogo(tipo, todos) { return request('GET', `/api/catalogos/${tipo}${todos ? '?todos=1' : ''}`); },
-    crearCatalogoItem(tipo, data) { return request('POST', `/api/catalogos/${tipo}`, data); },
-    actualizarCatalogoItem(tipo, id, data) { return request('PUT', `/api/catalogos/${tipo}/${id}`, data); },
-    eliminarCatalogoItem(tipo, id) { return request('DELETE', `/api/catalogos/${tipo}/${id}`); },
-    previewRutaFiltro(seccionId, filtros) { return request('POST', '/api/rutas/preview-filtro', { seccion_id: seccionId, filtros }); },
-    getReporteRevisitas(dias) { return request('GET', `/api/reportes/revisitas${dias ? '?dias=' + dias : ''}`); },
 
     getSeccionalCapturistas() { return request('GET', '/api/seccional/capturistas'); },
     putSeccionalCapturistas(capturistaIds) { return request('PUT', '/api/seccional/capturistas', { capturista_ids: capturistaIds }); },

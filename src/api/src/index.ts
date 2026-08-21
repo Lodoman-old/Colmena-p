@@ -150,6 +150,21 @@ INSERT INTO cat_discapacidades (nombre, orden) VALUES ('Ninguna',0),('Visual',1)
 ON CONFLICT (nombre) DO NOTHING;
 INSERT INTO cat_ocupaciones (nombre, orden) VALUES ('Estudiante',0),('Hogar',1),('Empleado',2),('Comerciante',3),('Agricultor',4),('Jubilado / Pensionado',5),('Profesionista',6),('Otro',7)
 ON CONFLICT (nombre) DO NOTHING;
+CREATE TABLE IF NOT EXISTS cat_estatus_visita (
+  id SERIAL PRIMARY KEY,
+  clave VARCHAR(30) NOT NULL UNIQUE,
+  nombre VARCHAR(100) NOT NULL UNIQUE,
+  marca_no_abrio BOOLEAN NOT NULL DEFAULT TRUE,
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  orden INTEGER NOT NULL DEFAULT 0,
+  creado_en TIMESTAMP DEFAULT NOW()
+);
+INSERT INTO cat_estatus_visita (clave, nombre, marca_no_abrio, orden) VALUES
+  ('no_abrio','No abrió puerta',TRUE,0),
+  ('con_prisa','Tenía prisa',TRUE,1),
+  ('sin_info','No dio información',TRUE,2),
+  ('otro','Otro motivo',FALSE,3)
+ON CONFLICT (clave) DO NOTHING;
 `).catch((e: any) => console.warn('Migration (catalogos/perfil):', e?.message));
 
 async function logAuditoria(userId: string | undefined, usuarioNombre: string | undefined, accion: string, entidad: string, entidadId: string | undefined, detalle?: any) {
@@ -164,6 +179,19 @@ async function logAuditoria(userId: string | undefined, usuarioNombre: string | 
 const routingService = new RoutingService(pool);
 const eventService = new EventService(pool);
 const notificacionService = new NotificacionService(pool);
+
+// Motivo de puerta / estatus de visita: acepta claves del catálogo cat_estatus_visita
+// (además de los valores legados) para que el select crezca sin tocar código.
+const MOTIVOS_PUERTA_BASE = ['no_abrio', 'sin_info', 'con_prisa', 'otro'];
+async function validarMotivoPuerta(v: any): Promise<string | null> {
+  const s = String(v ?? '').trim().toLowerCase().slice(0, 30);
+  if (!s) return null;
+  try {
+    const r = await pool.query('SELECT 1 FROM cat_estatus_visita WHERE clave=$1 AND activo=TRUE', [s]);
+    if (r.rows.length) return s;
+  } catch { /* tabla puede no existir todavía */ }
+  return MOTIVOS_PUERTA_BASE.includes(s) ? s : null;
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = '24h';
@@ -770,7 +798,7 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
   try {
     const { seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, lat, lng, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
     const motivoRaw = req.body.motivo_puerta;
-    const motivoPuerta = ['no_abrio', 'sin_info', 'con_prisa', 'otro'].includes(motivoRaw) ? motivoRaw : null;
+    const motivoPuerta = await validarMotivoPuerta(motivoRaw);
     const noAbrioFinal = !!no_abrio || !!motivoPuerta;
     if (!seccion_id || (!nombre && !noAbrioFinal)) { res.status(400).json({ error: 'seccion_id requerido; nombre requerido salvo que no haya abierto' }); return; }
     const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : (nombre || null);
@@ -802,14 +830,16 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
         [id, encuesta_campana_id, (req as any).user?.userId || null]
       );
     }
-    if (Array.isArray(votantes_casa_list) && votantes_casa_list.length) {
-      for (const v of votantes_casa_list.slice(0, 20)) {
-        if (!v) continue;
-        await pool.query(
-          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente) VALUES ($1,$2,$3,$4,$5)',
-          [id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.partido_diputado_id || null, v.pendiente !== false]
-        );
-      }
+    // Votantes en casa: insertar la lista capturada y completar con acompañantes
+    // sin nombre hasta alcanzar el total declarado en `votantes_casa` (incluye al titular).
+    const extrasDeclarados = Math.max(0, (votantes_casa ? parseInt(votantes_casa) : 1) - 1);
+    const listaVc = Array.isArray(votantes_casa_list) ? votantes_casa_list.slice(0, 20) : [];
+    for (let i = 0; i < Math.max(listaVc.length, extrasDeclarados); i++) {
+      const v = listaVc[i];
+      await pool.query(
+        'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente) VALUES ($1,$2,$3,$4,$5)',
+        [id, v?.nombre ? String(v.nombre).slice(0, 100) : null, v?.partido_id || null, v?.partido_diputado_id || null, v ? v.pendiente !== false : true]
+      );
     }
     try {
       await pool.query(
@@ -841,7 +871,7 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
     // Perfil: motivo_puerta controla no_abrio; se puede limpiar enviando null/''
     let motivoPuerta: string | null | undefined = undefined;
     if (req.body.motivo_puerta !== undefined) {
-      motivoPuerta = ['no_abrio', 'sin_info', 'con_prisa', 'otro'].includes(req.body.motivo_puerta) ? req.body.motivo_puerta : null;
+      motivoPuerta = await validarMotivoPuerta(req.body.motivo_puerta);
     }
     const parts: string[] = [];
     const params: any[] = [];
@@ -878,13 +908,27 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
         await pool.query('DELETE FROM ciudadanos_encuestas WHERE ciudadano_id=$1', [req.params.id]);
       }
     }
-    await pool.query('DELETE FROM votantes_casa WHERE ciudadano_id=$1', [req.params.id]);
     if (Array.isArray(votantes_casa_list)) {
+      // Solo se reemplaza lo capturado cuando el formulario envía la lista completa
+      await pool.query('DELETE FROM votantes_casa WHERE ciudadano_id=$1', [req.params.id]);
       for (const v of votantes_casa_list.slice(0, 20)) {
         if (!v) continue;
         await pool.query(
           'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente) VALUES ($1,$2,$3,$4,$5)',
           [req.params.id, v.nombre ? String(v.nombre).slice(0, 100) : null, v.partido_id || null, v.partido_diputado_id || null, v.pendiente !== false]
+        );
+      }
+    }
+    // Mantener acompañantes sin registro acordes al conteo declarado
+    // (votantes_casa es el total incluyendo al titular; nunca se borra lo capturado aquí)
+    if (votantes_casa !== undefined && votantes_casa !== null && votantes_casa !== '') {
+      const deseados = Math.max(0, (parseInt(String(votantes_casa)) || 1) - 1);
+      const ex = await pool.query('SELECT COUNT(*)::int AS n FROM votantes_casa WHERE ciudadano_id=$1', [req.params.id]);
+      const actuales = ex.rows[0]?.n || 0;
+      for (let i = actuales; i < deseados; i++) {
+        await pool.query(
+          'INSERT INTO votantes_casa (ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente) VALUES ($1, NULL, NULL, NULL, TRUE)',
+          [req.params.id]
         );
       }
     }
@@ -1061,9 +1105,18 @@ app.get('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
     );
     if (!result.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
     const r = result.rows[0];
+    let votantesCasaList: any[] = [];
+    try {
+      const vc = await pool.query(
+        'SELECT ciudadano_id, nombre, partido_id, partido_diputado_id, pendiente FROM votantes_casa WHERE ciudadano_id=$1 ORDER BY id',
+        [req.params.id]
+      );
+      votantesCasaList = vc.rows;
+    } catch (e) { console.warn('votantes_casa GET by id:', e); }
     res.json({ ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
       partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
-      partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null
+      partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null,
+      votantes_casa_list: votantesCasaList
     });
   } catch { res.status(500).json({ error: 'Error' }); }
 });
@@ -1751,11 +1804,17 @@ app.post('/api/dispositivos', authenticateToken, async (req: Request, res: Respo
   } catch { res.status(500).json({ error: 'Error' }); }
 });
 
-// ── Catálogos: discapacidades y ocupaciones ──
+// ── Catálogos: discapacidades, ocupaciones y estatus de visita ──
 const catalogoConfig: Record<string, { tabla: string }> = {
   discapacidades: { tabla: 'cat_discapacidades' },
-  ocupaciones: { tabla: 'cat_ocupaciones' }
+  ocupaciones: { tabla: 'cat_ocupaciones' },
+  estatus_visita: { tabla: 'cat_estatus_visita' }
 };
+
+function slugClave(s: string): string {
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'estatus';
+}
 
 app.get('/api/catalogos/:tipo', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1778,7 +1837,16 @@ app.post('/api/catalogos/:tipo', authenticateToken, async (req: Request, res: Re
     const dup = await pool.query(`SELECT id FROM ${cfg.tabla} WHERE LOWER(nombre)=LOWER($1)`, [nombre]);
     if (dup.rows.length) { res.status(400).json({ error: 'Ya existe un elemento con ese nombre' }); return; }
     const maxR = await pool.query(`SELECT COALESCE(MAX(orden),0)+1 AS n FROM ${cfg.tabla}`);
-    const r = await pool.query(`INSERT INTO ${cfg.tabla} (nombre, orden) VALUES ($1,$2) RETURNING *`, [nombre, maxR.rows[0].n]);
+    let r;
+    if (cfg.tabla === 'cat_estatus_visita') {
+      let clave = slugClave(nombre);
+      const dupC = await pool.query('SELECT id FROM cat_estatus_visita WHERE clave=$1', [clave]);
+      if (dupC.rows.length) clave = clave.slice(0, 24) + '_' + Date.now().toString(36).slice(-4);
+      r = await pool.query('INSERT INTO cat_estatus_visita (clave, nombre, marca_no_abrio, orden) VALUES ($1,$2,$3,$4) RETURNING *',
+        [clave, nombre, req.body.marca_no_abrio === false ? false : true, maxR.rows[0].n]);
+    } else {
+      r = await pool.query(`INSERT INTO ${cfg.tabla} (nombre, orden) VALUES ($1,$2) RETURNING *`, [nombre, maxR.rows[0].n]);
+    }
     try { if (user?.nombre) await logAuditoria(user.userId, user.nombre, `crear_${req.params.tipo}`, cfg.tabla, r.rows[0].id, { nombre }); } catch {}
     res.status(201).json(r.rows[0]);
   } catch (e: any) { res.status(500).json({ error: e.message || 'Error' }); }
@@ -1801,7 +1869,8 @@ app.put('/api/catalogos/:tipo/:id', authenticateToken, async (req: Request, res:
     }
     if (req.body.activo !== undefined) { params.push(!!req.body.activo); sets.push('activo=$' + params.length); }
     if (req.body.orden !== undefined) { params.push(parseInt(req.body.orden) || 0); sets.push('orden=$' + params.length); }
-    if (!sets.length) { res.status(400).json({ error: 'Nada que actualizar' }); return; }
+    if (!sets.length && req.body.marca_no_abrio === undefined) { res.status(400).json({ error: 'Nada que actualizar' }); return; }
+    if (req.body.marca_no_abrio !== undefined && cfg.tabla === 'cat_estatus_visita') { params.push(!!req.body.marca_no_abrio); sets.push('marca_no_abrio=$' + params.length); }
     params.push(req.params.id);
     const r = await pool.query(`UPDATE ${cfg.tabla} SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params);
     if (!r.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
@@ -1816,6 +1885,14 @@ app.delete('/api/catalogos/:tipo/:id', authenticateToken, async (req: Request, r
     if (!esAdminOCoordinador(user)) { res.status(403).json({ error: 'Solo coordinadores y administradores' }); return; }
     const cfg = catalogoConfig[req.params.tipo];
     if (!cfg) { res.status(404).json({ error: 'Catálogo no encontrado' }); return; }
+    // Estatus de visita se referencia por clave en motivo_puerta: siempre borrado lógico
+    if (cfg.tabla === 'cat_estatus_visita') {
+      const r = await pool.query(`UPDATE ${cfg.tabla} SET activo=FALSE WHERE id=$1 RETURNING *`, [req.params.id]);
+      if (!r.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
+      try { if (user?.nombre) await logAuditoria(user.userId, user.nombre, `eliminar_${req.params.tipo}`, cfg.tabla, req.params.id, {}); } catch {}
+      res.json({ ...r.rows[0], desactivado: true });
+      return;
+    }
     // Borrado lógico si está en uso por ciudadanos
     const uso = await pool.query(
       `SELECT
@@ -1967,7 +2044,15 @@ app.patch('/api/rutas/:id/estado', authenticateToken, async (req: Request, res: 
 
 app.patch('/api/rutas/:id/parada/:idx', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { visitado, gps_confirmado, evidencia, no_abrio } = req.body;
+    const { visitado, gps_confirmado, evidencia, no_abrio, lat, lng } = req.body;
+    // Estatus de visita opcional (clave del catálogo cat_estatus_visita)
+    let estatusRow: any = null;
+    if (req.body.resultado) {
+      try {
+        const er = await pool.query('SELECT clave, nombre, marca_no_abrio FROM cat_estatus_visita WHERE clave=$1 AND activo=TRUE', [String(req.body.resultado).slice(0, 30)]);
+        estatusRow = er.rows[0] || null;
+      } catch { estatusRow = null; }
+    }
     const q = await pool.query('SELECT paradas FROM rutas WHERE id=$1', [req.params.id]);
     if (!q.rows.length) { res.status(404).json({ error: 'No encontrada' }); return; }
     const paradas = q.rows[0].paradas;
@@ -1977,7 +2062,48 @@ app.patch('/api/rutas/:id/parada/:idx', authenticateToken, async (req: Request, 
     if (gps_confirmado !== undefined) paradas[idx].gps_confirmado = !!gps_confirmado;
     if (evidencia !== undefined) paradas[idx].evidencia = evidencia;
     if (no_abrio !== undefined) { paradas[idx].no_abrio = !!no_abrio; if (no_abrio) { paradas[idx].visitado = true; } }
+    if (estatusRow && estatusRow.marca_no_abrio) { paradas[idx].no_abrio = true; paradas[idx].visitado = true; }
+    if (estatusRow && !estatusRow.marca_no_abrio) { paradas[idx].no_abrio = false; }
+    if (estatusRow) paradas[idx].resultado = estatusRow.clave;
+    else if (req.body.resultado === null) delete paradas[idx].resultado;
     await pool.query('UPDATE rutas SET paradas=$1 WHERE id=$2', [JSON.stringify(paradas), req.params.id]);
+
+    // Historial por ciudadano: cada marca de visita en ruta genera una fila en `visitas`
+    // tipo 'ruta' con el resultado (abrió / no abrió / estatus), GPS del enlace y referencia a la ruta.
+    const cid = paradas[idx] ? (paradas[idx].ciudadano_id || paradas[idx].id) : null;
+    if (cid) {
+      try {
+        if ((visitado === true || no_abrio === true || estatusRow)) {
+          await pool.query(
+            "DELETE FROM visitas WHERE ciudadano_id=$1 AND tipo='ruta' AND notas LIKE $2",
+            [cid, 'ruta:' + req.params.id + '%']
+          );
+          const partesNotas = ['ruta:' + req.params.id, 'abrio:' + (paradas[idx].no_abrio ? 'no' : 'si')];
+          if (estatusRow) partesNotas.push('res:' + estatusRow.clave);
+          await pool.query(
+            'INSERT INTO visitas (id, ciudadano_id, usuario_id, tipo, lat, lng, notas) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            [
+              crypto.randomUUID(), cid, (req as any).user?.userId || null, 'ruta',
+              lat != null ? Number(lat) : null, lng != null ? Number(lng) : null,
+              partesNotas.join('|')
+            ]
+          );
+          // El estatus capturado en ruta alimenta el perfil del ciudadano
+          if (estatusRow) {
+            await pool.query(
+              'UPDATE ciudadanos SET motivo_puerta=$2, no_abrio=$3 WHERE id=$1',
+              [cid, estatusRow.clave, estatusRow.marca_no_abrio]
+            );
+          }
+        } else if (visitado === false && no_abrio !== true) {
+          await pool.query(
+            "DELETE FROM visitas WHERE ciudadano_id=$1 AND tipo='ruta' AND notas LIKE $2",
+            [cid, 'ruta:' + req.params.id + '%']
+          );
+        }
+      } catch (e: any) { console.warn('visita ruta:', e?.message); }
+    }
+
     res.json({ message: 'Parada actualizada' });
   } catch (e: any) { res.status(500).json({ error: 'Error: ' + (e.message || '') }); }
 });
@@ -3115,7 +3241,76 @@ app.get('/api/ciudadanos/:id/visitas', authenticateToken, async (req: Request, r
        ORDER BY v.created_at DESC LIMIT 100`,
       [req.params.id]
     );
-    res.json(rows.rows);
+    // Resultado legible para visitas de ruta (abrió / no abrió) y próxima re-visita sugerida (+60 días)
+    const out = rows.rows.map((v: any) => {
+      let resultado: string | null = null;
+      if (v.tipo === 'ruta') {
+        const m = String(v.notas || '').match(/abrio:(si|no)/);
+        if (m) resultado = m[1] === 'no' ? 'no_abrio' : 'abrio';
+      }
+      return { ...v, resultado };
+    });
+    const ultimaRuta = out.find((v: any) => v.tipo === 'ruta');
+    const proximaRevisita = ultimaRuta ? new Date(new Date(ultimaRuta.created_at).getTime() + 60 * 86400000).toISOString() : null;
+    res.json({ visitas: out, proxima_revisita_sugerida: proximaRevisita, dias_revisita: 60 });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Reporte de re-visitas: resumen de cobertura y ciudadanos sin visita reciente
+app.get('/api/reportes/revisitas', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const condsSec: string[] = [];
+    const paramsSec: any[] = [];
+    if (user.rol === 'enlace') {
+      const secs = await getUserSecciones(user.userId);
+      if (!secs.length) { res.json({ resumen: {}, lista: [] }); return; }
+      paramsSec.push(secs); condsSec.push(`c.seccion_id = ANY($${paramsSec.length})`);
+    }
+    if (req.query.municipio_id) {
+      paramsSec.push(req.query.municipio_id);
+      condsSec.push(`c.seccion_id IN (SELECT id FROM secciones_electorales WHERE municipio_id = $${paramsSec.length})`);
+    }
+    const whereC = condsSec.length ? 'AND ' + condsSec.join(' AND ') : '';
+
+    const resumenQ = await pool.query(
+      `WITH ult AS (
+         SELECT DISTINCT ON (v.ciudadano_id) v.ciudadano_id, v.created_at, v.notas
+         FROM visitas v WHERE v.tipo='ruta' ORDER BY v.ciudadano_id, v.created_at DESC
+       )
+       SELECT
+         COUNT(c.id)::int AS total,
+         COUNT(u.ciudadano_id)::int AS visitados_ruta,
+         COUNT(*) FILTER (WHERE u.notas LIKE '%|abrio:no')::int AS ultima_no_abrio,
+         COUNT(*) FILTER (WHERE u.created_at < NOW() - ($${paramsSec.length + 1} * INTERVAL '1 day') OR u.ciudadano_id IS NULL)::int AS sin_visita_reciente,
+         (SELECT COUNT(DISTINCT er.ciudadano_id)::int FROM encuesta_respuestas er) AS encuestados
+       FROM ciudadanos c
+       LEFT JOIN ult u ON u.ciudadano_id = c.id
+       WHERE c.no_abrio IS NOT TRUE ${whereC}`,
+      [...paramsSec, parseInt(String(req.query.dias || '60')) || 60]
+    );
+
+    const listaQ = await pool.query(
+      `WITH ult AS (
+         SELECT DISTINCT ON (v.ciudadano_id) v.ciudadano_id, v.created_at, v.notas
+         FROM visitas v WHERE v.tipo='ruta' ORDER BY v.ciudadano_id, v.created_at DESC
+       )
+       SELECT c.id, c.nombre, c.telefono, c.calle, c.numero, c.colonia,
+              s.id AS seccion_num, s.id AS seccion_id,
+              u.created_at AS ultima_visita,
+              CASE WHEN u.notas LIKE '%|abrio:no' THEN 'no_abrio' WHEN u.ciudadano_id IS NULL THEN 'nunca' ELSE 'abrio' END AS ultimo_resultado,
+              EXTRACT(DAY FROM NOW() - u.created_at)::int AS dias_desde_visita
+       FROM ciudadanos c
+       LEFT JOIN ult u ON u.ciudadano_id = c.id
+       LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+       WHERE COALESCE(c.no_abrio,FALSE) = FALSE ${whereC}
+         AND (u.ciudadano_id IS NULL OR u.created_at < NOW() - ($${paramsSec.length + 1} * INTERVAL '1 day'))
+       ORDER BY u.created_at ASC NULLS FIRST
+       LIMIT 500`,
+      [...paramsSec, parseInt(String(req.query.dias || '60')) || 60]
+    );
+
+    res.json({ resumen: resumenQ.rows[0] || {}, lista: listaQ.rows, dias: parseInt(String(req.query.dias || '60')) || 60 });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

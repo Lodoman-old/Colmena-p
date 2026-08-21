@@ -8,6 +8,13 @@ export interface Coordenada {
   lng: number;
 }
 
+export interface VotanteCasaInfo {
+  nombre?: string | null;
+  pendiente: boolean;
+  pres?: string | null;
+  dip?: string | null;
+}
+
 export interface Parada {
   id: string;
   nombre: string;
@@ -18,6 +25,7 @@ export interface Parada {
   distancia_desde_origen?: number;
   direccion?: string;
   colonia?: string;
+  votantes_casa?: VotanteCasaInfo[];
 }
 
 export interface RutaOptimizada {
@@ -35,6 +43,8 @@ export interface FiltrosRuta {
   motivo_puerta_presente?: boolean;
   sin_intencion?: boolean;
   edad_max?: number;
+  indecisos_en_casa?: boolean;
+  sin_visita_desde_dias?: number;
 }
 
 export class RoutingService {
@@ -69,6 +79,13 @@ export class RoutingService {
     if (filtros.edad_max != null && !Number.isNaN(parseInt(String(filtros.edad_max)))) {
       params.push(parseInt(String(filtros.edad_max)));
       conds.push(`c.edad <= $${params.length}`);
+    }
+    if (filtros.indecisos_en_casa) {
+      conds.push(`EXISTS (SELECT 1 FROM votantes_casa vch WHERE vch.ciudadano_id = c.id AND vch.pendiente = TRUE)`);
+    }
+    if (filtros.sin_visita_desde_dias != null && !Number.isNaN(parseInt(String(filtros.sin_visita_desde_dias))) && parseInt(String(filtros.sin_visita_desde_dias)) > 0) {
+      params.push(parseInt(String(filtros.sin_visita_desde_dias)));
+      conds.push(`NOT EXISTS (SELECT 1 FROM visitas vh WHERE vh.ciudadano_id = c.id AND vh.tipo = 'ruta' AND vh.created_at >= NOW() - ($${params.length} * INTERVAL '1 day'))`);
     }
     return { sql: conds.length ? ' AND ' + conds.join(' AND ') : '', algunaCondicion: conds.length > 0 };
   }
@@ -160,6 +177,35 @@ export class RoutingService {
     }
 
     const result = await this.pool.query(query, params);
+
+    // Acompañantes en casa: para rutas por filtro se adjuntan con abreviatura
+    // de partido para mostrarlos junto a cada parada.
+    let vcPorCiudadano = new Map<string, any[]>();
+    if (tipo === 'filtro' && result.rows.length) {
+      const ids = result.rows.map((r: any) => r.id);
+      try {
+        const vcs = await this.pool.query(
+          `SELECT v.ciudadano_id, v.nombre, v.pendiente,
+                  pp.abreviatura AS pres_abbr, pd.abreviatura AS dip_abbr
+           FROM votantes_casa v
+           LEFT JOIN partidos_politicos pp ON pp.id = v.partido_id
+           LEFT JOIN partidos_politicos pd ON pd.id = v.partido_diputado_id
+           WHERE v.ciudadano_id = ANY($1::uuid[])`,
+          [ids]
+        );
+        for (const v of vcs.rows) {
+          const lista = vcPorCiudadano.get(v.ciudadano_id) || [];
+          lista.push({
+            nombre: v.nombre || null,
+            pendiente: !!v.pendiente,
+            pres: v.pres_abbr || null,
+            dip: v.dip_abbr || null
+          });
+          vcPorCiudadano.set(v.ciudadano_id, lista);
+        }
+      } catch { /* sin acompañantes si falla la consulta auxiliar */ }
+    }
+
     return result.rows.map((row: any) => ({
       id: row.id,
       nombre: row.nombre,
@@ -169,7 +215,8 @@ export class RoutingService {
       prioridad: row.prioridad,
       ya_voto: !!row.ya_voto,
       direccion: [row.calle, row.numero].filter(Boolean).join(' '),
-      colonia: row.colonia
+      colonia: row.colonia,
+      votantes_casa: vcPorCiudadano.get(row.id) || []
     }));
   }
 

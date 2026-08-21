@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Encuesta - PRIoridad Territorial</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: linear-gradient(135deg, #eef5ee 0%, #e3f0e3 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); max-width: 560px; width: 100%; padding: 28px; }
+    .logo { text-align: center; margin-bottom: 16px; font-size: 30px; }
+    h1 { font-size: 20px; text-align: center; margin-bottom: 4px; color: #1a3d1a; }
+    .sub { text-align: center; color: #666; font-size: 13px; margin-bottom: 20px; }
+    .pregunta { margin: 16px 0; font-size: 14px; }
+    .pregunta strong { display: block; margin-bottom: 8px; color: #222; }
+    .opciones label { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; margin: 6px 0; cursor: pointer; font-size: 14px; }
+    .opciones label:hover { border-color: #2d8a4e; background: #f4faf4; }
+    .opciones input { accent-color: #2d8a4e; }
+    .si-no { display: flex; gap: 12px; }
+    .si-no label { flex: 1; text-align: center; padding: 12px; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    .si-no input { display: none; }
+    .si-no label.seleccionado { border-color: #2d8a4e; background: #e8f5e9; color: #1a3d1a; }
+    .campo-texto { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    .requerida { color: #c0392b; }
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 10px; background: #2d8a4e; color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 20px; }
+    .btn:hover { background: #257a43; }
+    .btn:disabled { background: #aaa; cursor: not-allowed; }
+    .msg { text-align: center; font-size: 14px; margin-top: 14px; min-height: 20px; }
+    .msg.ok { color: #2d8a4e; font-weight: 600; }
+    .msg.err { color: #c0392b; }
+    .btn-saltar { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 10px; background: #fff; color: #666; font-size: 13px; cursor: pointer; margin-top: 8px; }
+    .estado { text-align: center; padding: 40px 0; color: #666; font-size: 14px; }
+    .estado h2 { color: #1a3d1a; font-size: 18px; margin-bottom: 8px; }
+    .badge-demo { display: inline-block; background: #fff3cd; color: #856404; font-size: 11px; padding: 3px 10px; border-radius: 12px; margin-bottom: 10px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo" style="font-size:16px;font-weight:800"><span style="color:#c0392b">PRI</span><span style="color:#222">oridad</span> <span style="color:#2d8a4e">Territorial</span></div>
+    <h1 id="enc-titulo">Encuesta</h1>
+    <div class="sub" id="enc-sub"></div>
+    <div id="enc-body"></div>
+  </div>
+  <script>
+    (function() {
+      var API_BASE = '/api/publico';
+      var t = new URLSearchParams(location.search).get('t');
+      var titulo = document.getElementById('enc-titulo');
+      var sub = document.getElementById('enc-sub');
+      var body = document.getElementById('enc-body');
+
+      function aplicarMayusculas(el) {
+        if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+        var type = (el.type || '').toLowerCase();
+        if (['number', 'date', 'datetime-local', 'time', 'month', 'week', 'color', 'password', 'range', 'checkbox', 'radio', 'file', 'hidden', 'email'].indexOf(type) >= 0) return;
+        if (el.readOnly) return;
+        if (el.value && el.value !== el.value.toUpperCase()) {
+          var pos = el.selectionStart;
+          el.value = el.value.toUpperCase();
+          if (pos != null) { try { el.setSelectionRange(pos, pos); } catch (e) { /* noop */ } }
+        }
+      }
+      document.addEventListener('input', function(e) { aplicarMayusculas(e.target); });
+      document.addEventListener('change', function(e) { aplicarMayusculas(e.target); });
+
+      function cargar() {
+        if (!t) { mostrarError('Enlace inválido. Solicita un enlace nuevo.'); return; }
+        body.innerHTML = '<div class="estado">Cargando encuesta...</div>';
+        fetch(API_BASE + '/encuesta/' + encodeURIComponent(t))
+          .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+          .then(function(res) {
+            if (!res.ok) throw new Error(res.j.error || 'No se pudo cargar');
+            var d = res.j;
+            titulo.textContent = d.campana;
+            sub.innerHTML = (d.demo ? '<div class="badge-demo">Vista previa — no se guarda</div>' : '') +
+              (d.ciudadano_nombre ? 'Hola <strong>' + d.ciudadano_nombre + '</strong>, tus respuestas nos ayudan a mejorar. ' : '') +
+              'Respondé en menos de 2 minutos.';
+            renderPreguntas(d.preguntas);
+          })
+          .catch(function(e) { mostrarError(e.message || 'Error de conexión'); });
+      }
+
+      function renderPreguntas(preguntas) {
+        var html = preguntas.map(function(p, i) {
+          var req = p.obligatoria ? ' <span class="requerida">*</span>' : '';
+          if (p.tipo === 'si_no') {
+            return '<div class="pregunta" data-id="' + p.id + '"><strong>' + (i + 1) + '. ' + p.pregunta + req + '</strong>' +
+              '<div class="si-no"><label data-val="Si" onclick="seleccionarSiNo(this)"><span>✓</span> Sí</label>' +
+              '<label data-val="No" onclick="seleccionarSiNo(this)">✗ No</label></div></div>';
+          }
+          if (p.tipo === 'opciones') {
+            var opts = (p.opciones || []).map(function(o) {
+              return '<label><input type="radio" name="op-' + p.id + '" value="' + o.replace(/"/g, '&quot;') + '"> ' + o + '</label>';
+            }).join('');
+            return '<div class="pregunta" data-id="' + p.id + '"><strong>' + (i + 1) + '. ' + p.pregunta + req + '</strong>' +
+              '<div class="opciones">' + opts + '</div></div>';
+          }
+          return '<div class="pregunta" data-id="' + p.id + '"><strong>' + (i + 1) + '. ' + p.pregunta + req + '</strong>' +
+            '<input class="campo-texto" type="text" placeholder="Tu respuesta"></div>';
+        }).join('');
+        html += '<button class="btn" id="btn-enviar" onclick="enviar()">Enviar respuestas</button>' +
+          '<button class="btn-saltar" id="btn-saltar" onclick="saltar()">No quiero responder</button>' +
+          '<div class="msg" id="enc-msg"></div>';
+        body.innerHTML = html;
+      }
+
+      window.saltar = function() {
+        if (!confirm('Si no respondes la encuesta, quedará registrado que la rechazaste. ¿Continuar?')) return;
+        var msg = document.getElementById('enc-msg');
+        var btn = document.getElementById('btn-enviar');
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        fetch(API_BASE + '/encuesta/' + encodeURIComponent(t), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ respuestas: [], saltar: true })
+        })
+          .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+          .then(function(res) {
+            if (!res.ok) throw new Error(res.j.error || 'Error al enviar');
+            msg.textContent = res.j.message || 'Gracias por tu tiempo';
+            msg.className = 'msg ok';
+            document.getElementById('btn-saltar').style.display = 'none';
+            btn.textContent = 'Registrado ✓';
+          })
+          .catch(function(e) {
+            msg.textContent = e.message || 'Error de conexión';
+            msg.className = 'msg err';
+            btn.disabled = false; btn.textContent = 'Reintentar';
+          });
+      };
+
+      window.seleccionarSiNo = function(el) {
+        var cont = el.parentElement;
+        cont.querySelectorAll('label').forEach(function(l) { l.classList.remove('seleccionado'); });
+        el.classList.add('seleccionado');
+      };
+
+      window.enviar = function() {
+        var msg = document.getElementById('enc-msg');
+        var respuestas = [];
+        var falta = false;
+        body.querySelectorAll('.pregunta').forEach(function(p) {
+          var id = p.dataset.id;
+          var req = p.querySelector('.requerida') !== null;
+          var valor = null;
+          var siNo = p.querySelector('.si-no label.seleccionado');
+          if (siNo) valor = siNo.dataset.val;
+          var radio = p.querySelector('input[type=radio]:checked');
+          if (radio) valor = radio.value;
+          var texto = p.querySelector('.campo-texto');
+          if (texto && texto.value.trim()) valor = texto.value.trim();
+          if (req && valor === null) falta = true;
+          if (valor !== null) respuestas.push({ pregunta_id: id, valor: valor });
+        });
+        if (falta) { msg.textContent = 'Completá las preguntas marcadas con *'; msg.className = 'msg err'; return; }
+        if (!respuestas.length) { msg.textContent = 'Respondé al menos una pregunta'; msg.className = 'msg err'; return; }
+        var btn = document.getElementById('btn-enviar');
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        fetch(API_BASE + '/encuesta/' + encodeURIComponent(t), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ respuestas: respuestas })
+        })
+          .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+          .then(function(res) {
+            if (!res.ok) throw new Error(res.j.error || 'Error al enviar');
+            msg.textContent = res.j.message || '¡Gracias por participar!';
+            msg.className = 'msg ok';
+            btn.textContent = 'Respuesta enviada ✓';
+          })
+          .catch(function(e) {
+            msg.textContent = e.message || 'Error de conexión';
+            msg.className = 'msg err';
+            btn.disabled = false; btn.textContent = 'Reintentar';
+          });
+      };
+
+      function mostrarError(texto) {
+        body.innerHTML = '<div class="estado"><h2>⛔</h2>' + texto + '</div>';
+        sub.textContent = '';
+      }
+
+      cargar();
+    })();
+  </script>
+</body>
+</html>

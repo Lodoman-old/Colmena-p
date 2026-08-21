@@ -36,6 +36,13 @@ class RoutingService {
             params.push(parseInt(String(filtros.edad_max)));
             conds.push(`c.edad <= $${params.length}`);
         }
+        if (filtros.indecisos_en_casa) {
+            conds.push(`EXISTS (SELECT 1 FROM votantes_casa vch WHERE vch.ciudadano_id = c.id AND vch.pendiente = TRUE)`);
+        }
+        if (filtros.sin_visita_desde_dias != null && !Number.isNaN(parseInt(String(filtros.sin_visita_desde_dias))) && parseInt(String(filtros.sin_visita_desde_dias)) > 0) {
+            params.push(parseInt(String(filtros.sin_visita_desde_dias)));
+            conds.push(`NOT EXISTS (SELECT 1 FROM visitas vh WHERE vh.ciudadano_id = c.id AND vh.tipo = 'ruta' AND vh.created_at >= NOW() - ($${params.length} * INTERVAL '1 day'))`);
+        }
         return { sql: conds.length ? ' AND ' + conds.join(' AND ') : '', algunaCondicion: conds.length > 0 };
     }
     async calcularRutaOptima(origen, seccionId, tipo = 'encuesta', maxDistanciaKm = 25) {
@@ -105,6 +112,31 @@ class RoutingService {
             query += ` ORDER BY c.prioridad DESC, c.nombre`;
         }
         const result = await this.pool.query(query, params);
+        // Acompañantes en casa: para rutas por filtro se adjuntan con abreviatura
+        // de partido para mostrarlos junto a cada parada.
+        let vcPorCiudadano = new Map();
+        if (tipo === 'filtro' && result.rows.length) {
+            const ids = result.rows.map((r) => r.id);
+            try {
+                const vcs = await this.pool.query(`SELECT v.ciudadano_id, v.nombre, v.pendiente,
+                  pp.abreviatura AS pres_abbr, pd.abreviatura AS dip_abbr
+           FROM votantes_casa v
+           LEFT JOIN partidos_politicos pp ON pp.id = v.partido_id
+           LEFT JOIN partidos_politicos pd ON pd.id = v.partido_diputado_id
+           WHERE v.ciudadano_id = ANY($1::uuid[])`, [ids]);
+                for (const v of vcs.rows) {
+                    const lista = vcPorCiudadano.get(v.ciudadano_id) || [];
+                    lista.push({
+                        nombre: v.nombre || null,
+                        pendiente: !!v.pendiente,
+                        pres: v.pres_abbr || null,
+                        dip: v.dip_abbr || null
+                    });
+                    vcPorCiudadano.set(v.ciudadano_id, lista);
+                }
+            }
+            catch { /* sin acompañantes si falla la consulta auxiliar */ }
+        }
         return result.rows.map((row) => ({
             id: row.id,
             nombre: row.nombre,
@@ -114,7 +146,8 @@ class RoutingService {
             prioridad: row.prioridad,
             ya_voto: !!row.ya_voto,
             direccion: [row.calle, row.numero].filter(Boolean).join(' '),
-            colonia: row.colonia
+            colonia: row.colonia,
+            votantes_casa: vcPorCiudadano.get(row.id) || []
         }));
     }
     async calcularDistancias(origen, paradas) {

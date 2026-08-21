@@ -198,6 +198,12 @@ tr:hover { background: var(--bg-light); }
 .badge-yes { background: #e8f5e9; color: var(--pri-green); }
 .badge-no { background: #fce4ec; color: var(--pri-red); }
 
+/* Tablas de ciudadanos y simpatizantes: respiración visual */
+#ciu-panel-encuestados td, #ciu-panel-seguros td { padding-top: 10px; padding-bottom: 10px; vertical-align: middle; }
+#ciu-panel-encuestados td:nth-child(6), #ciu-panel-seguros td:nth-child(8) { min-width: 130px; }
+#ciu-panel-encuestados td:last-child, #ciu-panel-seguros td:last-child { white-space: nowrap; }
+#ciu-panel-encuestados .btn-small, #ciu-panel-seguros .btn-small { margin: 1px; }
+
 /* Cards grid */
 .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 16px; }
 .card {

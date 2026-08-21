@@ -1405,27 +1405,16 @@
           intencion_voto_diputado: parseInt(document.getElementById('f-intencion_voto_diputado').value) || null,
           casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null,
           votantes_casa: (parseInt(document.getElementById('f-votantes_casa').value) || 0) + 1,
-          motivo_puerta: document.getElementById('f-motivo_puerta') ? document.getElementById('f-motivo_puerta').value : null,
-          no_abrio: document.getElementById('f-motivo_puerta') ? !!document.getElementById('f-motivo_puerta').value : (document.getElementById('f-no_abrio') ? document.getElementById('f-no_abrio').checked : false),
-          sexo: (document.getElementById('f-sexo')?.value) || null,
-          discapacidad_id: (document.getElementById('f-discapacidad')?.value) ? parseInt(document.getElementById('f-discapacidad').value) : null,
-          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null
+          no_abrio: document.getElementById('f-no_abrio').checked
         };
-        const vcTotal = parseInt(document.getElementById('f-votantes_casa').value) || 0;
-        const vcRaw = Array.isArray(window._vcList) ? window._vcList : [];
-        // Enviar la lista completa (incluidos acompañantes sin nombre) para que la
-        // API sincronice exactamente lo capturado con el conteo declarado
-        data.votantes_casa_list = Array.from({ length: vcTotal }, (_, i) => vcRaw[i] || {}).map(v => ({
-          nombre: (v.nombre || '').trim() || null,
-          partido_id: v.partido_id || null,
-          partido_diputado_id: v.partido_diputado_id || null,
-          pendiente: !v.partido_id && !v.partido_diputado_id
-        }));
+        const vcDef = Array.isArray(window._vcList) ? window._vcList.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
+        if (vcDef.length) {
+          data.votantes_casa_list = vcDef.map(v => ({ ...v, pendiente: !v.partido_id && !v.partido_diputado_id }));
+        }
         const errTel = validarTelefono(data.telefono);
         if (errTel) { msg.textContent = errTel; msg.style.color = 'var(--pri-red)'; return; }
-        const motivoModal = document.getElementById('f-motivo_puerta')?.value;
-        const noAbrioModal = !!motivoModal;
-        if (!data.nombre && !noAbrioModal) { msg.textContent = 'Nombre requerido (o elige un motivo de puerta si no entrevistaste)'; msg.style.color = 'var(--pri-red)'; return; }
+        const noAbrioModal = document.getElementById('f-no_abrio').checked;
+        if (!data.nombre && !noAbrioModal) { msg.textContent = 'Nombre requerido (o marca "No abrió")'; msg.style.color = 'var(--pri-red)'; return; }
         const edadVal = document.getElementById('f-edad').value;
         if (edadVal && (data.edad === null || data.edad < 18 || data.edad > 130)) { msg.textContent = 'Edad invalida (18-130)'; msg.style.color = 'var(--pri-red)'; return; }
         let ciudadanoId = editId;
@@ -1469,10 +1458,7 @@
           lng: parseFloat(document.getElementById('f-lng').value) || null,
           intencion_voto_presidente: parseInt(document.getElementById('f-intencion_voto_presidente').value) || null,
           intencion_voto_diputado: null,
-          casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null,
-          sexo: (document.getElementById('f-sexo')?.value) || null,
-          discapacidad_id: (document.getElementById('f-discapacidad')?.value) ? parseInt(document.getElementById('f-discapacidad').value) : null,
-          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null
+          casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null
         };
         const errTel = validarTelefono(data.telefono);
         if (errTel) { msg.textContent = errTel; msg.style.color = 'var(--pri-red)'; return; }
@@ -1695,9 +1681,6 @@
       municipios: loadMunicipios,
       secciones: loadSecciones,
       ciudadanos: loadCiudadanos,
-      discapacidades: () => renderCatalogoTabla('discapacidades'),
-      ocupaciones: () => renderCatalogoTabla('ocupaciones'),
-      'estatus-visita': () => renderCatalogoTabla('estatus_visita'),
       eventos: loadEventos,
       geocercas: loadGeocercas,
       rutas: loadRutas,
@@ -1781,8 +1764,6 @@
         tabFiltered = geoFiltered.filter(c => c.partido_presidente?.nombre === partidoFiltro || c.partido_diputado?.nombre === partidoFiltro);
       }
       window._exportData = tabFiltered;
-      window._dashCiudadanos = tabFiltered;
-      window._partidosDash = partidos;
 
       const munFiltrados = filtroEstado ? todosMunicipios.filter(m => m.estado_id === filtroEstado) : todosMunicipios;
       const secsUnicas = [...new Set(tabFiltered.map(c => c.seccion_id).filter(Boolean))];
@@ -1832,10 +1813,9 @@
           .map(([k, n]) => `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #f0f0f0"><span>${k}</span><strong>${n}</strong></div>`)
           .join('');
         cont.innerHTML = `
-          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px">
             <div><strong style="font-size:15px">${totalCasa}</strong> votantes en casa</div>
             <div><strong style="font-size:15px">${parte}</strong> hogares sin abrir (re-visitar)</div>
-            <button class="btn-small btn-secondary" style="margin-left:auto" onclick="expandirVotantesCasa()" title="Ver detalle completo">⤢ Expandir</button>
           </div>
           <div style="margin-bottom:4px;color:#666">Distribución (encuestado + acompañantes):</div>
           ${filas || '<span style="color:#999">Sin datos</span>'}`;
@@ -1935,24 +1915,15 @@
         // Add seccion polygons
         if (dashboardGeoLayer) { dashboardMap.removeLayer(dashboardGeoLayer); dashboardGeoLayer = null; }
         if (geojsonData?.features?.length) {
-        // Calculate dominant party per seccion
-        const secPartyCounts = {};
-        tabFiltered.forEach(c => {
-          const p = intencionTipo === 'intencion_voto_presidente' ? c.partido_presidente : c.partido_diputado;
-          if (p?.nombre) {
-            if (!secPartyCounts[c.seccion_id]) secPartyCounts[c.seccion_id] = {};
-            secPartyCounts[c.seccion_id][p.nombre] = (secPartyCounts[c.seccion_id][p.nombre] || 0) + 1;
-          }
-          // Los votantes extra de la casa también colorean el mapa
-          (Array.isArray(c.votantes_casa_list) ? c.votantes_casa_list : []).forEach(v => {
-            const pid = intencionTipo === 'intencion_voto_presidente' ? v.partido_id : v.partido_diputado_id;
-            const pv = pid ? partidos.find(pp => pp.id === pid) : null;
-            if (pv?.nombre) {
+          // Calculate dominant party per seccion
+          const secPartyCounts = {};
+          tabFiltered.forEach(c => {
+            const p = intencionTipo === 'intencion_voto_presidente' ? c.partido_presidente : c.partido_diputado;
+            if (p?.nombre) {
               if (!secPartyCounts[c.seccion_id]) secPartyCounts[c.seccion_id] = {};
-              secPartyCounts[c.seccion_id][pv.nombre] = (secPartyCounts[c.seccion_id][pv.nombre] || 0) + 1;
+              secPartyCounts[c.seccion_id][p.nombre] = (secPartyCounts[c.seccion_id][p.nombre] || 0) + 1;
             }
           });
-        });
           const secDominantColor = {};
           Object.keys(secPartyCounts).forEach(secId => {
             const counts = secPartyCounts[secId];
@@ -1974,9 +1945,8 @@
             onEachFeature: (feature, layer) => {
               const sec = Math.round(feature.properties.seccion);
               const ciudadanosSec = tabFiltered.filter(c => c.seccion_id === sec);
-              const vcSec = ciudadanosSec.reduce((s, c) => s + (parseInt(c.votantes_casa) || 1), 0);
               layer.bindTooltip(String(sec), { permanent: true, direction: 'center', className: 'sec-label', offset: [0, 0] });
-              layer.bindPopup(`<b>Sección ${sec}</b><br>Ciudadanos: ${ciudadanosSec.length}<br>👥 Votantes en casa: ${vcSec}<br><button class="btn-small btn-primary" style="margin-top:6px" onclick="verVotantesCasaSeccion(${sec})">👥 Ver votantes</button>`);
+              layer.bindPopup(`<b>Sección ${sec}</b><br>Ciudadanos: ${ciudadanosSec.length}`);
               layer.on('mouseover', function() {
                 this.setStyle({ weight: 3, opacity: 1, fillOpacity: 0.25 });
               });
@@ -2002,11 +1972,9 @@
           if (c.ubicacion?.lat && c.ubicacion?.lng) {
             const partidoColor = intencionTipo === 'intencion_voto_presidente' ? c.partido_presidente : c.partido_diputado;
             let color = partidoColor?.color || '#000';
-            const vcTotal = parseInt(c.votantes_casa) || 1;
-            const vcExtras = Array.isArray(c.votantes_casa_list) ? c.votantes_casa_list.length : 0;
             dashboardClusterGroup.addLayer(L.circleMarker([c.ubicacion.lat, c.ubicacion.lng], {
               radius: 6, fillColor: color, color: '#fff', weight: 2, fillOpacity: 0.8
-            }).bindPopup(`<b>${c.nombre}</b><br>Tel: ${c.telefono || '-'}<br>Dir: ${[c.calle, c.numero].filter(Boolean).join(' ')}${c.colonia ? ', '+c.colonia : ''}<br>Pres: ${c.partido_presidente?.abreviatura || '-'}<br>Dip: ${c.partido_diputado?.abreviatura || '-'}${vcTotal > 1 || vcExtras ? `<br>👥 Votantes en casa: ${vcTotal}` : ''}<br><button class="btn-small btn-primary" style="margin-top:4px" onclick="verDetalleVotantesCasa('${c.id}')">👥 Ver casa</button>${c.notas ? (function(){var u=fotoUrlFromNotas(c.notas);return u?'<br><img src="'+u+'" style="width:100%;max-width:120px;border-radius:4px;border:1px solid #ddd;margin-top:4px">':'';})() : ''}`));
+            }).bindPopup(`<b>${c.nombre}</b><br>Tel: ${c.telefono || '-'}<br>Dir: ${[c.calle, c.numero].filter(Boolean).join(' ')}${c.colonia ? ', '+c.colonia : ''}<br>Pres: ${c.partido_presidente?.abreviatura || '-'}<br>Dip: ${c.partido_diputado?.abreviatura || '-'}${c.notas ? (function(){var u=fotoUrlFromNotas(c.notas);return u?'<br><img src="'+u+'" style="width:100%;max-width:120px;border-radius:4px;border:1px solid #ddd;margin-top:4px">':'';})() : ''}`));
           }
         });
         // Re-add enlaces if checkbox still checked
@@ -2022,60 +1990,6 @@
     const container = document.getElementById('dash-enlaces-container');
     if (container) container.style.display = (user?.rol === 'admin' || user?.rol === 'coordinador') ? '' : 'none';
   }
-
-  // ── Resumen de votantes en casa (dashboard / mapa) ──
-  function mostrarModalVotantesCasaResumen(titulo, lista) {
-    const modal = document.getElementById('vc-resumen-modal');
-    if (!modal) return;
-    document.getElementById('vc-resumen-titulo').textContent = titulo;
-    const body = document.getElementById('vc-resumen-body');
-    if (!lista.length) { body.innerHTML = '<span style="color:#999">Sin ciudadanos en este filtro.</span>'; modal.style.display = 'flex'; return; }
-    body.innerHTML = lista.map(c => {
-      const extras = Array.isArray(c.votantes_casa_list) ? c.votantes_casa_list : [];
-      const totalDecl = Math.max(0, (parseInt(c.votantes_casa) || 1) - 1);
-      const nExtras = Math.max(extras.length, totalDecl);
-      const filasExtras = Array.from({ length: nExtras }, (_, i) => {
-        const v = extras[i] || {};
-        const pv = v.partido_id ? (window._partidosDash || []).find(p => p.id === v.partido_id) : null;
-        const pd = v.partido_diputado_id ? (window._partidosDash || []).find(p => p.id === v.partido_diputado_id) : null;
-        const quien = v.nombre || 'Acompañante sin registrar';
-        let estado;
-        if (pv || pd) {
-          estado = [pv ? 'Pres: ' + pv.abreviatura : '', pd ? 'Dip: ' + pd.abreviatura : ''].filter(Boolean).join(' · ');
-        } else if (v.pendiente !== false || (!v.nombre && extras[i] === undefined)) {
-          estado = '<span style="color:#b45309;font-weight:600">Indeciso</span>';
-        } else {
-          estado = '<span style="color:#b45309;font-weight:600">Indeciso</span>';
-        }
-        return `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0 2px 14px;border-bottom:1px dashed #eee;font-size:12px"><span>${quien}</span><span>${estado}</span></div>`;
-      }).join('');
-      return `<div style="margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #e5e7eb">
-          <strong>${c.nombre || (c.no_abrio ? 'No abrió' : '(sin nombre)')}</strong>
-          <span style="color:#666">Sec. ${c.seccion_num || c.seccion_id} · ${c.partido_presidente?.abreviatura || '-'}${c.no_abrio ? ' · No abrió' : ''}</span>
-        </div>
-        ${filasExtras || '<div style="padding:2px 0 2px 14px;color:#999;font-size:12px">Sin acompañantes registrados</div>'}
-      </div>`;
-    }).join('');
-    modal.style.display = 'flex';
-  }
-  window.verVotantesCasaSeccion = function(secId) {
-    const lista = (window._dashCiudadanos || []).filter(c => String(c.seccion_id) === String(secId));
-    mostrarModalVotantesCasaResumen('👥 Votantes en casa — Sección ' + secId, lista);
-  };
-  window.verDetalleVotantesCasa = async function(cid) {
-    let c = (window._dashCiudadanos || []).find(x => x.id === cid);
-    try {
-      // Refrescar de la API para traer acompañantes e intenciones actualizadas
-      const fresh = await API.getCiudadano(cid);
-      if (fresh) c = { ...(c || {}), ...fresh };
-    } catch (e) { console.warn('refresh ciudadano:', e); }
-    if (!c) { alert('No se encontró el ciudadano en el filtro actual'); return; }
-    mostrarModalVotantesCasaResumen('👥 Casa de ' + (c.nombre || 'ciudadano'), [c]);
-  };
-  window.expandirVotantesCasa = function() {
-    mostrarModalVotantesCasaResumen('👥 Votantes en casa — filtro actual', window._dashCiudadanos || []);
-  };
 
   window.toggleUbicacionesEnlace = async function() {
     const checked = document.getElementById('dash-ver-enlaces').checked;
@@ -2967,37 +2881,6 @@
     } catch (err) { console.error(err); }
   };
 
-  // ── Tendencias de actividad (capturas / seguros / votos por día) ──
-  window.cargarTendencias = async function(seccionId) {
-    const canvas = document.getElementById('chart-tendencias');
-    if (!canvas) return;
-    try {
-      const dias = document.getElementById('tend-dias')?.value || '30';
-      const qs = new URLSearchParams({ dias });
-      if (seccionId) qs.set('seccion_id', seccionId);
-      const data = await API.request('GET', '/api/reportes/tendencias?' + qs.toString());
-      if (window.tendenciasChart) { window.tendenciasChart.destroy(); window.tendenciasChart = null; }
-      if (!data.length) return;
-      const labels = data.map(d => String(d.fecha).slice(5));
-      window.tendenciasChart = new Chart(canvas.getContext('2d'), {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [
-            { label: 'Capturas', data: data.map(d => d.capturas), borderColor: '#009639', backgroundColor: 'rgba(0,150,57,.12)', borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true },
-            { label: 'Simpatizantes', data: data.map(d => d.seguros), borderColor: '#CC0000', backgroundColor: 'rgba(204,0,0,.10)', borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true },
-            { label: 'Votos', data: data.map(d => d.votos), borderColor: '#1e88e5', backgroundColor: 'rgba(30,136,229,.10)', borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true }
-          ]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
-          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
-        }
-      });
-    } catch (e) { console.warn('Tendencias no disponibles:', e?.message || e); }
-  };
-
   async function loadReportes() {
     reportesCargando = true;
     try {
@@ -3145,9 +3028,6 @@
           });
         }
       } catch (e) { console.warn('Horaria no disponible:', e?.message || e); }
-
-      // Tendencias de actividad (capturas / seguros / votos por día)
-      cargarTendencias(secId || null);
 
       let casillasHtml = '';
       const casillasMostrar = casId ? casillasSec.filter(c => c.id === casId) : (secId ? casillasSec : casillas);
@@ -3916,41 +3796,7 @@
     } catch (err) { console.error(err); }
   };
 
-  async function loadReportesRutas() { cargarReporteRutas(); cargarReporteRevisitas(); }
-
-  window.cargarReporteRevisitas = async function() {
-    const body = document.getElementById('rv-body');
-    const resumenEl = document.getElementById('rv-resumen');
-    if (!body) return;
-    const dias = parseInt(document.getElementById('rv-dias')?.value) || 60;
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999">Cargando...</td></tr>';
-    if (resumenEl) resumenEl.innerHTML = '';
-    try {
-      await asegurarEstatusVisita();
-      const r = await API.getReporteRevisitas(dias);
-      const s = r.resumen || {};
-      const tarjeta = (t, v, c) => `<div style="flex:1;min-width:150px;background:#fff;border-radius:8px;padding:10px 14px;box-shadow:var(--shadow);border-left:4px solid ${c}"><div style="font-size:11px;color:#666">${t}</div><div style="font-size:20px;font-weight:700;color:${c}">${v != null ? v : '-'}</div></div>`;
-      if (resumenEl) {
-        resumenEl.innerHTML =
-          tarjeta('Ciudadanos totales', s.total, '#333') +
-          tarjeta('Visitados en ruta', s.visitados_ruta, 'var(--pri-green)') +
-          tarjeta('Última visita: no abrió', s.ultima_no_abrio, 'var(--pri-red)') +
-          tarjeta(`Sin visita hace +${r.dias || dias}d`, s.sin_visita_reciente, '#d9a400') +
-          tarjeta('Con encuesta respondida', s.encuestados, '#9C27B0');
-      }
-      body.innerHTML = (r.lista && r.lista.length) ? r.lista.map(c => `<tr>
-        <td><strong>${c.nombre || '(sin nombre)'}</strong></td>
-        <td>${c.telefono || '-'}</td>
-        <td>${[c.calle, c.numero].filter(Boolean).join(' ') || '-'}${c.colonia ? ', ' + c.colonia : ''}</td>
-        <td>Sec. ${c.seccion_num || '-'}</td>
-        <td style="white-space:nowrap">${c.ultima_visita ? new Date(c.ultima_visita).toLocaleDateString() : 'Nunca'}</td>
-        <td>${c.ultimo_resultado === 'nunca' ? '<span style="color:#bbb">—</span>' : (c.ultimo_resultado === 'no_abrio' ? '<span class="badge badge-no">No abrió</span>' : '<span class="badge badge-yes">Abrió</span>')}</td>
-        <td style="white-space:nowrap"><strong>${c.dias_desde_visita != null ? c.dias_desde_visita : '—'}</strong></td>
-      </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:#999">Sin ciudadanos pendientes de re-visita con ese umbral</td></tr>';
-    } catch (e) {
-      body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--pri-red)">Error: ' + (e.message || e) + '</td></tr>';
-    }
-  };
+  async function loadReportesRutas() { cargarReporteRutas(); }
 
   window.cargarCapturadosGeneral = async function() {
     const campanaId = document.getElementById('cap-encuesta-campana')?.value || '';
@@ -4147,22 +3993,16 @@
         filtro.value = '';
       }
       const filtrados = filtro.value ? ciudadanos.filter(c => c.seccion_id == filtro.value) : ciudadanos;
-      const motivoLabels = { no_abrio: 'No abrió', sin_info: 'Sin info', con_prisa: 'Tenía prisa', otro: 'Otro motivo' };
-      const motivoNombre = clave => (((window._estatusVisita || []).find(e => e.clave === clave) || {}).nombre) || motivoLabels[clave] || clave;
       document.getElementById('ciudadanos-body').innerHTML = filtrados.length ? filtrados.map(c => {
         var fotoUrl = fotoUrlFromNotas(c.notas);
-        const encBtn = c.encuesta_campana_id ? `<button class="btn-small btn-secondary" onclick="abrirEncuestaCiudadano('${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}','${c.encuesta_campana_id}')" title="Responder encuesta asignada">Encuesta</button> ` : '';
-        const barridoCell = c.motivo_puerta
-          ? `<span style="font-size:11px;background:#fff3cd;border:1px solid #d4a017;color:#6b4f00;border-radius:4px;padding:2px 6px;white-space:normal;display:inline-block;line-height:1.3">${motivoNombre(c.motivo_puerta)}</span>`
-          : `<span style="font-size:11px;color:${c.sexo || c.discapacidad_nombre || c.ocupacion_nombre ? '#333' : '#bbb'};white-space:normal;display:inline-block;line-height:1.35">${[c.sexo === 'H' ? 'Hombre' : (c.sexo === 'M' ? 'Mujer' : ''), c.discapacidad_nombre || '', c.ocupacion_nombre || ''].filter(Boolean).join(' · ') || '—'}</span>`;
+        const encBtn = c.encuesta_campana_id ? `<button class="btn-small btn-secondary" onclick="abrirEncuestaCiudadano('${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}','${c.encuesta_campana_id}')" title="Responder encuesta asignada">📋 Encuesta</button> ` : '';
         return `<tr><td><strong>${c.nombre || (c.no_abrio ? '🚪 No abrió' : '—')}</strong></td><td>${c.telefono || '-'}</td>
         <td>${[c.calle, c.numero].filter(Boolean).join(' ') || '-'}</td><td>${c.colonia || '-'}</td>
         <td>Sec. ${c.seccion_num}</td>
-        <td>${barridoCell}</td>
         <td>${c.prioridad || 0}</td>
         <td>${fotoUrl ? '<div style="position:relative;display:inline-block"><img src="'+fotoUrl+'" style="height:32px;width:32px;object-fit:cover;border-radius:4px;border:1px solid #ddd;cursor:pointer" onclick="window.open(\''+fotoUrl+'\',\'_blank\')"><span style="position:absolute;top:-4px;right:-4px;background:var(--pri-red);color:#fff;border-radius:50%;width:14px;height:14px;font-size:10px;line-height:14px;text-align:center;cursor:pointer" onclick="event.stopPropagation();eliminarFotoCiudadano(\''+c.id+'\',\''+c.nombre+'\',this)">×</span></div>' : '-'}</td>
         <td style="white-space:nowrap">${encBtn}<button class="btn-small btn-primary" onclick="abrirModal('ciudadano','${c.id}')">Editar</button> <button class="btn-small btn-secondary" onclick="mostrarHistorialCiudadano('${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}')" title="Historial de visitas">Hist</button> <button class="btn-small btn-danger" onclick="eliminarItem('ciudadano','${c.id}','${c.nombre}')">X</button></td></tr>`;
-      }).join('') : '<tr><td colspan="9" style="text-align:center;color:#999">No hay ciudadanos registrados</td></tr>';
+      }).join('') : '<tr><td colspan="8" style="text-align:center;color:#999">No hay ciudadanos registrados</td></tr>';
       if (barridoActivo) actualizarMapaBarrido(ciudadanos);
       verificarDuplicados();
       finalizarStatus();
@@ -4244,11 +4084,10 @@
         <td>${c.telefono || '-'}</td><td>${c.correo || '-'}</td><td>${c.curp || '-'}</td><td>${c.ine || '-'}</td>
         <td>${vig}</td>
         <td>Sec. ${c.seccion_num}</td>
-        <td><span style="font-size:11px;color:${c.sexo || c.discapacidad_nombre || c.ocupacion_nombre ? '#333' : '#bbb'};white-space:normal;display:inline-block;line-height:1.35">${[c.sexo === 'H' ? 'Hombre' : (c.sexo === 'M' ? 'Mujer' : ''), c.discapacidad_nombre || '', c.ocupacion_nombre || ''].filter(Boolean).join(' · ') || '—'}</span></td>
         <td>${c.partido_presidente?.abreviatura || '-'}</td>
         <td>${corrBadge}</td>
         <td style="white-space:nowrap">${accion}</td></tr>`;
-      }).join('') : `<tr><td colspan="11" style="text-align:center;color:#999">${busqueda || filtro.value ? 'Sin resultados para la búsqueda' : 'No hay simpatizantes registrados'}</td></tr>`;
+      }).join('') : `<tr><td colspan="10" style="text-align:center;color:#999">${busqueda || filtro.value ? 'Sin resultados para la búsqueda' : 'No hay simpatizantes registrados'}</td></tr>`;
       finalizarStatus();
     } catch (err) { console.error(err); finalizarStatus(); }
   }
@@ -4552,10 +4391,6 @@
     document.getElementById('bf-cp').value = '';
     document.getElementById('bf-edad').value = '';
     const bfNoAbrio = document.getElementById('bf-no_abrio'); if (bfNoAbrio) bfNoAbrio.checked = false;
-    const bfMotivo = document.getElementById('bf-motivo'); if (bfMotivo) bfMotivo.value = '';
-    const bfSexo = document.getElementById('bf-sexo'); if (bfSexo) bfSexo.value = '';
-    const bfDisc = document.getElementById('bf-discapacidad'); if (bfDisc) bfDisc.value = '';
-    const bfOcu = document.getElementById('bf-ocupacion'); if (bfOcu) bfOcu.value = '';
     document.getElementById('bf-partido-presidente').selectedIndex = 0;
     document.getElementById('bf-partido-diputado').selectedIndex = 0;
     document.getElementById('bf-lat').value = '';
@@ -4596,13 +4431,6 @@
         document.getElementById('bf-partido-presidente').innerHTML = opts;
         document.getElementById('bf-partido-diputado').innerHTML = opts;
       });
-      Promise.all([API.getCatalogo('discapacidades'), API.getCatalogo('ocupaciones')]).then(([discs, ocus]) => {
-        window._catDiscapacidades = discs; window._catOcupaciones = ocus;
-        const dSel = document.getElementById('bf-discapacidad');
-        const oSel = document.getElementById('bf-ocupacion');
-        if (dSel) dSel.innerHTML = '<option value="">Discapacidad</option>' + discs.map(d => `<option value="${d.id}">${d.nombre}</option>`).join('');
-        if (oSel) oSel.innerHTML = '<option value="">Ocupación</option>' + ocus.map(o => `<option value="${o.id}">${o.nombre}</option>`).join('');
-      }).catch(e => console.warn('catalogos barrido:', e));
       const encInfo = document.getElementById('bf-encuesta-info');
       API.getCampanas().then(camps => {
         const barrido = camps.find(c => c.encuesta_barrido);
@@ -4906,9 +4734,8 @@
     const nombre = document.getElementById('bf-nombre').value.trim();
     const apellidoPaterno = document.getElementById('bf-apellido_paterno').value.trim();
     const apellidoMaterno = document.getElementById('bf-apellido_materno').value.trim();
-    const motivoPuerta = document.getElementById('bf-motivo') ? document.getElementById('bf-motivo').value : '';
-    const noAbrio = !!motivoPuerta;
-    if (!nombreCompleto(nombre, apellidoPaterno, apellidoMaterno) && !noAbrio) { document.getElementById('bf-status').textContent = 'Nombre requerido (o elige un motivo de puerta)'; document.getElementById('bf-status').style.color = 'var(--pri-red)'; return; }
+    const noAbrio = document.getElementById('bf-no_abrio').checked;
+    if (!nombreCompleto(nombre, apellidoPaterno, apellidoMaterno) && !noAbrio) { document.getElementById('bf-status').textContent = 'Nombre requerido (o marca "No abrió")'; document.getElementById('bf-status').style.color = 'var(--pri-red)'; return; }
     const telefono = document.getElementById('bf-telefono').value.trim();
     const errTel = validarTelefono(telefono);
     if (errTel) { document.getElementById('bf-status').textContent = errTel; document.getElementById('bf-status').style.color = 'var(--pri-red)'; return; }
@@ -4925,19 +4752,11 @@
     const gpsIndicator = document.getElementById('bf-gps-indicator');
     const gpsText = document.getElementById('bf-gps-text');
     const status = document.getElementById('bf-status');
-    const data = { nombre: nombreCompleto(nombre, apellidoPaterno, apellidoMaterno), apellido_paterno: apellidoPaterno || null, apellido_materno: apellidoMaterno || null, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado, motivo_puerta: motivoPuerta || null, no_abrio: noAbrio, sexo: (document.getElementById('bf-sexo')?.value) || null, discapacidad_id: (document.getElementById('bf-discapacidad')?.value) ? parseInt(document.getElementById('bf-discapacidad').value) : null, ocupacion_id: (document.getElementById('bf-ocupacion')?.value) ? parseInt(document.getElementById('bf-ocupacion').value) : null, encuesta_campana_id: (window._encuestaBarrido && window._encuestaBarrido.id) || null };
+    const data = { nombre: nombreCompleto(nombre, apellidoPaterno, apellidoMaterno), apellido_paterno: apellidoPaterno || null, apellido_materno: apellidoMaterno || null, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado, no_abrio: document.getElementById('bf-no_abrio').checked, encuesta_campana_id: (window._encuestaBarrido && window._encuestaBarrido.id) || null };
     const bfExtras = parseInt(document.getElementById('bf-votantes_casa').value) || 0;
     if (bfExtras > 0) data.votantes_casa = bfExtras + 1;
-    // Enviar lista completa (incluidos sin nombre) para sincronizar con el conteo
-    const bfRaw = Array.isArray(window._vcListBf) ? window._vcListBf : [];
-    if (bfExtras > 0) {
-      data.votantes_casa_list = Array.from({ length: bfExtras }, (_, i) => bfRaw[i] || {}).map(v => ({
-        nombre: (v.nombre || '').trim() || null,
-        partido_id: v.partido_id || null,
-        partido_diputado_id: v.partido_diputado_id || null,
-        pendiente: !v.partido_id && !v.partido_diputado_id
-      }));
-    }
+    const bfVcDef = Array.isArray(window._vcListBf) ? window._vcListBf.filter(v => v.nombre || v.partido_id || v.partido_diputado_id) : [];
+    if (bfVcDef.length) data.votantes_casa_list = bfVcDef.map(v => ({ ...v, pendiente: !v.partido_id && !v.partido_diputado_id }));
     // Capture photo evidence (base64) and GPS first, without API calls
     const evidenciaImg = document.getElementById('bf-evidencia-img');
     const tieneFoto = evidenciaImg.src && evidenciaImg.src.startsWith('data:');
@@ -5338,7 +5157,6 @@
 
   async function loadMiRuta() {
     detenerSeguimientoUbicacion();
-    asegurarEstatusVisita();
     rutaOrigen = 'mi-ruta';
     document.getElementById('ruta-admin-section').classList.add('hidden');
     document.getElementById('ruta-enlace-section').classList.remove('hidden');
@@ -5427,70 +5245,22 @@
   let rutaCreandoSeccion = null;
   let rutaModalTipo = 'seguros';
 
-  function tipoRutaLabel(t) { return t === 'encuesta' ? '📋 Encuesta' : (t === 'filtro' ? '🎯 Por filtro' : '🛡 Simpatizantes'); }
-
-  function tipoRutaLabel(t) { return t === 'encuesta' ? 'Encuesta' : (t === 'filtro' ? 'Por filtro' : 'Simpatizantes'); }
+  function tipoRutaLabel(t) { return t === 'encuesta' ? '📋 Encuesta' : '🛡 Simpatizantes'; }
 
   window.setRutaModalTipo = function(tipo) {
-    rutaModalTipo = ['encuesta', 'seguros', 'filtro'].includes(tipo) ? tipo : 'seguros';
+    rutaModalTipo = tipo === 'encuesta' ? 'encuesta' : 'seguros';
     const bS = document.getElementById('ruta-modal-tipo-seguros');
     const bE = document.getElementById('ruta-modal-tipo-encuesta');
-    const bF = document.getElementById('ruta-modal-tipo-filtro');
     if (!bS) return;
-    bS.classList.toggle('active', rutaModalTipo === 'seguros');
-    bE.classList.toggle('active', rutaModalTipo === 'encuesta');
-    bF.classList.toggle('active', rutaModalTipo === 'filtro');
+    bS.classList.toggle('btn-primary', rutaModalTipo === 'seguros');
+    bS.classList.toggle('btn-secondary', rutaModalTipo !== 'seguros');
+    bE.classList.toggle('btn-primary', rutaModalTipo === 'encuesta');
+    bE.classList.toggle('btn-secondary', rutaModalTipo !== 'encuesta');
     const ayuda = document.getElementById('ruta-modal-tipo-ayuda');
     ayuda.textContent = rutaModalTipo === 'seguros'
       ? 'Visitar a los simpatizantes (voto seguro) de la sección para confirmar sus datos y su voto.'
-      : (rutaModalTipo === 'filtro'
-        ? 'Visitar solo a los ciudadanos que cumplan los filtros elegidos (sexo, edad, discapacidad, ocupación, etc.).'
-        : 'Visitar a todos los ciudadanos de la sección para aplicar la encuesta.');
+      : 'Visitar a todos los ciudadanos de la sección para aplicar la encuesta.';
     document.getElementById('ruta-modal-encuesta-opts').classList.toggle('hidden', rutaModalTipo !== 'encuesta');
-    const filtroOpts = document.getElementById('ruta-modal-filtro-opts');
-    if (filtroOpts) {
-      filtroOpts.classList.toggle('hidden', rutaModalTipo !== 'filtro');
-      if (rutaModalTipo === 'filtro') llenarSelectsFiltroRuta();
-    }
-  };
-
-  async function llenarSelectsFiltroRuta() {
-    try {
-      const [discs, ocus] = await Promise.all([API.getCatalogo('discapacidades'), API.getCatalogo('ocupaciones')]);
-      const dSel = document.getElementById('rf-discapacidad');
-      const oSel = document.getElementById('rf-ocupacion');
-      if (dSel && !dSel.options.length) dSel.innerHTML = discs.map(d => `<option value="${d.id}">${d.nombre}</option>`).join('');
-      if (oSel && !oSel.options.length) oSel.innerHTML = ocus.map(o => `<option value="${o.id}">${o.nombre}</option>`).join('');
-    } catch (e) { console.warn(e); }
-  }
-
-  function filtrosRutaActuales() {
-    const f = {};
-    const sexo = document.getElementById('rf-sexo')?.value;
-    if (sexo) f.sexo = sexo;
-    const edadMax = parseInt(document.getElementById('rf-edad-max')?.value);
-    if (!Number.isNaN(edadMax)) f.edad_max = edadMax;
-    const discs = [...(document.getElementById('rf-discapacidad')?.selectedOptions || [])].map(o => parseInt(o.value)).filter(Boolean);
-    if (discs.length) f.discapacidad_ids = discs;
-    const ocus = [...(document.getElementById('rf-ocupacion')?.selectedOptions || [])].map(o => parseInt(o.value)).filter(Boolean);
-    if (ocus.length) f.ocupacion_ids = ocus;
-    if (document.getElementById('rf-motivo')?.checked) f.motivo_puerta_presente = true;
-    if (document.getElementById('rf-sin-intencion')?.checked) f.sin_intencion = true;
-    if (document.getElementById('rf-indecisos-casa')?.checked) f.indecisos_en_casa = true;
-    const sinVisitaDias = parseInt(document.getElementById('rf-sin-visita-dias')?.value);
-    if (!Number.isNaN(sinVisitaDias) && sinVisitaDias > 0) f.sin_visita_desde_dias = sinVisitaDias;
-    return f;
-  }
-
-  window.previewRutaFiltro = async function() {
-    const out = document.getElementById('rf-preview-count');
-    if (!out) return;
-    try {
-      out.textContent = 'Contando...'; out.style.color = '#666';
-      const r = await API.previewRutaFiltro(rutaCreandoSeccion, filtrosRutaActuales());
-      out.textContent = `${r.total} ciudadano(s) cumplen los filtros`;
-      out.style.color = r.total ? 'var(--pri-green)' : 'var(--pri-red)';
-    } catch (e) { out.textContent = 'Error al contar'; out.style.color = 'var(--pri-red)'; }
   };
 
   async function loadRutasAdmin() {
@@ -5522,7 +5292,7 @@
             <div><strong style="font-size:14px">Seccion ${s.id}</strong> <span style="color:#999;font-size:11px">${s.municipio || ''}</span></div>
           </div>
           ${enl.length ? `<div style="font-size:11px;color:#666;margin-bottom:4px">Enlaces disponibles: ${enl.map(e => e.nombre).join(', ')}</div>` : '<div style="font-size:11px;color:#999">Sin enlaces asignados</div>'}
-          ${enl.length ? filaTipo('encuesta') + filaTipo('seguros') + filaTipo('filtro') : ''}
+          ${enl.length ? filaTipo('encuesta') + filaTipo('seguros') : ''}
         </div>`;
       }).join('');
     } catch (err) { console.error(err); }
@@ -5554,16 +5324,10 @@
       const selected = [...document.querySelectorAll('.ruta-enlace-cb:checked')].map(cb => cb.value);
       if (!selected.length) { document.getElementById('ruta-modal-status').textContent = 'Selecciona al menos un enlace'; return; }
       const encuestaId = rutaModalTipo === 'encuesta' ? (document.getElementById('ruta-modal-encuesta').value || null) : null;
-      const filtros = rutaModalTipo === 'filtro' ? filtrosRutaActuales() : undefined;
-      if (rutaModalTipo === 'filtro' && !Object.keys(filtros).length) {
-        status.textContent = 'Elige al menos un filtro (o usa otro tipo de ruta)';
-        status.style.color = 'var(--pri-red)';
-        return;
-      }
       const status = document.getElementById('ruta-modal-status');
       try {
         status.textContent = 'Creando rutas...';
-        await API.request('POST', '/api/rutas', { enlace_ids: selected, seccion_id: seccionId, tipo: rutaModalTipo, encuesta_campana_id: encuestaId, filtros });
+        await API.request('POST', '/api/rutas', { enlace_ids: selected, seccion_id: seccionId, tipo: rutaModalTipo, encuesta_campana_id: encuestaId });
         status.textContent = `Ruta ${tipoRutaLabel(rutaModalTipo)} creada para ${selected.length} enlace(s)`;
         status.style.color = 'var(--pri-green)';
         setTimeout(() => { document.getElementById('ruta-modal-crear').classList.add('hidden'); loadRutasAdmin(); }, 1000);
@@ -5676,7 +5440,7 @@
           <div style="margin-top:3px;display:flex;gap:3px;flex-wrap:wrap">
             <span class="badge" style="background:#eee;color:#333;font-size:10px">Prioridad: ${p.prioridad||0}</span>
           </div>
-        <div style="font-size:11px;color:#666;margin-top:3px">${visitadoLabel}${estLabel} ${p.gps_confirmado ? '· GPS ✓' : p.evidencia ? '· Foto ✓' : ''}</div>
+          <div style="font-size:11px;color:#666;margin-top:3px">${visitadoLabel} ${p.gps_confirmado ? '· GPS ✓' : p.evidencia ? '· Foto ✓' : ''}</div>
           <button class="btn-small ${rutaVisitados.has(p.id)?'btn-primary':'btn-secondary'}" style="margin-top:4px;width:100%;font-size:11px" onclick="toggleVisitado('${p.id}',${i})">
             ${rutaVisitados.has(p.id) ? '✓ Visitado' : 'Marcar visitado'}
           </button>
@@ -5834,13 +5598,11 @@
     });
   }
 
-  async function persistirParada(idx, visitado, gps_confirmado, evidencia, no_abrio, resultado, coords) {
+  async function persistirParada(idx, visitado, gps_confirmado, evidencia, no_abrio) {
     if (!rutaActivaId) return;
     const body = { visitado, gps_confirmado };
     if (evidencia !== undefined) body.evidencia = evidencia;
     if (no_abrio !== undefined) body.no_abrio = no_abrio;
-    if (resultado) body.resultado = resultado;
-    if (coords && coords.lat != null && coords.lng != null) { body.lat = coords.lat; body.lng = coords.lng; }
     try { await API.request('PATCH', `/api/rutas/${rutaActivaId}/parada/${idx}`, body); } catch (e) {
       console.warn(e);
       await agregarAOfflineQueue({ type: 'marcarVisita', data: { rutaId: rutaActivaId, idx, body } });
@@ -5851,7 +5613,7 @@
     if (!rutaData) return;
     const p = rutaData.paradas[idx]; if (!p) return;
     if (rutaVisitados.has(id)) {
-      rutaVisitados.delete(id); p.resultado = null; p.no_abrio = false; renderParadas(); actualizarMarkerPopup(idx);
+      rutaVisitados.delete(id); renderParadas(); actualizarMarkerPopup(idx);
       persistirParada(idx, false, false, null); p.evidencia = null; dibujarTramoActual(); return;
     }
 
@@ -5863,89 +5625,46 @@
       }
     }
 
-    async function marcar(gpsOk, resultado, coords) {
+    async function marcar(gpsOk) {
       let evidencia = null;
       if (!gpsOk) {
         evidencia = await tomarEvidenciaForzada();
       }
       if (evidencia) p.evidencia = evidencia;
-      const est = resultado ? ((window._estatusVisita || []).find(e => e.clave === resultado)) : null;
-      p.resultado = resultado || null;
-      p.no_abrio = !!(est && est.marca_no_abrio);
       rutaVisitados.add(id);
-      persistirParada(idx, true, gpsOk, evidencia, undefined, resultado, coords);
+      persistirParada(idx, true, gpsOk, evidencia);
       renderParadas();
       actualizarMarkerPopup(idx);
       dibujarTramoActual();
       if (rutaActivaId && rutaData.paradas.every(x => rutaVisitados.has(x.id))) completarRuta();
     }
 
-    await asegurarEstatusVisita();
-
     if (!navigator.geolocation) {
       alert('GPS no disponible. Debe tomar una foto como evidencia.');
-      abrirSelectorEstatus(idx, clave => marcar(false, clave, null), false); return;
+      marcar(false); return;
     }
     const pos = await obtenerPosicionRapida();
     if (!pos) {
       alert('No se pudo obtener la ubicacion GPS. Debe tomar una foto como evidencia.');
-      abrirSelectorEstatus(idx, clave => marcar(false, clave, null), false); return;
+      await marcar(false); return;
     }
-    const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    const dist = distanciaGPS(coords.lat, coords.lng, p.ubicacion.lat, p.ubicacion.lng);
-    if (dist <= 100) abrirSelectorEstatus(idx, clave => marcar(true, clave, coords), false);
-    else if (confirm('Estas a ' + Math.round(dist) + 'm del domicilio. ¿Marcar como visitado de todas formas? Debera tomar foto como evidencia.')) abrirSelectorEstatus(idx, clave => marcar(false, clave, coords), false);
+    const dist = distanciaGPS(pos.coords.latitude, pos.coords.longitude, p.ubicacion.lat, p.ubicacion.lng);
+    if (dist <= 100) marcar(true);
+    else if (confirm('Estas a ' + Math.round(dist) + 'm del domicilio. ¿Marcar como visitado de todas formas? Debera tomar foto como evidencia.')) marcar(false);
   };
-
-  // Selector de estatus de visita (opciones del catálogo cat_estatus_visita)
-  function abrirSelectorEstatus(idx, alConfirmar, soloNoAbrio) {
-    const listaBase = window._estatusVisita || [];
-    const opciones = soloNoAbrio
-      ? listaBase.filter(e => e.activo !== false && e.marca_no_abrio)
-      : listaBase.filter(e => e.activo !== false);
-    if (soloNoAbrio && !opciones.length) opciones.push({ clave: 'no_abrio', nombre: 'No abrió puerta', marca_no_abrio: true });
-    let overlay = document.getElementById('estatus-visita-overlay');
-    if (overlay) overlay.remove();
-    overlay = document.createElement('div');
-    overlay.id = 'estatus-visita-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center';
-    overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:18px;max-width:340px;width:88%">
-      <h3 style="margin:0 0 10px;font-size:14px">Estatus de la visita</h3>
-      <select id="sel-estatus-visita" style="width:100%;padding:9px;border:2px solid var(--border);border-radius:6px;font-size:13px;margin-bottom:12px">
-        ${soloNoAbrio ? '' : '<option value="">Abrió y dio información</option>'}
-        ${opciones.map(o => `<option value="${o.clave}">${o.nombre}${!soloNoAbrio && o.marca_no_abrio ? ' (sin entrevista)' : ''}</option>`).join('')}
-      </select>
-      <div style="display:flex;gap:8px">
-        <button id="btn-estatus-ok" class="btn-primary" style="flex:1">Guardar</button>
-        <button id="btn-estatus-cancel" class="btn-secondary">Cancelar</button>
-      </div>
-    </div>`;
-    document.body.appendChild(overlay);
-    overlay.querySelector('#btn-estatus-cancel').onclick = () => overlay.remove();
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    overlay.querySelector('#btn-estatus-ok').onclick = () => {
-      const clave = overlay.querySelector('#sel-estatus-visita').value || null;
-      overlay.remove();
-      alConfirmar(clave);
-    };
-  }
 
   window.marcarNoAbrio = async function(id, idx) {
     if (!rutaData) return;
     const p = rutaData.paradas[idx]; if (!p) return;
     if (rutaVisitados.has(id) && p.no_abrio) {
-      rutaVisitados.delete(id); p.no_abrio = false; p.evidencia = null; p.resultado = null;
+      rutaVisitados.delete(id); p.no_abrio = false; p.evidencia = null;
       persistirParada(idx, false, false, null, false);
       renderParadas(); actualizarMarkerPopup(idx); dibujarTramoActual(); return;
     }
-    await asegurarEstatusVisita();
-    abrirSelectorEstatus(idx, clave => {
-      rutaVisitados.add(id);
-      p.no_abrio = true; p.visitado = true; p.resultado = clave;
-      persistirParada(idx, true, false, null, true, clave, null);
-      renderParadas(); actualizarMarkerPopup(idx); dibujarTramoActual();
-      if (rutaActivaId && rutaData.paradas.every(x => rutaVisitados.has(x.id))) completarRuta();
-    }, true);
+    rutaVisitados.add(id); p.no_abrio = true;
+    persistirParada(idx, true, false, null, true);
+    renderParadas(); actualizarMarkerPopup(idx); dibujarTramoActual();
+    if (rutaActivaId && rutaData.paradas.every(x => rutaVisitados.has(x.id))) completarRuta();
   };
 
   window.marcarParadaVoto = async function(id) {
@@ -6003,12 +5722,6 @@
     }
   }
 
-  function estatusNombre(clave) {
-    if (!clave) return '';
-    const e = (window._estatusVisita || []).find(x => x.clave === clave);
-    return e ? e.nombre : (clave === 'no_abrio' ? 'No abrió puerta' : clave);
-  }
-
   function actualizarMarkerPopup(idx) {
     const p = rutaData.paradas[idx]; if (!p) return;
     const id = p.id;
@@ -6016,7 +5729,6 @@
     const dir = [p.direccion, p.colonia].filter(Boolean).join(', ') || 'Sin direccion';
     const evidenciaHtml = p.evidencia ? `<div style="margin:4px 0"><img src="${fullUrl(p.evidencia)}" style="width:100%;max-height:100px;object-fit:cover;border-radius:4px;border:1px solid #ddd"></div>` : '';
     const visitadoLabel = rutaVisitados.has(id) ? '✓ Visitado' : 'No visitado';
-    const estLabel = p.resultado ? ` · ${estatusNombre(p.resultado)}` : '';
     const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
     const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px" onclick="abrirEncuestaCiudadano('${id}','${(p.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}')">📋 Encuesta</button>` : '';
     rutaMarkers[idx]?.setPopupContent(`
@@ -6033,7 +5745,7 @@
           ${rutaVisitados.has(id) ? '✓ Visitado' : 'Marcar visitado'}
         </button>
         ${encBtn}
-        ${rutaReadOnly ? '' : `<button class="btn-small btn-danger" style="margin-top:4px;width:100%;font-size:11px" onclick="marcarNoAbrio('${id}',${idx})">${p.no_abrio ? 'No abrió ✓' : 'No abrió'}</button>`}
+        ${rutaReadOnly ? '' : `<button class="btn-small btn-danger" style="margin-top:4px;width:100%;font-size:11px" onclick="marcarNoAbrio('${id}',${idx})">${p.no_abrio ? '🚪 No abrió ✓' : '🚪 No abrió'}</button>`}
       </div>`);
   }
 
@@ -6060,8 +5772,6 @@
         const gpsBadge = s.gps_confirmado ? '<span style="font-size:9px;color:var(--pri-green)">GPS ✓</span>' : s.evidencia ? '<span style="font-size:9px;color:#999">Foto</span>' : '';
         const visitLabel = visit ? 'Visitado' : 'Pendiente';
         const noAbrioBadge = s.no_abrio ? '<div style="margin-top:2px"><span class="badge" style="background:var(--pri-red);color:#fff;font-size:9px">No abrió</span></div>' : '';
-        const resBadge = s.resultado ? `<div style="margin-top:2px"><span class="badge" style="background:#fff3cd;color:#6b4f00;font-size:9px">${estatusNombre(s.resultado)}</span></div>` : '';
-        const vcBlock = Array.isArray(s.votantes_casa) && s.votantes_casa.length ? `<div style="margin-top:3px;font-size:10px;color:#444;background:#f2f7f2;border-left:3px solid var(--pri-green);border-radius:4px;padding:3px 6px;line-height:1.4">En casa: ${s.votantes_casa.map(v => `${v.nombre || 'Sin registrar'} (${v.pendiente || (!v.pres && !v.dip) ? 'Indeciso' : [v.pres ? 'Pres ' + v.pres : '', v.dip ? 'Dip ' + v.dip : ''].filter(Boolean).join(' · ')})`).join(', ')}</div>` : '';
         const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
         const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px" onclick="event.stopPropagation();abrirEncuestaCiudadano('${s.id}','${(s.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}')" title="Responder encuesta de esta parada">📋 Encuesta</button>` : '';
         const yaVoto = s.ya_voto || rutaVotados.has(s.id);
@@ -6084,13 +5794,11 @@
               ${encBtn}
               ${votoBtn}
               ${noAbrioBadge}
-              ${resBadge}
-              ${vcBlock}
             </div>
             <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
               ${gpsBadge}
               <button class="btn-small ${visit?'btn-primary':'btn-secondary'}" data-id="${s.id}" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();toggleVisitado('${s.id}',${i})" title="${visitLabel}">${visit?'✓':'○'}</button>
-              <button class="btn-small btn-danger" data-id="${s.id}" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();marcarNoAbrio('${s.id}',${i})" title="${s.no_abrio?'Quitar "no abrió"':'Marcar como no abrió'}">${s.no_abrio?'No abrió ✓':'No abrió'}</button>
+              <button class="btn-small btn-danger" data-id="${s.id}" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();marcarNoAbrio('${s.id}',${i})" title="${s.no_abrio?'Quitar "no abrió"':'Marcar como no abrió'}">${s.no_abrio?'🚪 No abrió ✓':'🚪 No abrió'}</button>
             </div>
           </div>
         </div>`;
@@ -6465,24 +6173,6 @@
           lngField.value = p.lng.toFixed(6);
           if (tipo === 'evento') detectarSeccionEvento(p.lat, p.lng);
           if (tipo === 'casilla') detectarSeccionCasilla(p.lat, p.lng);
-          if (tipo === 'ciudadano' || tipo === 'comprometido') {
-            const fc = document.getElementById('f-calle');
-            if (fc && !fc.value.trim()) {
-              fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.lat}&lon=${p.lng}&addressdetails=1`)
-                .then(r => r.json())
-                .then(d => {
-                  if (!d?.address) return;
-                  const addr = d.address;
-                  if (!fc.value.trim()) fc.value = addr.road || addr.pedestrian || '';
-                  const fn = document.getElementById('f-numero');
-                  if (fn && !fn.value.trim()) fn.value = addr.house_number || '';
-                  const coloniaVal = addr.suburb || addr.neighbourhood || addr.hamlet || addr.village || addr.town || '';
-                  const fco = document.getElementById('f-colonia');
-                  if (fco && coloniaVal && !fco.value.trim()) fco.value = coloniaVal;
-                })
-                .catch(() => {});
-            }
-          }
         });
         setTimeout(() => mapaAjuste.invalidateSize(), 100);
         resaltarSeccionEnMapaAjuste();
@@ -6716,21 +6406,6 @@
       sel.innerHTML = municipios.map(m => `<option value="${m.id}" ${m.id == (data.municipio_id || municipios.find(x => x.es_default)?.id) ? 'selected' : ''}>${m.nombre}</option>`).join('');
     }
     if (tipo === 'ciudadano' || tipo === 'comprometido') {
-      // Catálogos de perfil: discapacidad y ocupación
-      try {
-        const [discs,ocus] = await Promise.all([API.getCatalogo('discapacidades'), API.getCatalogo('ocupaciones')]);
-        window._catDiscapacidades = discs; window._catOcupaciones = ocus;
-        const dSel = document.getElementById('f-discapacidad');
-        const oSel = document.getElementById('f-ocupacion');
-        if (dSel) {
-          dSel.innerHTML = '<option value=""></option>' + discs.map(d => `<option value="${d.id}">${d.nombre}</option>`).join('');
-          if (dSel.dataset.valor) dSel.value = String(dSel.dataset.valor);
-        }
-        if (oSel) {
-          oSel.innerHTML = '<option value=""></option>' + ocus.map(o => `<option value="${o.id}">${o.nombre}</option>`).join('');
-          if (oSel.dataset.valor) oSel.value = String(oSel.dataset.valor);
-        }
-      } catch (e) { console.warn('Catálogos no disponibles:', e); }
       const estados = await API.getEstados();
       const eSel = document.getElementById('f-estado');
       const muniSel = document.getElementById('f-municipio');
@@ -7102,21 +6777,10 @@
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:26px">
         <label style="flex:none;width:130px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
         <select id="f-casilla" style="flex:none;width:100%;box-sizing:border-box;height:40px;padding:0 8px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
-        <label style="flex:none;width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Motivo puerta</span>
-        <select id="f-motivo_puerta" style="width:100%;height:40px;padding:0 6px;margin-bottom:0" title="Si la persona no abrió o no quiso dar información, elige el motivo">
-          <option value="">Entrevista realizada</option>
-          ${(window._estatusVisita && window._estatusVisita.length ? window._estatusVisita : [{ clave: 'no_abrio', nombre: 'No abrió' }, { clave: 'sin_info', nombre: 'No proporcionó info' }, { clave: 'con_prisa', nombre: 'Tenía prisa' }, { clave: 'otro', nombre: 'Otro motivo' }])
-            .map(e => `<option value="${e.clave}" ${data.motivo_puerta === e.clave ? 'selected' : ''}>${e.nombre}</option>`).join('')}
-        </select></label>
-        <input type="hidden" id="f-no_abrio" value="${data.no_abrio ? '1' : ''}">
+        <label class="checkbox-line" style="font-size:11px;flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:8px;width:76px"><span>No abrió</span><input type="checkbox" id="f-no_abrio" ${data.no_abrio?'checked':''} style="margin:0;width:18px;height:18px;flex:none;margin-bottom:0"></label>
         <label style="flex:none;width:96px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
         <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:100%;height:40px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
         <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:40px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
-      </div>
-      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%"><option value=""></option></select></label>
       </div>
       <div class="form-row" style="align-items:stretch"><label style="flex:0.4;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%"></select></label>
@@ -7149,11 +6813,6 @@
       <input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box">
       <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
-      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%"><option value=""></option></select></label>
-      </div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
       <div class="form-row" style="align-items:center"><label style="flex:1;font-size:11px">Casilla (auto por cercanía, ajustable)</label><select id="f-casilla" style="flex:3;box-sizing:border-box"><option value="">Auto-detectar</option></select></div>
@@ -7258,108 +6917,6 @@
     const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amt));
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   }
-
-  // ── Catálogo: estatus de visita (cache + selects dinámicos) ──
-  async function asegurarEstatusVisita() {
-    if (Array.isArray(window._estatusVisita) && window._estatusVisita.length) return window._estatusVisita;
-    try {
-      const lista = await API.getCatalogo('estatus_visita');
-      if (Array.isArray(lista)) window._estatusVisita = lista;
-    } catch (e) { /* sin sesión todavía: se reintentará */ }
-    return window._estatusVisita || [];
-  }
-  async function poblarSelectsEstatus() {
-    const lista = await asegurarEstatusVisita();
-    if (!lista.length) return;
-    ['f-motivo_puerta', 'bf-motivo'].forEach(idSel => {
-      const sel = document.getElementById(idSel);
-      if (!sel) return;
-      const actual = sel.value;
-      const first = sel.options[0] ? sel.options[0].outerHTML : '<option value="">--</option>';
-      sel.innerHTML = first + lista.map(e => `<option value="${e.clave}">${e.nombre}</option>`).join('');
-      sel.value = actual;
-    });
-  }
-  poblarSelectsEstatus();
-
-  // ── Administración de catálogos (discapacidades / ocupaciones / estatus de visita) ──
-  const catalogoVistas = {
-    discapacidades: { body: 'cat-disc-body', input: 'cat-disc-nueva' },
-    ocupaciones: { body: 'cat-ocu-body', input: 'cat-ocu-nueva' },
-    estatus_visita: { body: 'cat-est-body', input: 'cat-est-nueva' }
-  };
-  async function renderCatalogoTabla(tipo) {
-    const cv = catalogoVistas[tipo];
-    const tbody = document.getElementById(cv.body);
-    if (!tbody) return;
-    const esEst = tipo === 'estatus_visita';
-    const cols = esEst ? 4 : 3;
-    tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#999">Cargando...</td></tr>`;
-    try {
-      const items = await API.getCatalogo(tipo, true);
-      tbody.innerHTML = items.length ? items.map(i => `
-        <tr style="${i.activo ? '' : 'opacity:.55'}">
-          <td>${i.nombre || ''}</td>
-          ${esEst ? `<td><button class="btn-small btn-secondary" style="font-size:10px" onclick="catalogoToggleNoAbrio('${tipo}',${i.id},${i.marca_no_abrio ? 'true' : 'false'})">${i.marca_no_abrio ? 'Sí' : 'No'}</button></td>` : ''}
-          <td><span class="badge" style="background:${i.activo ? '#e8f5e9' : '#ffebee'};color:${i.activo ? '#2e7d32' : '#c62828'};font-size:10px">${i.activo ? 'Activo' : 'Inactivo'}</span></td>
-          <td style="white-space:nowrap">
-            <button class="btn-small btn-primary" onclick="catalogoRenombrar('${tipo}',${i.id},'${(i.nombre || '').replace(/'/g, "\\'")}')">Editar</button>
-            <button class="btn-small btn-secondary" onclick="catalogoAlternar('${tipo}',${i.id},${i.activo ? 'true' : 'false'})">${i.activo ? 'Desactivar' : 'Activar'}</button>
-            <button class="btn-small btn-danger" onclick="catalogoEliminar('${tipo}',${i.id},'${(i.nombre || '').replace(/'/g, "\\'")}')">X</button>
-          </td>
-        </tr>`).join('') : `<tr><td colspan="${cols}" style="text-align:center;color:#999">Sin elementos</td></tr>`;
-    } catch (e) { console.warn(e); tbody.innerHTML = `<tr><td colspan="${cols}" style="color:red;text-align:center">Error al cargar</td></tr>`; }
-  }
-  window.catalogoAgregar = async function(tipo) {
-    const cv = catalogoVistas[tipo];
-    const input = document.getElementById(cv.input);
-    const nombre = (input?.value || '').trim();
-    if (!nombre) { alert('Escribe un nombre'); return; }
-    try {
-      const extra = {};
-      if (tipo === 'estatus_visita') extra.marca_no_abrio = !!document.getElementById('cat-est-noabrio')?.checked;
-      await API.crearCatalogoItem(tipo, { nombre, ...extra });
-      input.value = '';
-      await renderCatalogoTabla(tipo);
-      poblarSelectsEstatus();
-      alert('Elemento agregado al catálogo');
-    } catch (e) { alert('Error: ' + (e.message || e)); }
-  };
-  window.catalogoRenombrar = async function(tipo, id, nombre) {
-    const nuevo = prompt('Nuevo nombre:', nombre);
-    if (nuevo === null) return;
-    const v = nuevo.trim();
-    if (!v) { alert('El nombre no puede quedar vacío'); return; }
-    try {
-      await API.actualizarCatalogoItem(tipo, id, { nombre: v });
-      await renderCatalogoTabla(tipo);
-      poblarSelectsEstatus();
-      alert('Cambios guardados');
-    } catch (e) { alert('Error: ' + (e.message || e)); }
-  };
-  window.catalogoAlternar = async function(tipo, id, activoActual) {
-    try {
-      await API.actualizarCatalogoItem(tipo, id, { activo: !activoActual });
-      await renderCatalogoTabla(tipo);
-      poblarSelectsEstatus();
-    } catch (e) { alert('Error: ' + (e.message || e)); }
-  };
-  window.catalogoToggleNoAbrio = async function(tipo, id, actual) {
-    try {
-      await API.actualizarCatalogoItem(tipo, id, { marca_no_abrio: !actual });
-      await renderCatalogoTabla(tipo);
-    } catch (e) { alert('Error: ' + (e.message || e)); }
-  };
-  window.catalogoEliminar = async function(tipo, id, nombre) {
-    if (!(await confirmAsync(`¿Eliminar "${nombre}" del catálogo? Si ya está en uso solo se desactivará.`))) return;
-    try {
-      const r = await API.eliminarCatalogoItem(tipo, id);
-      if (r && r.desactivado) alert(r.message || 'En uso: se desactivó en lugar de eliminarse');
-      else alert('Elemento eliminado');
-      await renderCatalogoTabla(tipo);
-      poblarSelectsEstatus();
-    } catch (e) { alert('Error: ' + (e.message || e)); }
-  };
 
   async function loadConfiguracion() {
     let cfg = {};
@@ -7987,24 +7544,14 @@
 
   window.mostrarHistorialCiudadano = async function(id, nombre) {
     try {
-      const resp = await API.request('GET', `/api/ciudadanos/${id}/visitas`);
-      const visitas = Array.isArray(resp) ? resp : (resp.visitas || []);
-      const proxima = !Array.isArray(resp) ? resp.proxima_revisita_sugerida : null;
-      const estNombre = clave => (((window._estatusVisita || []).find(e => e.clave === clave) || {}).nombre) || (clave === 'no_abrio' ? 'No abrió puerta' : clave);
+      const visitas = await API.request('GET', `/api/ciudadanos/${id}/visitas`);
       const tipos = { alta: 'Registro', edicion: 'Edición', encuesta: 'Encuesta', ruta: 'Visita de ruta' };
-      let html = '';
-      if (proxima) {
-        html += `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px">
-          <strong>Próxima re-visita sugerida:</strong> ${new Date(proxima).toLocaleDateString()} (60 días después de la última visita de ruta)
-        </div>`;
-      }
-      html += visitas.length ? visitas.map(v => `
+      const html = visitas.length ? visitas.map(v => `
         <div style="padding:8px;border-bottom:1px solid #eee;font-size:13px">
           <div style="display:flex;justify-content:space-between;gap:8px">
             <strong>${tipos[v.tipo] || v.tipo}</strong>
             <span style="color:#999;font-size:11px">${new Date(v.created_at).toLocaleString()}</span>
           </div>
-          ${v.tipo === 'ruta' && v.resultado ? `<div><span class="badge" style="font-size:10px;background:${v.resultado === 'abrio' ? '#e8f5e9;color:#2e7d32' : '#fce4ec;color:#c62828'}">${v.resultado === 'no_abrio' ? 'No abrió' : (v.resultado === 'abrio' ? 'Abrió y dio información' : estNombre(v.resultado))}</span></div>` : ''}
           ${v.usuario_nombre ? `<div style="color:#666;font-size:12px">por ${v.usuario_nombre}</div>` : ''}
           ${v.lat != null && v.lng != null ? `<div style="color:#999;font-size:11px">📍 ${v.lat.toFixed(5)}, ${v.lng.toFixed(5)}</div>` : ''}
         </div>`).join('')
