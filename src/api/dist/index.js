@@ -1032,9 +1032,8 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req, res) => {
         }
         if (casillaAuto !== undefined)
             parts.push('casilla_id=' + p(casillaAuto));
-        const cols2 = ['prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'votantes_casa', 'no_abrio'];
-        const noAbrioPut = motivoPuerta !== undefined ? (!!no_abrio || !!motivoPuerta || null) : (no_abrio != null ? !!no_abrio : null);
-        const vals2 = [prioridad || 0, numero_hogar || null, intencion_voto_presidente || null, intencion_voto_diputado || null, notas || null, edad || null, votantes_casa ? parseInt(votantes_casa) : null, noAbrioPut];
+        const cols2 = ['prioridad', 'numero_hogar', 'intencion_voto_presidente', 'intencion_voto_diputado', 'notas', 'edad', 'votantes_casa'];
+        const vals2 = [prioridad || 0, numero_hogar || null, intencion_voto_presidente || null, intencion_voto_diputado || null, notas || null, edad || null, votantes_casa ? parseInt(votantes_casa) : null];
         parts.push(cols2.map((c, i) => c + '=COALESCE(' + p(vals2[i]) + ',' + c + ')').join(','));
         if (['H', 'M'].includes(req.body.sexo))
             parts.push('sexo=' + p(req.body.sexo));
@@ -1042,8 +1041,12 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req, res) => {
             parts.push('discapacidad_id=' + p(req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null));
         if (req.body.ocupacion_id !== undefined)
             parts.push('ocupacion_id=' + p(req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null));
-        if (motivoPuerta !== undefined)
+        if (motivoPuerta !== undefined) {
             parts.push('motivo_puerta=' + p(motivoPuerta));
+            parts.push('no_abrio=' + p(!!motivoPuerta || !!no_abrio));
+        }
+        else if (no_abrio != null)
+            parts.push('no_abrio=' + p(!!no_abrio));
         parts.push('updated_at=now()');
         parts.push('updated_by=' + p(req.user?.userId || null));
         params.push(req.params.id);

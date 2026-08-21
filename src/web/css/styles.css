@@ -511,6 +511,11 @@ tr:hover { background: var(--bg-light); }
   .res-input { width: 56px; font-size: 11px; }
   .res-name { font-size: 12px; }
   .form-row { flex-direction: column; gap: 8px; }
+  /* Formulario de captura: labels con ancho fijo inline -> ancho completo apilado */
+  #modal-form .form-row > label { width: 100% !important; flex: none !important; }
+  #modal-form .form-row > button { width: 100%; }
+  /* Botón Guardar sticky no debe tapar la última fila */
+  #modal-form { padding-bottom: 56px !important; }
 }
 
 @media (max-width: 480px) {
