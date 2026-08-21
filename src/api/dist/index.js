@@ -156,11 +156,12 @@ CREATE TABLE IF NOT EXISTS cat_estatus_visita (
   orden INTEGER NOT NULL DEFAULT 0,
   creado_en TIMESTAMP DEFAULT NOW()
 );
-INSERT INTO cat_estatus_visita (clave, nombre, marca_no_abrio, orden) VALUES
-  ('no_abrio','No abrió puerta',TRUE,0),
-  ('con_prisa','Tenía prisa',TRUE,1),
-  ('sin_info','No dio información',TRUE,2),
-  ('otro','Otro motivo',FALSE,3)
+ALTER TABLE cat_estatus_visita ADD COLUMN IF NOT EXISTS requiere_revisita BOOLEAN NOT NULL DEFAULT TRUE;
+INSERT INTO cat_estatus_visita (clave, nombre, marca_no_abrio, orden, requiere_revisita) VALUES
+  ('no_abrio','No abrió puerta',TRUE,0,TRUE),
+  ('con_prisa','Tenía prisa',TRUE,1,TRUE),
+  ('sin_info','No dio información',TRUE,2,TRUE),
+  ('otro','Otro motivo',FALSE,3,FALSE)
 ON CONFLICT (clave) DO NOTHING;
 `).catch((e) => console.warn('Migration (catalogos/perfil):', e?.message));
 async function logAuditoria(userId, usuarioNombre, accion, entidad, entidadId, detalle) {
@@ -2353,7 +2354,7 @@ app.post('/api/catalogos/:tipo', authenticateToken, async (req, res) => {
             const dupC = await pool.query('SELECT id FROM cat_estatus_visita WHERE clave=$1', [clave]);
             if (dupC.rows.length)
                 clave = clave.slice(0, 24) + '_' + Date.now().toString(36).slice(-4);
-            r = await pool.query('INSERT INTO cat_estatus_visita (clave, nombre, marca_no_abrio, orden) VALUES ($1,$2,$3,$4) RETURNING *', [clave, nombre, req.body.marca_no_abrio === false ? false : true, maxR.rows[0].n]);
+            r = await pool.query('INSERT INTO cat_estatus_visita (clave, nombre, marca_no_abrio, orden, requiere_revisita) VALUES ($1,$2,$3,$4,$5) RETURNING *', [clave, nombre, req.body.marca_no_abrio === false ? false : true, maxR.rows[0].n, req.body.requiere_revisita === false ? false : true]);
         }
         else {
             r = await pool.query(`INSERT INTO ${cfg.tabla} (nombre, orden) VALUES ($1,$2) RETURNING *`, [nombre, maxR.rows[0].n]);
@@ -2405,13 +2406,17 @@ app.put('/api/catalogos/:tipo/:id', authenticateToken, async (req, res) => {
             params.push(parseInt(req.body.orden) || 0);
             sets.push('orden=$' + params.length);
         }
-        if (!sets.length && req.body.marca_no_abrio === undefined) {
+        if (!sets.length && req.body.marca_no_abrio === undefined && req.body.requiere_revisita === undefined) {
             res.status(400).json({ error: 'Nada que actualizar' });
             return;
         }
         if (req.body.marca_no_abrio !== undefined && cfg.tabla === 'cat_estatus_visita') {
             params.push(!!req.body.marca_no_abrio);
             sets.push('marca_no_abrio=$' + params.length);
+        }
+        if (req.body.requiere_revisita !== undefined && cfg.tabla === 'cat_estatus_visita') {
+            params.push(!!req.body.requiere_revisita);
+            sets.push('requiere_revisita=$' + params.length);
         }
         params.push(req.params.id);
         const r = await pool.query(`UPDATE ${cfg.tabla} SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params);
@@ -4112,9 +4117,14 @@ app.get('/api/ciudadanos/:id/visitas', authenticateToken, async (req, res) => {
         const out = rows.rows.map((v) => {
             let resultado = null;
             if (v.tipo === 'ruta') {
-                const m = String(v.notas || '').match(/abrio:(si|no)/);
-                if (m)
-                    resultado = m[1] === 'no' ? 'no_abrio' : 'abrio';
+                const mr = String(v.notas || '').match(/res:([a-z0-9_]+)/);
+                if (mr)
+                    resultado = mr[1];
+                else {
+                    const m = String(v.notas || '').match(/abrio:(si|no)/);
+                    if (m)
+                        resultado = m[1] === 'no' ? 'no_abrio' : 'abrio';
+                }
             }
             return { ...v, resultado };
         });
@@ -4146,6 +4156,15 @@ app.get('/api/reportes/revisitas', authenticateToken, async (req, res) => {
             condsSec.push(`c.seccion_id IN (SELECT id FROM secciones_electorales WHERE municipio_id = $${paramsSec.length})`);
         }
         const whereC = condsSec.length ? 'AND ' + condsSec.join(' AND ') : '';
+        // Exclusión consciente del estatus: si el último estatus capturado tiene
+        // requiere_revisita = FALSE (p.ej. "Otro motivo"), el ciudadano se omite de re-visitas.
+        const excluyeSql = `
+       LEFT JOIN cat_estatus_visita cev ON cev.clave = substring(u.notas FROM 'res:([a-z0-9_]+)$')
+       WHERE NOT (
+         (u.ciudadano_id IS NOT NULL AND cev.requiere_revisita IS FALSE)
+         OR (u.ciudadano_id IS NULL AND c.no_abrio IS TRUE
+             AND COALESCE((SELECT x.requiere_revisita FROM cat_estatus_visita x WHERE x.clave = c.motivo_puerta), FALSE) IS FALSE)
+       )`;
         const resumenQ = await pool.query(`WITH ult AS (
          SELECT DISTINCT ON (v.ciudadano_id) v.ciudadano_id, v.created_at, v.notas
          FROM visitas v WHERE v.tipo='ruta' ORDER BY v.ciudadano_id, v.created_at DESC
@@ -4158,7 +4177,7 @@ app.get('/api/reportes/revisitas', authenticateToken, async (req, res) => {
          (SELECT COUNT(DISTINCT er.ciudadano_id)::int FROM encuesta_respuestas er) AS encuestados
        FROM ciudadanos c
        LEFT JOIN ult u ON u.ciudadano_id = c.id
-       WHERE c.no_abrio IS NOT TRUE ${whereC}`, [...paramsSec, parseInt(String(req.query.dias || '60')) || 60]);
+       ${excluyeSql} ${whereC}`, [...paramsSec, parseInt(String(req.query.dias || '60')) || 60]);
         const listaQ = await pool.query(`WITH ult AS (
          SELECT DISTINCT ON (v.ciudadano_id) v.ciudadano_id, v.created_at, v.notas
          FROM visitas v WHERE v.tipo='ruta' ORDER BY v.ciudadano_id, v.created_at DESC
@@ -4166,13 +4185,16 @@ app.get('/api/reportes/revisitas', authenticateToken, async (req, res) => {
        SELECT c.id, c.nombre, c.telefono, c.calle, c.numero, c.colonia,
               s.id AS seccion_num, s.id AS seccion_id,
               u.created_at AS ultima_visita,
-              CASE WHEN u.notas LIKE '%|abrio:no' THEN 'no_abrio' WHEN u.ciudadano_id IS NULL THEN 'nunca' ELSE 'abrio' END AS ultimo_resultado,
+              CASE WHEN u.ciudadano_id IS NULL THEN 'nunca'
+                   WHEN u.notas LIKE '%|res:%' THEN substring(u.notas FROM 'res:([a-z0-9_]+)$')
+                   WHEN u.notas LIKE '%|abrio:no' THEN 'no_abrio' ELSE 'abrio' END AS ultimo_resultado,
               EXTRACT(DAY FROM NOW() - u.created_at)::int AS dias_desde_visita
        FROM ciudadanos c
        LEFT JOIN ult u ON u.ciudadano_id = c.id
        LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
-       WHERE COALESCE(c.no_abrio,FALSE) = FALSE ${whereC}
+       ${excluyeSql}
          AND (u.ciudadano_id IS NULL OR u.created_at < NOW() - ($${paramsSec.length + 1} * INTERVAL '1 day'))
+         ${whereC}
        ORDER BY u.created_at ASC NULLS FIRST
        LIMIT 500`, [...paramsSec, parseInt(String(req.query.dias || '60')) || 60]);
         res.json({ resumen: resumenQ.rows[0] || {}, lista: listaQ.rows, dias: parseInt(String(req.query.dias || '60')) || 60 });

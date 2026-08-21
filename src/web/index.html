@@ -942,15 +942,16 @@
 
         <div id="view-estatus-visita" class="view">
           <h2>Catalogo: Estatus de visita</h2>
-          <p style="font-size:12px;color:#666;margin:0 0 12px">Opciones que el enlace elige al marcar una parada como visitada o sin abrir. "Marca no abrió" indica que ese estatus cuenta como visita sin entrevista (no abrió / no dio info).</p>
-          <div style="display:flex;gap:6px;margin-bottom:12px;max-width:420px">
-            <input type="text" id="cat-est-nueva" placeholder="Nuevo estatus de visita" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+          <p style="font-size:12px;color:#666;margin:0 0 12px">Opciones que el enlace elige al marcar una parada como visitada o sin abrir. "Cuenta como no abrió" indica visita sin entrevista. "Programar re-visita" decide si el ciudadano vuelve a entrar en rutas y re-visitas tras el umbral de días (p.ej. "Tenía prisa": sí; "No quiere": no).</p>
+          <div style="display:flex;gap:10px;margin-bottom:12px;max-width:640px;flex-wrap:wrap">
+            <input type="text" id="cat-est-nueva" placeholder="Nuevo estatus de visita" style="flex:1;min-width:180px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
             <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" id="cat-est-noabrio" checked>Cuenta como no abrió</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" id="cat-est-revisa" checked>Programar re-visita</label>
             <button class="btn-primary" onclick="catalogoAgregar('estatus_visita')">Agregar</button>
           </div>
           <div class="table-container">
             <table>
-              <thead><tr><th>Nombre</th><th>Marca no abrió</th><th>Estado</th><th></th></tr></thead>
+              <thead><tr><th>Nombre</th><th>Cuenta como no abrió</th><th>Re-visita</th><th>Estado</th><th></th></tr></thead>
               <tbody id="cat-est-body"></tbody>
             </table>
           </div>
@@ -1401,8 +1402,8 @@
   </div>
   <div id="notify-toast" class="notify-toast" style="display:none"></div>
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
-  <script src="js/api.js?v=250"></script>
+  <script src="js/api.js?v=251"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=259"></script>
+  <script src="js/app.js?v=260"></script>
 </body>
 </html>

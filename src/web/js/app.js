@@ -3927,6 +3927,13 @@
     if (resumenEl) resumenEl.innerHTML = '';
     try {
       await asegurarEstatusVisita();
+      const badgeResultado = (res) => {
+        if (!res || res === 'nunca') return '<span style="color:#bbb">—</span>';
+        const est = (window._estatusVisita || []).find(x => x.clave === res);
+        if (est) return `<span class="badge" style="background:${est.marca_no_abrio ? '#fce4ec;color:#c62828' : '#e8f5e9;color:#2e7d32'};font-size:10px">${est.nombre}</span>`;
+        if (res === 'no_abrio') return '<span class="badge badge-no">No abrió</span>';
+        return '<span class="badge badge-yes">Abrió</span>';
+      };
       const r = await API.getReporteRevisitas(dias);
       const s = r.resumen || {};
       const tarjeta = (t, v, c) => `<div style="flex:1;min-width:150px;background:#fff;border-radius:8px;padding:10px 14px;box-shadow:var(--shadow);border-left:4px solid ${c}"><div style="font-size:11px;color:#666">${t}</div><div style="font-size:20px;font-weight:700;color:${c}">${v != null ? v : '-'}</div></div>`;
@@ -3944,7 +3951,7 @@
         <td>${[c.calle, c.numero].filter(Boolean).join(' ') || '-'}${c.colonia ? ', ' + c.colonia : ''}</td>
         <td>Sec. ${c.seccion_num || '-'}</td>
         <td style="white-space:nowrap">${c.ultima_visita ? new Date(c.ultima_visita).toLocaleDateString() : 'Nunca'}</td>
-        <td>${c.ultimo_resultado === 'nunca' ? '<span style="color:#bbb">—</span>' : (c.ultimo_resultado === 'no_abrio' ? '<span class="badge badge-no">No abrió</span>' : '<span class="badge badge-yes">Abrió</span>')}</td>
+        <td>${badgeResultado(c.ultimo_resultado)}</td>
         <td style="white-space:nowrap"><strong>${c.dias_desde_visita != null ? c.dias_desde_visita : '—'}</strong></td>
       </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:#999">Sin ciudadanos pendientes de re-visita con ese umbral</td></tr>';
     } catch (e) {
@@ -7293,7 +7300,7 @@
     const tbody = document.getElementById(cv.body);
     if (!tbody) return;
     const esEst = tipo === 'estatus_visita';
-    const cols = esEst ? 4 : 3;
+    const cols = esEst ? 5 : 3;
     tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#999">Cargando...</td></tr>`;
     try {
       const items = await API.getCatalogo(tipo, true);
@@ -7301,6 +7308,7 @@
         <tr style="${i.activo ? '' : 'opacity:.55'}">
           <td>${i.nombre || ''}</td>
           ${esEst ? `<td><button class="btn-small btn-secondary" style="font-size:10px" onclick="catalogoToggleNoAbrio('${tipo}',${i.id},${i.marca_no_abrio ? 'true' : 'false'})">${i.marca_no_abrio ? 'Sí' : 'No'}</button></td>` : ''}
+          ${esEst ? `<td><button class="btn-small btn-secondary" style="font-size:10px" title="Si está en Sí, el ciudadano vuelve a entrar en rutas y re-visitas tras el umbral de días" onclick="catalogoToggleRevisita('${tipo}',${i.id},${i.requiere_revisita ? 'true' : 'false'})">${i.requiere_revisita === false ? 'No' : 'Sí'}</button></td>` : ''}
           <td><span class="badge" style="background:${i.activo ? '#e8f5e9' : '#ffebee'};color:${i.activo ? '#2e7d32' : '#c62828'};font-size:10px">${i.activo ? 'Activo' : 'Inactivo'}</span></td>
           <td style="white-space:nowrap">
             <button class="btn-small btn-primary" onclick="catalogoRenombrar('${tipo}',${i.id},'${(i.nombre || '').replace(/'/g, "\\'")}')">Editar</button>
@@ -7317,7 +7325,10 @@
     if (!nombre) { alert('Escribe un nombre'); return; }
     try {
       const extra = {};
-      if (tipo === 'estatus_visita') extra.marca_no_abrio = !!document.getElementById('cat-est-noabrio')?.checked;
+      if (tipo === 'estatus_visita') {
+        extra.marca_no_abrio = !!document.getElementById('cat-est-noabrio')?.checked;
+        extra.requiere_revisita = !!document.getElementById('cat-est-revisa')?.checked;
+      }
       await API.crearCatalogoItem(tipo, { nombre, ...extra });
       input.value = '';
       await renderCatalogoTabla(tipo);
@@ -7347,6 +7358,12 @@
   window.catalogoToggleNoAbrio = async function(tipo, id, actual) {
     try {
       await API.actualizarCatalogoItem(tipo, id, { marca_no_abrio: !actual });
+      await renderCatalogoTabla(tipo);
+    } catch (e) { alert('Error: ' + (e.message || e)); }
+  };
+  window.catalogoToggleRevisita = async function(tipo, id, actual) {
+    try {
+      await API.actualizarCatalogoItem(tipo, id, { requiere_revisita: !actual });
       await renderCatalogoTabla(tipo);
     } catch (e) { alert('Error: ' + (e.message || e)); }
   };
