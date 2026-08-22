@@ -164,6 +164,22 @@ INSERT INTO cat_estatus_visita (clave, nombre, marca_no_abrio, orden, requiere_r
   ('otro','Otro motivo',FALSE,3,FALSE)
 ON CONFLICT (clave) DO NOTHING;
 `).catch((e) => console.warn('Migration (catalogos/perfil):', e?.message));
+// Confirmaciones de simpatizantes en rutas + destino de rutas por filtro
+pool.query(`
+ALTER TABLE ciudadanos_comprometidos ADD COLUMN IF NOT EXISTS estado_confirmacion VARCHAR(20);
+ALTER TABLE ciudadanos_comprometidos ADD COLUMN IF NOT EXISTS ultima_confirmacion TIMESTAMPTZ;
+ALTER TABLE rutas ADD COLUMN IF NOT EXISTS destino VARCHAR(15);
+CREATE TABLE IF NOT EXISTS encuesta_respuestas_comp (
+  id UUID PRIMARY KEY,
+  ciudadano_id UUID REFERENCES ciudadanos_comprometidos(id) ON DELETE CASCADE,
+  campana_id UUID REFERENCES campanas(id) ON DELETE CASCADE,
+  pregunta_id UUID REFERENCES encuesta_preguntas(id) ON DELETE CASCADE,
+  valor TEXT,
+  usuario_id UUID REFERENCES usuarios(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (ciudadano_id, pregunta_id)
+);
+`).catch((e) => console.warn('Migration (confirmaciones/destino):', e?.message));
 async function logAuditoria(userId, usuarioNombre, accion, entidad, entidadId, detalle) {
     try {
         await pool.query('INSERT INTO auditoria (id, usuario_id, usuario_nombre, accion, entidad, entidad_id, detalle) VALUES ($1,$2,$3,$4,$5,$6,$7)', [crypto_1.default.randomUUID(), userId || null, usuarioNombre || null, accion, entidad, entidadId || null, detalle ? JSON.stringify(detalle) : null]);
@@ -2523,13 +2539,18 @@ app.post('/api/rutas', authenticateToken, async (req, res) => {
             res.status(403).json({ error: 'No autorizado' });
             return;
         }
-        const { enlace_ids, seccion_id, tipo, encuesta_campana_id, filtros } = req.body;
+        const { enlace_ids, seccion_id, tipo, encuesta_campana_id, filtros, destino } = req.body;
         if (!enlace_ids?.length || !seccion_id) {
             res.status(400).json({ error: 'enlace_ids[] y seccion_id requeridos' });
             return;
         }
         const tipoRuta = ['encuesta', 'seguros', 'filtro'].includes(tipo) ? tipo : 'seguros';
-        if (tipoRuta === 'encuesta' && encuesta_campana_id) {
+        // Destino de la ruta: general (ciudadanos) o simpatizantes (voto seguro).
+        // Por defecto coincide con el tipo; en rutas por filtro lo decide el creador.
+        const destinoRuta = destino === 'simpatizantes' || destino === 'general'
+            ? destino
+            : (tipoRuta === 'seguros' ? 'simpatizantes' : 'general');
+        if ((tipoRuta === 'encuesta' || tipoRuta === 'seguros') && encuesta_campana_id) {
             const ec = (await pool.query('SELECT tipo FROM campanas WHERE id=$1', [encuesta_campana_id])).rows[0];
             if (!ec || ec.tipo !== 'encuesta') {
                 res.status(400).json({ error: 'La encuesta asignada no existe o no es tipo encuesta' });
@@ -2538,15 +2559,32 @@ app.post('/api/rutas', authenticateToken, async (req, res) => {
         }
         let tablaParadas = tipoRuta === 'seguros' ? 'ciudadanos_comprometidos' : 'ciudadanos';
         if (tipoRuta === 'filtro')
-            tablaParadas = 'ciudadanos';
+            tablaParadas = destinoRuta === 'simpatizantes' ? 'ciudadanos_comprometidos' : 'ciudadanos';
         let whereSql = 'seccion_id=$1';
         const countParams = [seccion_id];
+        let filtrosEfectivos = undefined;
         if (tipoRuta === 'filtro') {
-            const w = routingService.construirWhereFiltros(filtros || {}, countParams);
-            whereSql += w.sql;
-            if (!w.algunaCondicion) {
-                res.status(400).json({ error: 'Define al menos un filtro para crear una ruta por filtro' });
-                return;
+            if (destinoRuta === 'simpatizantes') {
+                // Comprometidos: solo aplican los filtros compatibles con esa tabla
+                const fSimp = { destino: 'simpatizantes' };
+                const svd = parseInt(filtros?.sin_visita_desde_dias);
+                if (!Number.isNaN(svd) && svd > 0)
+                    fSimp.sin_visita_desde_dias = svd;
+                filtrosEfectivos = fSimp;
+                whereSql += ' AND c.ubicacion IS NOT NULL';
+                if (fSimp.sin_visita_desde_dias) {
+                    countParams.push(fSimp.sin_visita_desde_dias);
+                    whereSql += ` AND NOT EXISTS (SELECT 1 FROM visitas v WHERE v.ciudadano_id = c.id AND v.created_at > NOW() - ($${countParams.length} || ' days')::interval)`;
+                }
+            }
+            else {
+                const w = routingService.construirWhereFiltros(filtros || {}, countParams);
+                whereSql += w.sql;
+                filtrosEfectivos = filtros || {};
+                if (!w.algunaCondicion) {
+                    res.status(400).json({ error: 'Define al menos un filtro para crear una ruta por filtro' });
+                    return;
+                }
             }
         }
         const countRes = await pool.query(`SELECT COUNT(*) FROM ${tablaParadas} c WHERE ${whereSql}`, countParams);
@@ -2554,14 +2592,15 @@ app.post('/api/rutas', authenticateToken, async (req, res) => {
             res.status(400).json({ error: `No hay ciudadanos que cumplan los filtros en esta sección` });
             return;
         }
-        const misiones = await routingService.repartirRutas(seccion_id.toString(), tipoRuta, enlace_ids.length, tipoRuta === 'filtro' ? filtros : undefined);
+        const misiones = await routingService.repartirRutas(seccion_id.toString(), tipoRuta, enlace_ids.length, filtrosEfectivos);
         const ids = [];
         for (let i = 0; i < enlace_ids.length; i++) {
             const mision = misiones[i] || { paradas: [], distancia_total_km: 0, tiempo_total_minutos: 0 };
-            const r = await pool.query(`INSERT INTO rutas (admin_id, enlace_id, seccion_id, tipo, solo_simpatizantes, paradas, distancia_total_km, tiempo_total_minutos, encuesta_campana_id, polyline)
-         VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7,$8,$9) RETURNING id`, [user.userId, enlace_ids[i], seccion_id, tipoRuta, JSON.stringify(mision.paradas || []),
-                mision.distancia_total_km || 0, mision.tiempo_total_minutos || 0, (tipoRuta === 'encuesta' ? encuesta_campana_id : null) || null,
-                mision.polyline ? JSON.stringify(mision.polyline) : null]);
+            const r = await pool.query(`INSERT INTO rutas (admin_id, enlace_id, seccion_id, tipo, solo_simpatizantes, paradas, distancia_total_km, tiempo_total_minutos, encuesta_campana_id, polyline, destino)
+         VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7,$8,$9,$10) RETURNING id`, [user.userId, enlace_ids[i], seccion_id, tipoRuta, JSON.stringify(mision.paradas || []),
+                mision.distancia_total_km || 0, mision.tiempo_total_minutos || 0,
+                ((tipoRuta === 'encuesta' || tipoRuta === 'seguros') ? encuesta_campana_id : null) || null,
+                mision.polyline ? JSON.stringify(mision.polyline) : null, destinoRuta]);
             ids.push(r.rows[0].id);
         }
         const sockets = await io.fetchSockets();
@@ -2586,12 +2625,23 @@ app.post('/api/rutas/preview-filtro', authenticateToken, async (req, res) => {
             res.status(403).json({ error: 'No autorizado' });
             return;
         }
-        const { seccion_id, filtros } = req.body;
+        const { seccion_id, filtros, destino } = req.body;
         if (!seccion_id) {
             res.status(400).json({ error: 'seccion_id requerido' });
             return;
         }
         const params = [seccion_id];
+        if (destino === 'simpatizantes') {
+            let sql = `SELECT COUNT(*)::int AS total FROM ciudadanos_comprometidos c WHERE c.seccion_id=$1 AND c.ubicacion IS NOT NULL`;
+            const svd = parseInt(filtros?.sin_visita_desde_dias);
+            if (!Number.isNaN(svd) && svd > 0) {
+                params.push(svd);
+                sql += ` AND NOT EXISTS (SELECT 1 FROM visitas v WHERE v.ciudadano_id = c.id AND v.created_at > NOW() - ($${params.length} || ' days')::interval)`;
+            }
+            const r = await pool.query(sql, params);
+            res.json({ total: r.rows[0]?.total || 0 });
+            return;
+        }
         const w = routingService.construirWhereFiltros(filtros || {}, params);
         const r = await pool.query(`SELECT COUNT(*)::int AS total FROM ciudadanos c WHERE c.seccion_id=$1${w.sql}`, params);
         res.json({ total: r.rows[0]?.total || 0 });
@@ -2675,11 +2725,16 @@ app.patch('/api/rutas/:id/parada/:idx', authenticateToken, async (req, res) => {
                 estatusRow = null;
             }
         }
-        const q = await pool.query('SELECT paradas FROM rutas WHERE id=$1', [req.params.id]);
+        // Confirmación de apoyo (rutas de seguros): claves especiales fuera del catálogo
+        const resClaveRaw = req.body.resultado ? String(req.body.resultado).slice(0, 30) : null;
+        const esConfirmacion = resClaveRaw === 'confirmado' || resClaveRaw === 'retirado';
+        const q = await pool.query('SELECT paradas, tipo FROM rutas WHERE id=$1', [req.params.id]);
         if (!q.rows.length) {
             res.status(404).json({ error: 'No encontrada' });
             return;
         }
+        const rutaTipo = q.rows[0].tipo || 'general';
+        const esRutaSeguros = rutaTipo === 'seguros';
         const paradas = q.rows[0].paradas;
         const idx = parseInt(req.params.idx);
         if (!paradas[idx]) {
@@ -2705,15 +2760,32 @@ app.patch('/api/rutas/:id/parada/:idx', authenticateToken, async (req, res) => {
         if (estatusRow && !estatusRow.marca_no_abrio) {
             paradas[idx].no_abrio = false;
         }
-        if (estatusRow)
+        if (esConfirmacion) {
+            paradas[idx].no_abrio = false;
+            paradas[idx].visitado = true;
+            paradas[idx].resultado = resClaveRaw;
+        }
+        else if (estatusRow)
             paradas[idx].resultado = estatusRow.clave;
         else if (req.body.resultado === null)
             delete paradas[idx].resultado;
         await pool.query('UPDATE rutas SET paradas=$1 WHERE id=$2', [JSON.stringify(paradas), req.params.id]);
+        const cid = paradas[idx] ? (paradas[idx].ciudadano_id || paradas[idx].id) : null;
+        // Rutas de seguros: la parada apunta a ciudadanos_comprometidos.
+        // Guardar confirmación de apoyo y NO tocar ciudadanos/visitas (ids de otra tabla).
+        if (cid && esConfirmacion) {
+            try {
+                await pool.query('UPDATE ciudadanos_comprometidos SET estado_confirmacion=$2, ultima_confirmacion=NOW() WHERE id=$1', [cid, resClaveRaw]);
+            }
+            catch (e) {
+                console.warn('confirmacion:', e?.message);
+            }
+            res.json({ message: 'Parada actualizada' });
+            return;
+        }
         // Historial por ciudadano: cada marca de visita en ruta genera una fila en `visitas`
         // tipo 'ruta' con el resultado (abrió / no abrió / estatus), GPS del enlace y referencia a la ruta.
-        const cid = paradas[idx] ? (paradas[idx].ciudadano_id || paradas[idx].id) : null;
-        if (cid) {
+        if (cid && !esRutaSeguros) {
             try {
                 if ((visitado === true || no_abrio === true || estatusRow)) {
                     await pool.query("DELETE FROM visitas WHERE ciudadano_id=$1 AND tipo='ruta' AND notas LIKE $2", [cid, 'ruta:' + req.params.id + '%']);
@@ -4203,6 +4275,59 @@ app.get('/api/reportes/revisitas', authenticateToken, async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+// Reporte de confirmación de simpatizantes (rutas de seguros)
+app.get('/api/reportes/confirmaciones', authenticateToken, async (req, res) => {
+    try {
+        const user = req.user;
+        const condsSec = [];
+        const paramsSec = [];
+        if (user.rol === 'enlace') {
+            const secs = await getUserSecciones(user.userId);
+            if (!secs.length) {
+                res.json({ resumen: {}, lista: [] });
+                return;
+            }
+            paramsSec.push(secs);
+            condsSec.push(`c.seccion_id = ANY($${paramsSec.length})`);
+        }
+        if (req.query.municipio_id) {
+            paramsSec.push(req.query.municipio_id);
+            condsSec.push(`c.seccion_id IN (SELECT id FROM secciones_electorales WHERE municipio_id = $${paramsSec.length})`);
+        }
+        if (req.query.seccion_id) {
+            paramsSec.push(req.query.seccion_id);
+            condsSec.push(`c.seccion_id = $${paramsSec.length}`);
+        }
+        const whereC = condsSec.length ? 'WHERE ' + condsSec.join(' AND ') : '';
+        const resumenQ = await pool.query(`SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE c.estado_confirmacion = 'confirmado')::int AS confirmados,
+         COUNT(*) FILTER (WHERE c.estado_confirmacion = 'retirado')::int AS retirados,
+         COUNT(*) FILTER (WHERE c.estado_confirmacion IS NULL OR c.estado_confirmacion NOT IN ('confirmado','retirado'))::int AS sin_respuesta,
+         COUNT(*) FILTER (WHERE c.ultima_confirmacion >= NOW() - INTERVAL '7 days')::int AS confirmados_semana
+       FROM ciudadanos_comprometidos c ${whereC}`, paramsSec);
+        const listaQ = await pool.query(`WITH uv AS (
+         SELECT DISTINCT ON (v.ciudadano_id) v.ciudadano_id, v.created_at
+         FROM visitas v WHERE v.tipo='ruta' ORDER BY v.ciudadano_id, v.created_at DESC
+       )
+       SELECT c.id, c.nombre, COALESCE(c.apellido_paterno,'') || ' ' || COALESCE(c.apellido_materno,'') AS apellidos,
+              c.telefono, c.calle, c.numero, c.colonia,
+              s.id AS seccion_num, s.id AS seccion_id,
+              c.estado_confirmacion, c.ultima_confirmacion,
+              uv.created_at AS ultima_visita_ruta
+       FROM ciudadanos_comprometidos c
+       LEFT JOIN secciones_electorales s ON s.id = c.seccion_id
+       LEFT JOIN uv ON uv.ciudadano_id = c.id
+       ${whereC}
+       ORDER BY CASE c.estado_confirmacion WHEN 'retirado' THEN 0 WHEN 'confirmado' THEN 1 ELSE 2 END,
+                uv.created_at DESC NULLS FIRST, c.nombre
+       LIMIT 500`, paramsSec);
+        res.json({ resumen: resumenQ.rows[0] || {}, lista: listaQ.rows });
+    }
+    catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 // Avance de barrido: total y visitados recientes por sección (filtrado por rol)
 app.get('/api/geo/avance-barrido', authenticateToken, async (req, res) => {
     try {
@@ -4377,6 +4502,50 @@ app.get('/api/encuestas/respuestas', authenticateToken, async (req, res) => {
         const rows = await pool.query(`SELECT r.id, r.ciudadano_id, r.campana_id, r.pregunta_id, r.valor, r.created_at, p.pregunta
        FROM encuesta_respuestas r JOIN encuesta_preguntas p ON p.id = r.pregunta_id
        ${where} ORDER BY r.created_at DESC`, params);
+        res.json(rows.rows);
+    }
+    catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+// Encuesta aplicada a un simpatizante (ciudadanos_comprometidos) en ruta de seguros
+app.post('/api/encuestas/respuestas-comprometido', authenticateToken, async (req, res) => {
+    try {
+        const { ciudadano_id, campana_id, respuestas } = req.body;
+        if (!ciudadano_id || !campana_id || !Array.isArray(respuestas)) {
+            res.status(400).json({ error: 'ciudadano_id, campana_id y respuestas[] requeridos' });
+            return;
+        }
+        const user = req.user;
+        for (const r of respuestas) {
+            if (!r.pregunta_id)
+                continue;
+            await pool.query(`INSERT INTO encuesta_respuestas_comp (id, ciudadano_id, campana_id, pregunta_id, valor, usuario_id)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (ciudadano_id, pregunta_id) DO UPDATE SET valor = EXCLUDED.valor, usuario_id = EXCLUDED.usuario_id`, [crypto_1.default.randomUUID(), ciudadano_id, campana_id, r.pregunta_id, r.valor || '', user?.userId || null]);
+        }
+        res.json({ message: 'Encuesta registrada' });
+    }
+    catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+app.get('/api/encuestas/respuestas-comprometido', authenticateToken, async (req, res) => {
+    try {
+        const { ciudadano_id, campana_id } = req.query;
+        if (!ciudadano_id) {
+            res.status(400).json({ error: 'ciudadano_id requerido' });
+            return;
+        }
+        const params = [ciudadano_id];
+        let where = 'r.ciudadano_id = $1';
+        if (campana_id) {
+            params.push(campana_id);
+            where += ` AND r.campana_id = $${params.length}`;
+        }
+        const rows = await pool.query(`SELECT r.id, r.ciudadano_id, r.campana_id, r.pregunta_id, r.valor, r.created_at, p.pregunta
+       FROM encuesta_respuestas_comp r JOIN encuesta_preguntas p ON p.id = r.pregunta_id
+       WHERE ${where} ORDER BY r.created_at DESC`, params);
         res.json(rows.rows);
     }
     catch (e) {
@@ -4797,7 +4966,8 @@ app.get('/api/reportes/rutas', authenticateToken, async (req, res) => {
             return;
         }
         const rows = (await pool.query(`SELECT r.id, r.enlace_id, u.nombre AS enlace_nombre, r.seccion_id, s.id AS seccion_num,
-              m.nombre AS municipio, r.tipo, r.estado, r.creado_en, r.completado_en,
+              m.nombre AS municipio, r.tipo, COALESCE(r.destino, CASE WHEN r.tipo='seguros' THEN 'simpatizantes' ELSE 'general' END) AS destino,
+              r.estado, r.creado_en, r.completado_en,
               r.distancia_total_km, r.tiempo_total_minutos, r.encuesta_campana_id,
               c.nombre AS encuesta_nombre, r.paradas
        FROM rutas r

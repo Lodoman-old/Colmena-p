@@ -607,9 +607,9 @@
                   <select id="bf-ocupacion" style="flex:1;min-width:130px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Ocupación</option></select>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                  <select id="bf-motivo" style="flex:1;min-width:110px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:12px" title="Si la persona no abrió o no quiso dar información, elige el motivo">
+                  <select id="bf-motivo" style="flex:1;min-width:110px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:12px" title="Si la persona no abrió o no quiso dar información, elige el estatus">
                     <option value="">Entrevista realizada</option>
-                    <option value="no_abrio">No abrió</option>
+                    <option value="no_abrio" selected>No abrió</option>
                     <option value="sin_info">No proporcionó info</option>
                     <option value="con_prisa">Tenía prisa</option>
                     <option value="otro">Otro motivo</option>
@@ -908,6 +908,19 @@
               <tbody id="rv-body"></tbody>
             </table>
           </div>
+
+          <h3 style="margin:22px 0 8px;font-size:15px">Confirmación de simpatizantes</h3>
+          <p style="font-size:12px;color:#666;margin:0 0 10px">Estado de confirmación de apoyo de los simpatizantes (voto seguro) visitados en rutas. El enlace registra: Confirmó apoyo, Retiró apoyo o los estatus de puerta.</p>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+            <button class="btn-small btn-primary" onclick="cargarConfirmaciones()">Actualizar</button>
+          </div>
+          <div id="conf-simp-resumen" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Nombre</th><th>Teléfono</th><th>Sección</th><th>Dirección</th><th>Confirmación</th><th>Última confirmación</th><th>Última visita ruta</th></tr></thead>
+              <tbody id="conf-simp-body"></tbody>
+            </table>
+          </div>
         </div>
 
         <div id="view-discapacidades" class="view">
@@ -1145,6 +1158,12 @@
                 </div>
                 <p id="ruta-modal-tipo-ayuda" style="font-size:11px;color:#666;margin:0 0 8px"></p>
                 <div id="ruta-modal-filtro-opts" class="hidden" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px">
+                  <div style="display:flex;gap:6px;margin-bottom:6px">
+                    <select id="rf-destino" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px" title="A quién se visita en la ruta">
+                      <option value="general">Dirigida a: Ciudadanos en general</option>
+                      <option value="simpatizantes">Dirigida a: Simpatizantes (voto seguro)</option>
+                    </select>
+                  </div>
                   <div style="display:flex;gap:6px;margin-bottom:6px">
                     <select id="rf-sexo" style="flex:1;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px"><option value="">Cualquier sexo</option><option value="H">Hombres</option><option value="M">Mujeres</option></select>
                     <input type="number" id="rf-edad-max" placeholder="Edad máx." min="16" max="120" style="width:90px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
@@ -1402,8 +1421,8 @@
   </div>
   <div id="notify-toast" class="notify-toast" style="display:none"></div>
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
-  <script src="js/api.js?v=251"></script>
+  <script src="js/api.js?v=252"></script>
   <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=260"></script>
+  <script src="js/app.js?v=261"></script>
 </body>
 </html>

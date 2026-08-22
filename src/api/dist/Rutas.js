@@ -92,11 +92,34 @@ class RoutingService {
             query += ` ORDER BY c.nombre`;
         }
         else {
-            if (tipo === 'filtro' && filtros) {
-                const w = this.construirWhereFiltros(filtros, params);
-                filtrosSql = w.sql;
+            // Ruta por filtro dirigida a los simpatizantes (voto seguro)
+            if (tipo === 'filtro' && filtros?.destino === 'simpatizantes') {
+                query = `
+          SELECT c.id, c.nombre, c.telefono,
+                 ST_X(c.ubicacion::geometry) as lng,
+                 ST_Y(c.ubicacion::geometry) as lat,
+                 true as es_simpatizante,
+                 0 as prioridad,
+                 c.calle, c.numero, c.colonia,
+                 (v.id IS NOT NULL) AS ya_voto
+          FROM ciudadanos_comprometidos c
+          LEFT JOIN votos v ON v.comprometido_id = c.id
+          WHERE c.seccion_id = $1
+            AND c.ubicacion IS NOT NULL
+        `;
+                const svd = parseInt(filtros?.sin_visita_desde_dias);
+                if (!Number.isNaN(svd) && svd > 0) {
+                    params.push(svd);
+                    query += ` AND NOT EXISTS (SELECT 1 FROM visitas v2 WHERE v2.ciudadano_id = c.id AND v2.created_at > NOW() - ($${params.length} || ' days')::interval)`;
+                }
+                query += ` ORDER BY c.nombre`;
             }
-            query = `
+            else {
+                if (tipo === 'filtro' && filtros) {
+                    const w = this.construirWhereFiltros(filtros, params);
+                    filtrosSql = w.sql;
+                }
+                query = `
         SELECT c.id, c.nombre, c.telefono,
                ST_X(c.ubicacion::geometry) as lng,
                ST_Y(c.ubicacion::geometry) as lat,
@@ -109,7 +132,8 @@ class RoutingService {
         WHERE c.seccion_id = $1
           AND c.ubicacion IS NOT NULL${filtrosSql}
       `;
-            query += ` ORDER BY c.prioridad DESC, c.nombre`;
+                query += ` ORDER BY c.prioridad DESC, c.nombre`;
+            }
         }
         const result = await this.pool.query(query, params);
         // Acompañantes en casa: para rutas por filtro se adjuntan con abreviatura

@@ -251,8 +251,9 @@ const API = (() => {
     crearCatalogoItem(tipo, data) { return request('POST', `/api/catalogos/${tipo}`, data); },
     actualizarCatalogoItem(tipo, id, data) { return request('PUT', `/api/catalogos/${tipo}/${id}`, data); },
     eliminarCatalogoItem(tipo, id) { return request('DELETE', `/api/catalogos/${tipo}/${id}`); },
-    previewRutaFiltro(seccionId, filtros) { return request('POST', '/api/rutas/preview-filtro', { seccion_id: seccionId, filtros }); },
+    previewRutaFiltro(seccionId, filtros) { return request('POST', '/api/rutas/preview-filtro', { seccion_id: seccionId, filtros, destino: filtros && filtros.destino }); },
     getReporteRevisitas(dias) { return request('GET', `/api/reportes/revisitas${dias ? '?dias=' + dias : ''}`); },
+    getReporteConfirmaciones(seccionId) { return request('GET', `/api/reportes/confirmaciones${seccionId ? '?seccion_id=' + seccionId : ''}`); },
 
     getSeccionalCapturistas() { return request('GET', '/api/seccional/capturistas'); },
     putSeccionalCapturistas(capturistaIds) { return request('PUT', '/api/seccional/capturistas', { capturista_ids: capturistaIds }); },

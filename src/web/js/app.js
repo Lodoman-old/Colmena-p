@@ -1995,7 +1995,7 @@
         setTimeout(() => { if (dashboardMap) dashboardMap.invalidateSize(); }, 800);
         setTimeout(() => { if (dashboardMap) dashboardMap.invalidateSize(); }, 2000);
 
-        if (!dashboardClusterGroup) { dashboardClusterGroup = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50 }); dashboardMap.addLayer(dashboardClusterGroup); }
+        if (!dashboardClusterGroup) { dashboardClusterGroup = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 35, disableClusteringAtZoom: 16, showCoverageOnHover: false }); dashboardMap.addLayer(dashboardClusterGroup); }
         dashboardClusterGroup.clearLayers();
         L.circleMarker(center, { radius: 10, fillColor: C_PRIMARY, color: '#fff', weight: 3, fillOpacity: 0.8 }).addTo(dashboardMap).bindPopup('<b>' + label + '</b>');
         tabFiltered.forEach(c => {
@@ -3959,6 +3959,43 @@
     }
   };
 
+  window.cargarConfirmaciones = async function() {
+    const body = document.getElementById('conf-simp-body');
+    if (!body) return;
+    const resumenEl = document.getElementById('conf-simp-resumen');
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999">Cargando...</td></tr>';
+    if (resumenEl) resumenEl.innerHTML = '';
+    try {
+      const r = await API.getReporteConfirmaciones();
+      const s = r.resumen || {};
+      const tarjeta = (t, v, c) => `<div style="flex:1;min-width:140px;background:#fff;border-radius:8px;padding:10px 14px;box-shadow:var(--shadow);border-left:4px solid ${c}"><div style="font-size:11px;color:#666">${t}</div><div style="font-size:20px;font-weight:700;color:${c}">${v != null ? v : '-'}</div></div>`;
+      if (resumenEl) {
+        resumenEl.innerHTML =
+          tarjeta('Simpatizantes', s.total, '#333') +
+          tarjeta('Confirmaron apoyo', s.confirmados, 'var(--pri-green)') +
+          tarjeta('Retiraron apoyo', s.retirados, 'var(--pri-red)') +
+          tarjeta('Sin respuesta', s.sin_respuesta, '#d9a400') +
+          tarjeta('Confirmados últimos 7 días', s.confirmados_semana, 'var(--pri-green)');
+      }
+      const badgeConf = (est) => {
+        if (est === 'confirmado') return '<span class="badge badge-yes">Confirmó apoyo</span>';
+        if (est === 'retirado') return '<span class="badge badge-no">Retiró apoyo</span>';
+        return '<span class="badge" style="background:#eee;color:#666;font-size:10px">Sin confirmar</span>';
+      };
+      body.innerHTML = (r.lista && r.lista.length) ? r.lista.map(c => `<tr>
+        <td><strong>${[c.nombre, c.apellidos].filter(Boolean).join(' ').trim() || '(sin nombre)'}</strong></td>
+        <td>${c.telefono || '-'}</td>
+        <td>Sec. ${c.seccion_num || '-'}</td>
+        <td>${[c.calle, c.numero].filter(Boolean).join(' ') || '-'}${c.colonia ? ', ' + c.colonia : ''}</td>
+        <td>${badgeConf(c.estado_confirmacion)}</td>
+        <td style="white-space:nowrap">${c.ultima_confirmacion ? new Date(c.ultima_confirmacion).toLocaleString() : '—'}</td>
+        <td style="white-space:nowrap">${c.ultima_visita_ruta ? new Date(c.ultima_visita_ruta).toLocaleDateString() : 'Nunca'}</td>
+      </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:#999">Sin simpatizantes registrados</td></tr>';
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--pri-red)">Error: ' + (e.message || e) + '</td></tr>';
+    }
+  };
+
   window.cargarCapturadosGeneral = async function() {
     const campanaId = document.getElementById('cap-encuesta-campana')?.value || '';
     const status = document.getElementById('cap-encuesta-status');
@@ -4559,7 +4596,7 @@
     document.getElementById('bf-cp').value = '';
     document.getElementById('bf-edad').value = '';
     const bfNoAbrio = document.getElementById('bf-no_abrio'); if (bfNoAbrio) bfNoAbrio.checked = false;
-    const bfMotivo = document.getElementById('bf-motivo'); if (bfMotivo) bfMotivo.value = '';
+    const bfMotivo = document.getElementById('bf-motivo'); if (bfMotivo) bfMotivo.value = 'no_abrio';
     const bfSexo = document.getElementById('bf-sexo'); if (bfSexo) bfSexo.value = '';
     const bfDisc = document.getElementById('bf-discapacidad'); if (bfDisc) bfDisc.value = '';
     const bfOcu = document.getElementById('bf-ocupacion'); if (bfOcu) bfOcu.value = '';
@@ -4863,7 +4900,7 @@
 
   function actualizarMapaBarrido(ciudadanos) {
     if (!barridoMap) return;
-    if (!barridoClusterGroup) { barridoClusterGroup = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50 }); barridoMap.addLayer(barridoClusterGroup); }
+    if (!barridoClusterGroup) { barridoClusterGroup = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 35, disableClusteringAtZoom: 16, showCoverageOnHover: false }); barridoMap.addLayer(barridoClusterGroup); }
     barridoClusterGroup.clearLayers();
 
     // Add seccion polygon if a specific seccion is selected
@@ -5453,7 +5490,7 @@
       : (rutaModalTipo === 'filtro'
         ? 'Visitar solo a los ciudadanos que cumplan los filtros elegidos (sexo, edad, discapacidad, ocupación, etc.).'
         : 'Visitar a todos los ciudadanos de la sección para aplicar la encuesta.');
-    document.getElementById('ruta-modal-encuesta-opts').classList.toggle('hidden', rutaModalTipo !== 'encuesta');
+    document.getElementById('ruta-modal-encuesta-opts').classList.toggle('hidden', !(rutaModalTipo === 'encuesta' || rutaModalTipo === 'seguros'));
     const filtroOpts = document.getElementById('ruta-modal-filtro-opts');
     if (filtroOpts) {
       filtroOpts.classList.toggle('hidden', rutaModalTipo !== 'filtro');
@@ -5473,6 +5510,8 @@
 
   function filtrosRutaActuales() {
     const f = {};
+    const destSel = document.getElementById('rf-destino');
+    if (destSel) f.destino = destSel.value === 'simpatizantes' ? 'simpatizantes' : 'general';
     const sexo = document.getElementById('rf-sexo')?.value;
     if (sexo) f.sexo = sexo;
     const edadMax = parseInt(document.getElementById('rf-edad-max')?.value);
@@ -5513,23 +5552,20 @@
       container.innerHTML = secciones.map(s => {
         const enl = seccionesEnlaces[s.id] || [];
         const secRutas = rutasPorSec[s.id] || [];
-        const filaTipo = (tipo) => {
-          const activas = secRutas.filter(r => r.tipo === tipo && r.estado !== 'completada');
-          const completadas = secRutas.filter(r => r.tipo === tipo && r.estado === 'completada');
-          return `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;background:#fafafa;border-radius:6px;padding:6px 8px">
-            <div style="font-size:11px"><strong>${tipoRutaLabel(tipo)}</strong>
-              ${activas.length ? `<span style="color:var(--pri-red)"> · ${activas.length} activa(s)</span>` : ''}
-              ${completadas.length ? `<span style="color:var(--pri-green)"> · ${completadas.length} completada(s)</span>` : ''}
-            </div>
-            <button class="btn-small btn-primary" onclick="abrirModalRuta(${s.id},'${tipo}')" style="font-size:10px">+ Crear</button>
-          </div>`;
-        };
+        const resumen = ['encuesta', 'seguros', 'filtro'].map(tipo => {
+          const a = secRutas.filter(r => r.tipo === tipo && r.estado !== 'completada').length;
+          const c = secRutas.filter(r => r.tipo === tipo && r.estado === 'completada').length;
+          return `${tipoRutaLabel(tipo)}${a ? ` <span style="color:var(--pri-red);font-weight:600">${a} activa(s)</span>` : ''}${c ? ` <span style="color:var(--pri-green);font-weight:600">${c} compl.</span>` : ''}`;
+        }).join(' · ');
         return `<div style="background:#fff;border-radius:8px;padding:12px;box-shadow:var(--shadow);margin-bottom:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <div><strong style="font-size:14px">Seccion ${s.id}</strong> <span style="color:#999;font-size:11px">${s.municipio || ''}</span></div>
           </div>
           ${enl.length ? `<div style="font-size:11px;color:#666;margin-bottom:4px">Enlaces disponibles: ${enl.map(e => e.nombre).join(', ')}</div>` : '<div style="font-size:11px;color:#999">Sin enlaces asignados</div>'}
-          ${enl.length ? filaTipo('encuesta') + filaTipo('seguros') + filaTipo('filtro') : ''}
+          ${enl.length ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;background:#fafafa;border-radius:6px;padding:6px 8px">
+            <div style="font-size:11px;display:flex;flex-wrap:wrap;gap:4px">${resumen}</div>
+            <button class="btn-small btn-primary" onclick="abrirModalRuta(${s.id})" style="font-size:10px">+ Crear ruta</button>
+          </div>` : ''}
         </div>`;
       }).join('');
     } catch (err) { console.error(err); }
@@ -5558,19 +5594,30 @@
         .forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.nombre; selEnc.appendChild(o); });
     }).catch(() => {});
     document.getElementById('btn-crear-ruta-confirmar').onclick = async () => {
-      const selected = [...document.querySelectorAll('.ruta-enlace-cb:checked')].map(cb => cb.value);
-      if (!selected.length) { document.getElementById('ruta-modal-status').textContent = 'Selecciona al menos un enlace'; return; }
-      const encuestaId = rutaModalTipo === 'encuesta' ? (document.getElementById('ruta-modal-encuesta').value || null) : null;
-      const filtros = rutaModalTipo === 'filtro' ? filtrosRutaActuales() : undefined;
-      if (rutaModalTipo === 'filtro' && !Object.keys(filtros).length) {
-        status.textContent = 'Elige al menos un filtro (o usa otro tipo de ruta)';
-        status.style.color = 'var(--pri-red)';
-        return;
-      }
       const status = document.getElementById('ruta-modal-status');
+      const selected = [...document.querySelectorAll('.ruta-enlace-cb:checked')].map(cb => cb.value);
+      if (!selected.length) { status.textContent = 'Selecciona al menos un enlace'; return; }
+      const encuestaId = (rutaModalTipo === 'encuesta' || rutaModalTipo === 'seguros') ? (document.getElementById('ruta-modal-encuesta').value || null) : null;
+      let filtros;
+      let destino;
+      if (rutaModalTipo === 'filtro') {
+        const destSel = document.getElementById('rf-destino');
+        destino = destSel ? destSel.value : 'general';
+        filtros = filtrosRutaActuales();
+        if (destino === 'simpatizantes') {
+          // A los simpatizantes solo aplica el filtro de días sin visita
+          const svd = filtros.sin_visita_desde_dias;
+          filtros = {};
+          if (svd) filtros.sin_visita_desde_dias = svd;
+        } else if (!Object.keys(filtros).length) {
+          status.textContent = 'Elige al menos un filtro (o usa otro tipo de ruta)';
+          status.style.color = 'var(--pri-red)';
+          return;
+        }
+      }
       try {
         status.textContent = 'Creando rutas...';
-        await API.request('POST', '/api/rutas', { enlace_ids: selected, seccion_id: seccionId, tipo: rutaModalTipo, encuesta_campana_id: encuestaId, filtros });
+        await API.request('POST', '/api/rutas', { enlace_ids: selected, seccion_id: seccionId, tipo: rutaModalTipo, encuesta_campana_id: encuestaId, filtros, destino });
         status.textContent = `Ruta ${tipoRutaLabel(rutaModalTipo)} creada para ${selected.length} enlace(s)`;
         status.style.color = 'var(--pri-green)';
         setTimeout(() => { document.getElementById('ruta-modal-crear').classList.add('hidden'); loadRutasAdmin(); }, 1000);
@@ -5609,7 +5656,7 @@
     rutaReadOnly = readOnly;
     rutaPrefix = prefix || 'ruta';
     rutaFull = ruta;
-    rutaData = { paradas: ruta.paradas || [], distancia_total_km: ruta.distancia_total_km, tiempo_total_minutos: ruta.tiempo_total_minutos };
+    rutaData = { paradas: ruta.paradas || [], distancia_total_km: ruta.distancia_total_km, tiempo_total_minutos: ruta.tiempo_total_minutos, tipo: ruta.tipo };
     votacionEstado = await obtenerEstadoVotacion();
     if (ruta.estado === 'completada' && !(ruta.paradas || []).some(p => p.visitado)) {
       (ruta.paradas || []).forEach(p => p.visitado = true);
@@ -5904,23 +5951,37 @@
     else if (confirm('Estas a ' + Math.round(dist) + 'm del domicilio. ¿Marcar como visitado de todas formas? Debera tomar foto como evidencia.')) abrirSelectorEstatus(idx, clave => marcar(false, clave, coords), false);
   };
 
-  // Selector de estatus de visita (opciones del catálogo cat_estatus_visita)
+  // Selector de estatus de visita (opciones del catálogo cat_estatus_visita).
+  // En rutas de seguros incluye la confirmación de apoyo del simpatizante.
   function abrirSelectorEstatus(idx, alConfirmar, soloNoAbrio) {
+    const esSeguros = !!(rutaData && rutaData.tipo === 'seguros');
     const listaBase = window._estatusVisita || [];
-    const opciones = soloNoAbrio
-      ? listaBase.filter(e => e.activo !== false && e.marca_no_abrio)
-      : listaBase.filter(e => e.activo !== false);
-    if (soloNoAbrio && !opciones.length) opciones.push({ clave: 'no_abrio', nombre: 'No abrió puerta', marca_no_abrio: true });
+    let opciones, defecto;
+    if (esSeguros) {
+      opciones = [{ clave: 'confirmado', nombre: 'Confirmó apoyo' }]
+        .concat(listaBase.filter(e => e.activo !== false))
+        .concat([{ clave: 'retirado', nombre: 'Retiró apoyo' }]);
+      defecto = 'confirmado';
+    } else {
+      opciones = [{ clave: '', nombre: 'Entrevista realizada' }].concat(
+        soloNoAbrio
+          ? listaBase.filter(e => e.activo !== false && e.marca_no_abrio)
+          : listaBase.filter(e => e.activo !== false)
+      );
+      if (soloNoAbrio && !listaBase.filter(e => e.activo !== false && e.marca_no_abrio).length) {
+        opciones = [{ clave: '', nombre: 'Entrevista realizada' }, { clave: 'no_abrio', nombre: 'No abrió puerta', marca_no_abrio: true }];
+      }
+      defecto = 'no_abrio';
+    }
     let overlay = document.getElementById('estatus-visita-overlay');
     if (overlay) overlay.remove();
     overlay = document.createElement('div');
     overlay.id = 'estatus-visita-overlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center';
     overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:18px;max-width:340px;width:88%">
-      <h3 style="margin:0 0 10px;font-size:14px">Estatus de la visita</h3>
+      <h3 style="margin:0 0 10px;font-size:14px">${esSeguros ? 'Confirmación del simpatizante' : 'Estatus de la visita'}</h3>
       <select id="sel-estatus-visita" style="width:100%;padding:9px;border:2px solid var(--border);border-radius:6px;font-size:13px;margin-bottom:12px">
-        ${soloNoAbrio ? '' : '<option value="">Abrió y dio información</option>'}
-        ${opciones.map(o => `<option value="${o.clave}">${o.nombre}${!soloNoAbrio && o.marca_no_abrio ? ' (sin entrevista)' : ''}</option>`).join('')}
+        ${opciones.map(o => `<option value="${o.clave}" ${o.clave === defecto ? 'selected' : ''}>${o.nombre}</option>`).join('')}
       </select>
       <div style="display:flex;gap:8px">
         <button id="btn-estatus-ok" class="btn-primary" style="flex:1">Guardar</button>
@@ -6012,6 +6073,8 @@
 
   function estatusNombre(clave) {
     if (!clave) return '';
+    if (clave === 'confirmado') return 'Confirmó apoyo';
+    if (clave === 'retirado') return 'Retiró apoyo';
     const e = (window._estatusVisita || []).find(x => x.clave === clave);
     return e ? e.nombre : (clave === 'no_abrio' ? 'No abrió puerta' : clave);
   }
@@ -6025,7 +6088,8 @@
     const visitadoLabel = rutaVisitados.has(id) ? '✓ Visitado' : 'No visitado';
     const estLabel = p.resultado ? ` · ${estatusNombre(p.resultado)}` : '';
     const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
-    const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px" onclick="abrirEncuestaCiudadano('${id}','${(p.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}')">📋 Encuesta</button>` : '';
+    const encEsComp = rutaFull && rutaFull.tipo === 'seguros';
+    const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px" onclick="abrirEncuestaCiudadano('${id}','${(p.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}',null,${encEsComp})">📋 Encuesta</button>` : '';
     rutaMarkers[idx]?.setPopupContent(`
       <div style="min-width:160px">
         <b>#${idx+1} ${p.nombre}</b>
@@ -6070,7 +6134,8 @@
         const resBadge = s.resultado ? `<div style="margin-top:2px"><span class="badge" style="background:#fff3cd;color:#6b4f00;font-size:9px">${estatusNombre(s.resultado)}</span></div>` : '';
         const vcBlock = Array.isArray(s.votantes_casa) && s.votantes_casa.length ? `<div style="margin-top:3px;font-size:10px;color:#444;background:#f2f7f2;border-left:3px solid var(--pri-green);border-radius:4px;padding:3px 6px;line-height:1.4">En casa: ${s.votantes_casa.map(v => `${v.nombre || 'Sin registrar'} (${v.pendiente || (!v.pres && !v.dip) ? 'Indeciso' : [v.pres ? 'Pres ' + v.pres : '', v.dip ? 'Dip ' + v.dip : ''].filter(Boolean).join(' · ')})`).join(', ')}</div>` : '';
         const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
-        const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px" onclick="event.stopPropagation();abrirEncuestaCiudadano('${s.id}','${(s.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}')" title="Responder encuesta de esta parada">📋 Encuesta</button>` : '';
+        const encEsComp = rutaFull && rutaFull.tipo === 'seguros';
+        const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px" onclick="event.stopPropagation();abrirEncuestaCiudadano('${s.id}','${(s.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}',null,${encEsComp})" title="Responder encuesta de esta parada">📋 Encuesta</button>` : '';
         const yaVoto = s.ya_voto || rutaVotados.has(s.id);
         const votoTxt = yaVoto ? '🗳 Ya votó' : '🗳 Ya votó?';
         let votoBtn = '';
@@ -7087,47 +7152,50 @@
       <label style="flex:0.8;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Meta (votos esperados)</span><input type="number" id="f-meta" value="${data.meta || 0}" min="0"></label></div>`;
     if (tipo === 'ciudadano') {
       const nm = partesNombre(data.nombre, data.apellido_paterno, data.apellido_materno);
+      const esNuevo = !data.id;
       return `
       <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre(s) (opcional si no abrió)" value="${nm.nombre}" style="flex:1.4">
       <input type="text" id="f-apellido_paterno" placeholder="Apellido paterno" value="${nm.apPaterno}" style="flex:1">
       <input type="text" id="f-apellido_materno" placeholder="Apellido materno" value="${nm.apMaterno}" style="flex:1"></div>
-      <div class="form-row"><input type="text" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" style="flex:1">
-      <input type="number" id="f-edad" placeholder="Edad" value="${data.edad || ''}" min="0" max="150" style="flex:0.3"></div>
-      <div class="form-row"><select id="f-estado" required style="flex:1"></select><select id="f-municipio" required style="flex:1"></select>
-      <input type="text" id="f-cp" placeholder="CP" value="${data.cp || ''}" style="flex:0.5"></div>
+      <div class="form-row"><input type="tel" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" style="flex:1.2">
+      <input type="number" id="f-edad" placeholder="Edad" value="${data.edad || ''}" min="0" max="150" style="flex:0.5">
+      <input type="text" id="f-cp" placeholder="CP" value="${data.cp || ''}" style="flex:0.6"></div>
+      <div class="form-row"><select id="f-estado" required style="flex:1"></select><select id="f-municipio" required style="flex:1.4"></select></div>
       <div class="form-row" style="position:relative"><input type="text" id="f-calle" placeholder="Calle" value="${data.calle || ''}" style="flex:2">
       <input type="text" id="f-numero" placeholder="N°" value="${data.numero || ''}" style="flex:0.5">
       <input type="text" id="f-colonia" placeholder="Colonia" value="${data.colonia || ''}" style="flex:1.5" autocomplete="off">
       <div id="f-colonia-sug" style="position:absolute;top:100%;left:0;right:0;z-index:999;background:#fff;border:1px solid #ddd;border-radius:4px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;font-size:13px"></div></div>
-      <div class="form-row" style="align-items:center"><select id="f-seccion" style="flex:1;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select>
-      <input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box">
+      <div class="form-row" style="align-items:flex-end">
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value="">Sección (auto-detectada)</option></select></label>
+        <label style="flex:none;width:140px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
+      </div>
+      <div class="form-row" style="align-items:center"><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box">
       <input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box">
       <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:26px">
-        <label style="flex:none;width:130px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span>
-        <select id="f-casilla" style="flex:none;width:100%;box-sizing:border-box;height:40px;padding:0 8px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
-        <label style="flex:none;width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Motivo puerta</span>
-        <select id="f-motivo_puerta" style="width:100%;height:40px;padding:0 6px;margin-bottom:0" title="Si la persona no abrió o no quiso dar información, elige el motivo">
+      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Estatus Visita</span>
+        <select id="f-motivo_puerta" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0" title="Si la persona no abrió o no quiso dar información, elige el estatus">
           <option value="">Entrevista realizada</option>
           ${(window._estatusVisita && window._estatusVisita.length ? window._estatusVisita : [{ clave: 'no_abrio', nombre: 'No abrió' }, { clave: 'sin_info', nombre: 'No proporcionó info' }, { clave: 'con_prisa', nombre: 'Tenía prisa' }, { clave: 'otro', nombre: 'Otro motivo' }])
-            .map(e => `<option value="${e.clave}" ${data.motivo_puerta === e.clave ? 'selected' : ''}>${e.nombre}</option>`).join('')}
+            .map(e => `<option value="${e.clave}" ${(data.motivo_puerta === e.clave || (esNuevo && !data.motivo_puerta && e.clave === 'no_abrio')) ? 'selected' : ''}>${e.nombre}</option>`).join('')}
         </select></label>
         <input type="hidden" id="f-no_abrio" value="${data.no_abrio ? '1' : ''}">
         <label style="flex:none;width:96px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
         <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:100%;height:40px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
         <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:40px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
+        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
       </div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
       </div>
-      <div class="form-row" style="align-items:stretch"><label style="flex:0.4;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%"></select></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado Local</span><select id="f-intencion_voto_diputado" style="width:100%"></select></label></div>
+      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"></select></label>
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado Local</span><select id="f-intencion_voto_diputado" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"></select></label></div>
       <input type="hidden" id="f-hogar" value="${data.numero_hogar || ''}">`;
     }
     if (tipo === 'comprometido') {
@@ -7136,9 +7204,9 @@
       <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre(s)" value="${nm.nombre}" required style="flex:1.4">
       <input type="text" id="f-apellido_paterno" placeholder="Apellido paterno" value="${nm.apPaterno}" style="flex:1">
       <input type="text" id="f-apellido_materno" placeholder="Apellido materno" value="${nm.apMaterno}" style="flex:1"></div>
-      <div class="form-row"><input type="text" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" required style="flex:1"></div>
       <div class="form-row"><input type="date" id="f-fecha_nacimiento" placeholder="Fecha de nacimiento" value="${data.fecha_nacimiento ? String(data.fecha_nacimiento).slice(0,10) : ''}" max="${new Date().toISOString().slice(0,10)}" required style="flex:1">
-      <input type="number" id="f-edad" placeholder="Edad (auto si dejas vacío)" value="${data.edad || ''}" min="0" max="150" style="flex:1"></div>
+      <input type="number" id="f-edad" placeholder="Edad (auto)" value="${data.edad || ''}" min="0" max="150" style="flex:0.6">
+      <input type="tel" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" required style="flex:1"></div>
       <div class="form-row"><input type="email" id="f-correo" placeholder="Correo electronico (opcional)" value="${data.correo || ''}" style="flex:1">
       <input type="text" id="f-curp" placeholder="CURP (18 caracteres)" value="${data.curp || ''}" maxlength="18" required style="flex:1" autocomplete="off">
       <input type="text" id="f-ine" placeholder="INE / Credencial" value="${data.ine || ''}" required style="flex:1"></div>
@@ -7157,9 +7225,9 @@
       <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
       <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%"><option value=""></option></select></label>
+        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
       </div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
@@ -7908,7 +7976,7 @@
     abrirEncuestaCiudadano(null, 'Ciudadano nuevo', b.id, true);
   };
 
-  window.abrirEncuestaCiudadano = async function(id, nombre, campanaId, draft) {
+  window.abrirEncuestaCiudadano = async function(id, nombre, campanaId, draft, esComprometido) {
     try {
       const preguntas = campanaId
         ? await API.request('GET', '/api/encuestas/preguntas?campana_id=' + campanaId)
@@ -7939,7 +8007,7 @@
       let existentes = {};
       if (!draft) {
         try {
-          const rr = await API.request('GET', '/api/encuestas/respuestas?ciudadano_id=' + id);
+          const rr = await API.request('GET', (esComprometido ? '/api/encuestas/respuestas-comprometido?ciudadano_id=' : '/api/encuestas/respuestas?ciudadano_id=') + id);
           rr.forEach(r => { existentes[r.pregunta_id] = r.valor; });
         } catch (e) { console.warn(e); }
       }
@@ -7993,7 +8061,7 @@
             notify('Encuesta lista: se guardará con el ciudadano', 'success');
             return;
           }
-          await API.request('POST', '/api/encuestas/respuestas', { ciudadano_id: id, campana_id: campanaRealId, respuestas });
+          await API.request('POST', esComprometido ? '/api/encuestas/respuestas-comprometido' : '/api/encuestas/respuestas', { ciudadano_id: id, campana_id: campanaRealId, respuestas });
           msgEl.textContent = 'Encuesta guardada ✓'; msgEl.style.color = 'var(--pri-green)';
           setTimeout(() => document.getElementById('encuesta-ciudadano-modal').classList.add('hidden'), 700);
           guardarBtn.onclick = prevOnClick;
