@@ -1468,7 +1468,7 @@
           lat: parseFloat(document.getElementById('f-lat').value) || null,
           lng: parseFloat(document.getElementById('f-lng').value) || null,
           intencion_voto_presidente: parseInt(document.getElementById('f-intencion_voto_presidente').value) || null,
-          intencion_voto_diputado: null,
+          intencion_voto_diputado: parseInt(document.getElementById('f-intencion_voto_diputado')?.value) || null,
           casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null,
           sexo: (document.getElementById('f-sexo')?.value) || null,
           discapacidad_id: (document.getElementById('f-discapacidad')?.value) ? parseInt(document.getElementById('f-discapacidad').value) : null,
@@ -6895,10 +6895,6 @@
         selPres.innerHTML = opts.replace('value=""', `value="" ${!data.intencion_voto_presidente && !favorito ? 'selected' : ''}`).replaceAll(`value="${data.intencion_voto_presidente}"`, `value="${data.intencion_voto_presidente}" selected`);
         document.getElementById('f-intencion_voto_diputado').innerHTML = opts.replace('value=""', `value="" ${!data.intencion_voto_diputado && !favorito ? 'selected' : ''}`).replaceAll(`value="${data.intencion_voto_diputado}"`, `value="${data.intencion_voto_diputado}" selected`);
         if (!data.intencion_voto_presidente && favorito) selPres.value = favorito.id;
-      } else if (selPres) {
-        selPres.value = data.intencion_voto_presidente || (favorito ? favorito.id : '') || '';
-        const txtFijo = document.getElementById('f-partido-fijo');
-        if (txtFijo && favorito) txtFijo.value = `${favorito.nombre} (${favorito.abreviatura})`;
       }
 
       // Casilla: auto por cercanía con ajuste manual
@@ -7146,7 +7142,7 @@
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Estado</span><select id="f-estado_id"></select></label></div>
       <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Latitud</span><input type="number" id="f-lat" placeholder="Latitud" step="any" value="${data.lat || ''}"></label>
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Longitud</span><input type="number" id="f-lng" placeholder="Longitud" step="any" value="${data.lng || ''}"></label>
-      <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button></div>
+      <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button></div>
       <label class="checkbox-line"><input type="checkbox" id="f-es_default" ${data.es_default ? 'checked' : ''}> Default (seleccionado por defecto)</label>`;
     if (tipo === 'seccion') return `
       <div class="form-row"><label style="flex:0.4;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>ID (número de sección)</span><input type="number" id="f-id" value="${data.id || ''}" ${data.id ? 'readonly' : 'required'}></label>
@@ -7169,36 +7165,37 @@
       <input type="text" id="f-colonia" placeholder="Colonia" value="${data.colonia || ''}" style="flex:1.5" autocomplete="off">
       <div id="f-colonia-sug" style="position:absolute;top:100%;left:0;right:0;z-index:999;background:#fff;border:1px solid #ddd;border-radius:4px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;font-size:13px"></div></div>
       <div class="form-row" style="align-items:flex-end">
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value="">Sección (auto-detectada)</option></select></label>
-        <label style="flex:none;width:140px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
-      </div>
-      <div class="form-row" style="align-items:center"><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box">
-      <input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box">
-      <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
-      <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Sección (auto-detectada)</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
+        <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
+        <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:4px">
-        <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Estatus Visita</span>
-        <select id="f-motivo_puerta" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0" title="Si la persona no abrió o no quiso dar información, elige el estatus">
-          <option value="">Entrevista realizada</option>
-          ${(window._estatusVisita && window._estatusVisita.length ? window._estatusVisita : [{ clave: 'no_abrio', nombre: 'No abrió' }, { clave: 'sin_info', nombre: 'No proporcionó info' }, { clave: 'con_prisa', nombre: 'Tenía prisa' }, { clave: 'otro', nombre: 'Otro motivo' }])
-            .map(e => `<option value="${e.clave}" ${(data.motivo_puerta === e.clave || (esNuevo && !data.motivo_puerta && e.clave === 'no_abrio')) ? 'selected' : ''}>${e.nombre}</option>`).join('')}
-        </select></label>
-        <input type="hidden" id="f-no_abrio" value="${data.no_abrio ? '1' : ''}">
-        <label style="flex:none;width:96px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
-        <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:100%;height:40px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
-        <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:40px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0" onclick="abrirModalVotantesCasa('f')">👥 Votantes de la casa</button>
-        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
       </div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
-        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
+      <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label>
+      <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado Local</span><select id="f-intencion_voto_diputado" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label></div>
+      <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+          <label style="flex:2;min-width:160px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Estatus Visita</span>
+          <select id="f-motivo_puerta" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0" title="Si la persona no abrió o no quiso dar información, elige el estatus">
+            <option value="">Entrevista realizada</option>
+            ${(window._estatusVisita && window._estatusVisita.length ? window._estatusVisita : [{ clave: 'no_abrio', nombre: 'No abrió' }, { clave: 'sin_info', nombre: 'No proporcionó info' }, { clave: 'con_prisa', nombre: 'Tenía prisa' }, { clave: 'otro', nombre: 'Otro motivo' }])
+              .map(e => `<option value="${e.clave}" ${(data.motivo_puerta === e.clave || (esNuevo && !data.motivo_puerta && e.clave === 'no_abrio')) ? 'selected' : ''}>${e.nombre}</option>`).join('')}
+          </select></label>
+          <input type="hidden" id="f-no_abrio" value="${data.no_abrio ? '1' : ''}">
+          <label style="flex:none;width:96px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
+          <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:100%;height:42px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
+          <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:42px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0" onclick="abrirModalVotantesCasa('f')">👥 Votantes</button>
+        </div>
       </div>
-      <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"></select></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado Local</span><select id="f-intencion_voto_diputado" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"></select></label></div>
       <input type="hidden" id="f-hogar" value="${data.numero_hogar || ''}">`;
     }
     if (tipo === 'comprometido') {
@@ -7207,36 +7204,36 @@
       <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre(s)" value="${nm.nombre}" required style="flex:1.4">
       <input type="text" id="f-apellido_paterno" placeholder="Apellido paterno" value="${nm.apPaterno}" style="flex:1">
       <input type="text" id="f-apellido_materno" placeholder="Apellido materno" value="${nm.apMaterno}" style="flex:1"></div>
-      <div class="form-row"><input type="date" id="f-fecha_nacimiento" placeholder="Fecha de nacimiento" value="${data.fecha_nacimiento ? String(data.fecha_nacimiento).slice(0,10) : ''}" max="${new Date().toISOString().slice(0,10)}" required style="flex:1">
-      <input type="number" id="f-edad" placeholder="Edad (auto)" value="${data.edad || ''}" min="0" max="150" style="flex:0.6">
-      <input type="tel" id="f-telefono" placeholder="Teléfono" value="${data.telefono || ''}" required style="flex:1"></div>
+      <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Fecha de nacimiento</span><input type="date" id="f-fecha_nacimiento" value="${data.fecha_nacimiento ? String(data.fecha_nacimiento).slice(0,10) : ''}" max="${new Date().toISOString().slice(0,10)}" required style="width:100%;height:42px;box-sizing:border-box"></label>
+      <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Edad</span><input type="number" id="f-edad" placeholder="auto" value="${data.edad || ''}" min="0" max="150" style="width:100%;height:42px;box-sizing:border-box"></label>
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Teléfono</span><input type="tel" id="f-telefono" value="${data.telefono || ''}" required style="width:100%;height:42px;box-sizing:border-box"></label></div>
       <div class="form-row"><input type="email" id="f-correo" placeholder="Correo electronico (opcional)" value="${data.correo || ''}" style="flex:1">
       <input type="text" id="f-curp" placeholder="CURP (18 caracteres)" value="${data.curp || ''}" maxlength="18" required style="flex:1" autocomplete="off">
       <input type="text" id="f-ine" placeholder="INE / Credencial" value="${data.ine || ''}" required style="flex:1"></div>
-      <div class="form-row"><input type="date" id="f-vigencia_ine" placeholder="Vigencia de INE" value="${data.vigencia_ine ? String(data.vigencia_ine).slice(0,10) : ''}" required style="flex:1">
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Partido</span><input type="text" id="f-partido-fijo" value="" readonly style="background:#f4f4f4" title="El partido favorito se asigna automáticamente"></label></div>
-      <input type="hidden" id="f-intencion_voto_presidente" value="${data.intencion_voto_presidente || ''}">
+      <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Vigencia INE</span><input type="date" id="f-vigencia_ine" value="${data.vigencia_ine ? String(data.vigencia_ine).slice(0,10) : ''}" required style="width:100%;height:42px;box-sizing:border-box"></label>
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente</span><select id="f-intencion_voto_presidente" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label>
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado</span><select id="f-intencion_voto_diputado" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label></div>
       <div class="form-row"><select id="f-estado" required style="flex:1"></select><select id="f-municipio" required style="flex:1"></select>
       <input type="text" id="f-cp" placeholder="CP" value="${data.cp || ''}" required style="flex:0.5"></div>
       <div class="form-row" style="position:relative"><input type="text" id="f-calle" placeholder="Calle" value="${data.calle || ''}" required style="flex:2">
       <input type="text" id="f-numero" placeholder="N°" value="${data.numero || ''}" required style="flex:0.5">
       <input type="text" id="f-colonia" placeholder="Colonia" value="${data.colonia || ''}" required style="flex:1.5" autocomplete="off">
       <div id="f-colonia-sug" style="position:absolute;top:100%;left:0;right:0;z-index:999;background:#fff;border:1px solid #ddd;border-radius:4px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;font-size:13px"></div></div>
-      <div class="form-row" style="align-items:center"><select id="f-seccion" required style="flex:1;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select>
-      <input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box">
-      <input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box">
-      <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
-      <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
+      <div class="form-row" style="align-items:flex-end">
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" required style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Sección (auto-detectada)</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
+        <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
+        <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:40px;box-sizing:border-box;padding:0 8px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
       </div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
-      <div class="form-row" style="align-items:center"><label style="flex:1;font-size:11px">Casilla (auto por cercanía, ajustable)</label><select id="f-casilla" style="flex:3;box-sizing:border-box"><option value="">Auto-detectar</option></select></div>
-      <input type="hidden" id="f-hogar" value="${data.numero_hogar || ''}">
-      <input type="hidden" id="f-intencion_voto_diputado" value="${data.intencion_voto_diputado || ''}">`;
+      <input type="hidden" id="f-hogar" value="${data.numero_hogar || ''}">`;
     }
     function toDatetimeLocal(d) {
       if (!d) return '';
@@ -7286,8 +7283,8 @@
       <label style="display:flex;flex-direction:column;gap:2px;font-size:11px;margin-top:8px"><span>Dirección (opcional)</span><input type="text" id="f-direccion" value="${data.direccion || ''}" placeholder="Ubicación de la casilla"></label>
       <div class="form-row" style="margin-top:8px"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Latitud</span><input type="number" id="f-lat" step="any" value="${data.lat ?? ''}" placeholder="20.6434"></label>
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Longitud</span><input type="number" id="f-lng" step="any" value="${data.lng ?? ''}" placeholder="-100.9929"></label>
-      <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Usar mi ubicación">📍</button>
-      <button type="button" id="btn-mapa-modal" class="btn-small btn-primary" style="flex:none;height:40px;min-width:40px;width:40px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar pin en el mapa">🗺️</button></div>
+      <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Usar mi ubicación">📍</button>
+      <button type="button" id="btn-mapa-modal" class="btn-small btn-primary" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar pin en el mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:260px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>`;
     if (tipo === 'resultado') return `
       <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion_id" required></select></label>
