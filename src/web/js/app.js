@@ -6458,6 +6458,7 @@
     const fields = document.getElementById('modal-fields');
     const submitBtn = document.getElementById('modal-submit');
     overlay.classList.remove('hidden');
+    if (tipo === 'ciudadano' || tipo === 'comprometido') overlay.classList.remove('modal-wide');
     let data = {};
 
     if (id) {
@@ -6675,7 +6676,9 @@
     } else if (tipo === 'vc') {
       document.getElementById('vc-casa-modal')?.classList.add('hidden');
     } else {
-      document.getElementById('modal-overlay')?.classList.add('hidden');
+      const overlay = document.getElementById('modal-overlay');
+      overlay?.classList.add('hidden');
+      overlay?.classList.remove('modal-wide');
       document.getElementById('modal-submit').style.display = '';
       // Cleanup draggable map in ciudadano modal
       const contMapa = document.getElementById('f-mapa-container');

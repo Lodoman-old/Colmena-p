@@ -319,13 +319,13 @@ tr:hover { background: var(--bg-light); }
 .modal-close:hover { background: var(--bg-light); color: var(--pri-red); }
 .modal-body { padding: 24px; }
 .modal-body label { display: block; font-size: 13px; color: var(--text-muted); margin: 12px 0 4px; }
-.modal-body input, .modal-body select { width: 100%; padding: 10px; border: 2px solid var(--border); border-radius: var(--radius); font-size: 14px; margin-bottom: 8px; }
+.modal-body input, .modal-body select { width: 100%; padding: 10px; border: 2px solid var(--border); border-radius: var(--radius); font-size: 14px; margin-bottom: 0; }
 .modal-body input:focus { outline: none; border-color: var(--pri-green); }
 .modal-body .btn-primary { margin-top: 16px; }
 .modal-body .form-row { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
 .modal-body .checkbox-line { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; cursor: pointer; }
-.modal-body .form-row input, .modal-body .form-row select { flex: 1; }
-.modal-body .form-row label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.modal-body .form-row input, .modal-body .form-row select { flex: 1; min-width: 0; }
+.modal-body .form-row label { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; margin: 0; font-size: 11px; color: var(--text-muted); cursor: pointer; white-space: nowrap; min-width: 0; }
 .modal-body .form-row label input[type="checkbox"] { width: auto; margin: 0; flex: none; }
 .modal-body .form-row .chk-junto { gap:0; }
 .campana-modal-body { padding: 0 !important; }
@@ -508,8 +508,8 @@ tr:hover { background: var(--bg-light); }
   #ciu-barrido-mapa { min-width: 0 !important; height: 200px !important; }
   #ciu-barrido-form .btn-small { font-size: 11px !important; padding: 4px 8px !important; }
   #bf-telefono { min-width: 0; }
-  .modal { width: 95% !important; margin: 10px auto !important; padding: 16px !important; }
-  .modal input, .modal select, .modal textarea { font-size: 12px !important; }
+  .modal { width: 95% !important; margin: 10px auto !important; padding: 0 !important; }
+  .modal input, .modal select, .modal textarea { font-size: 13px !important; }
   .table-container { overflow-x: auto; }
   table { font-size: 12px; }
   th, td { padding: 8px 10px !important; white-space: nowrap; }
