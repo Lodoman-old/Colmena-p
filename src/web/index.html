@@ -883,6 +883,7 @@
               <option value="atrasadas">Atrasadas (+24h)</option>
             </select>
             <button class="btn-small btn-secondary" onclick="cargarReporteRutas()">↻ Refrescar</button>
+            <button class="btn-small btn-primary" onclick="exportarCumplimientoRutas()" style="margin-left:4px">📥 Exportar Excel</button>
           </div>
           <div id="rr-resumen" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
           <div id="rr-incidencias" style="margin-bottom:12px"></div>
@@ -900,6 +901,7 @@
             <input type="number" id="rv-dias" min="1" max="365" value="60" style="width:70px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px">
             <span style="font-size:12px;color:#666">días o más</span>
             <button class="btn-small btn-primary" onclick="cargarReporteRevisitas()">Actualizar</button>
+            <button class="btn-small btn-primary" onclick="exportarRevisitas()" style="margin-left:4px">📥 Exportar Excel</button>
           </div>
           <div id="rv-resumen" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
           <div class="table-container">
@@ -913,6 +915,7 @@
           <p style="font-size:12px;color:#666;margin:0 0 10px">Estado de confirmación de apoyo de los simpatizantes (voto seguro) visitados en rutas. El enlace registra: Confirmó apoyo, Retiró apoyo o los estatus de puerta.</p>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
             <button class="btn-small btn-primary" onclick="cargarConfirmaciones()">Actualizar</button>
+            <button class="btn-small btn-primary" onclick="exportarConfirmaciones()" style="margin-left:4px">📥 Exportar Excel</button>
           </div>
           <div id="conf-simp-resumen" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
           <div class="table-container">
@@ -1421,8 +1424,8 @@
   </div>
   <div id="notify-toast" class="notify-toast" style="display:none"></div>
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
-  <script src="js/api.js?v=252"></script>
-  <script src="js/biometric.js?v=95"></script>
-  <script src="js/app.js?v=265"></script>
+  <script src="js/api.js?v=255"></script>
+  <script src="js/biometric.js?v=98"></script>
+  <script src="js/app.js?v=269"></script>
 </body>
 </html>

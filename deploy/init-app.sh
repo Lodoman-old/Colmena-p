@@ -60,5 +60,7 @@ apply 025_incidencias_evidencia
 apply 026_incidencias_ruta
 apply 027_refresh_tokens
 apply 028_intencion_voto_split
+apply 029_apellido_columnas
+apply 030_confirmaciones_rutas
 
 echo "==> Init completado"

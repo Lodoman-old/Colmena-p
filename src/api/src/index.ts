@@ -819,7 +819,7 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
     const motivoPuerta = await validarMotivoPuerta(motivoRaw);
     const noAbrioFinal = !!no_abrio || !!motivoPuerta;
     if (!seccion_id || (!nombre && !noAbrioFinal)) { res.status(400).json({ error: 'seccion_id requerido; nombre requerido salvo que no haya abierto' }); return; }
-    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : (nombre || null);
+    const nombreFinal = nombre || null;
     const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
     const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : null);
     // Idempotency check: if key provided and already processed, return existing record
@@ -883,7 +883,7 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
 app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { nombre, apellido_paterno, apellido_materno, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
-    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : (nombre || null);
+    const nombreFinal = nombre || null;
     const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
     const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : (casilla_id === null ? null : undefined));
     // Perfil: motivo_puerta controla no_abrio; se puede limpiar enviando null/''
@@ -1374,7 +1374,7 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
     if (!esAdminOCoordinador(user) && user.rol !== 'capturista') { res.status(403).json({ error: 'Solo coordinadores, administradores y capturistas' }); return; }
     const { seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, lat, lng, intencion_voto_presidente, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, idempotency_key, casilla_id } = req.body;
     if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
-    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : nombre;
+    const nombreFinal = nombre;
     // Captura obligatoria: todos los campos salvo el correo
     if (user.rol === 'capturista') {
       if (!telefono || !curp || !ine || !vigencia_ine || !calle || !numero || !colonia || !cp || !fecha_nacimiento) {
@@ -1441,7 +1441,7 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
     const { nombre, apellido_paterno, apellido_materno, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, numero_hogar, intencion_voto_presidente, notas, edad, fecha_nacimiento, curp, vigencia_ine, casilla_id } = req.body;
     const curpVal = normalizarCurp(curp);
     if (curpVal && !validarCurp(curpVal)) { res.status(400).json({ error: 'CURP inválida: debe tener 18 caracteres con el formato oficial (ej. GODE561231HDFRRN09)' }); return; }
-    const nombreFinal = (nombre && (apellido_paterno || apellido_materno)) ? [nombre, apellido_paterno, apellido_materno].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() : nombre;
+    const nombreFinal = nombre;
     let fechaNacVal: string | null = null;
     if (fecha_nacimiento) {
       fechaNacVal = String(fecha_nacimiento).slice(0, 10);
@@ -2062,6 +2062,20 @@ app.get('/api/rutas/:id', authenticateToken, async (req: Request, res: Response)
       const votIds = new Set(v.rows.flatMap((rw: any) => [rw.ciudadano_id, rw.comprometido_id].filter(Boolean)));
       ruta.paradas.forEach((p: any) => { p.ya_voto = votIds.has(p.id); });
     }
+    if (ruta.paradas?.length && ruta.tipo === 'seguros') {
+      const pIds = ruta.paradas.map((p: any) => p.id).filter(Boolean);
+      if (pIds.length) {
+        const cc = await pool.query(
+          `SELECT id, estado_confirmacion, ultima_confirmacion FROM ciudadanos_comprometidos WHERE id = ANY($1::uuid[])`,
+          [pIds]
+        );
+        const ccMap = new Map(cc.rows.map((rw: any) => [rw.id, rw]));
+        ruta.paradas.forEach((p: any) => {
+          const info = ccMap.get(p.id);
+          if (info) { p.estado_confirmacion = info.estado_confirmacion || null; p.ultima_confirmacion = info.ultima_confirmacion || null; }
+        });
+      }
+    }
     res.json(ruta);
   } catch { res.status(500).json({ error: 'Error' }); }
 });
@@ -2110,7 +2124,8 @@ app.patch('/api/rutas/:id/parada/:idx', authenticateToken, async (req: Request, 
     const q = await pool.query('SELECT paradas, tipo FROM rutas WHERE id=$1', [req.params.id]);
     if (!q.rows.length) { res.status(404).json({ error: 'No encontrada' }); return; }
     const rutaTipo: string = q.rows[0].tipo || 'general';
-    const esRutaSeguros = rutaTipo === 'seguros';
+    const rutaDestino: string = q.rows[0].destino || '';
+    const esRutaSeguros = rutaTipo === 'seguros' || (rutaTipo === 'filtro' && rutaDestino === 'simpatizantes');
     const paradas = q.rows[0].paradas;
     const idx = parseInt(req.params.idx);
     if (!paradas[idx]) { res.status(400).json({ error: 'Índice inválido' }); return; }
@@ -3555,24 +3570,34 @@ app.delete('/api/encuestas/preguntas/:id', authenticateToken, requireAdminOCoord
 });
 
 // Registrar respuestas de encuesta para un ciudadano
+// Intenta en encuesta_respuestas (ciudadanos). Si falla FK, intenta en encuesta_respuestas_comp
 app.post('/api/encuestas/respuestas', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { ciudadano_id, campana_id, respuestas } = req.body;
     if (!ciudadano_id || !campana_id || !Array.isArray(respuestas)) { res.status(400).json({ error: 'ciudadano_id, campana_id y respuestas[] requeridos' }); return; }
     const user = (req as any).user;
-    for (const r of respuestas) {
-      if (!r.pregunta_id) continue;
-      await pool.query(
-        `INSERT INTO encuesta_respuestas (id, ciudadano_id, campana_id, pregunta_id, valor, usuario_id)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (ciudadano_id, pregunta_id) DO UPDATE SET valor = EXCLUDED.valor, usuario_id = EXCLUDED.usuario_id`,
-        [crypto.randomUUID(), ciudadano_id, campana_id, r.pregunta_id, r.valor || '', user?.userId || null]
-      );
+    async function insertarEnTabla(tabla: string) {
+      for (const r of respuestas) {
+        if (!r.pregunta_id) continue;
+        await pool.query(
+          `INSERT INTO ${tabla} (id, ciudadano_id, campana_id, pregunta_id, valor, usuario_id)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (ciudadano_id, pregunta_id) DO UPDATE SET valor = EXCLUDED.valor, usuario_id = EXCLUDED.usuario_id`,
+          [crypto.randomUUID(), ciudadano_id, campana_id, r.pregunta_id, r.valor || '', user?.userId || null]
+        );
+      }
     }
     try {
-      await pool.query('INSERT INTO visitas (id, ciudadano_id, usuario_id, tipo) VALUES ($1,$2,$3,$4)',
-        [crypto.randomUUID(), ciudadano_id, user?.userId || null, 'encuesta']);
-    } catch (e) { console.warn('visita encuesta:', e); }
+      await insertarEnTabla('encuesta_respuestas');
+      try {
+        await pool.query('INSERT INTO visitas (id, ciudadano_id, usuario_id, tipo) VALUES ($1,$2,$3,$4)',
+          [crypto.randomUUID(), ciudadano_id, user?.userId || null, 'encuesta']);
+      } catch (e) { console.warn('visita encuesta:', e); }
+    } catch (e: any) {
+      if (e?.code === '23503') {
+        await insertarEnTabla('encuesta_respuestas_comp');
+      } else { throw e; }
+    }
     res.json({ message: 'Encuesta registrada' });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -3585,12 +3610,22 @@ app.get('/api/encuestas/respuestas', authenticateToken, async (req: Request, res
     if (ciudadano_id) { params.push(ciudadano_id); conds.push(`r.ciudadano_id = $${params.length}`); }
     if (campana_id) { params.push(campana_id); conds.push(`r.campana_id = $${params.length}`); }
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
-    const rows = await pool.query(
-      `SELECT r.id, r.ciudadano_id, r.campana_id, r.pregunta_id, r.valor, r.created_at, p.pregunta
-       FROM encuesta_respuestas r JOIN encuesta_preguntas p ON p.id = r.pregunta_id
-       ${where} ORDER BY r.created_at DESC`,
-      params
-    );
+    async function consultarDeTabla(tabla: string) {
+      return pool.query(
+        `SELECT r.id, r.ciudadano_id, r.campana_id, r.pregunta_id, r.valor, r.created_at, p.pregunta
+         FROM ${tabla} r JOIN encuesta_preguntas p ON p.id = r.pregunta_id
+         ${where} ORDER BY r.created_at DESC`,
+        params
+      );
+    }
+    let rows;
+    try {
+      rows = await consultarDeTabla('encuesta_respuestas');
+    } catch (e: any) {
+      if (e?.code === '23503') {
+        rows = await consultarDeTabla('encuesta_respuestas_comp');
+      } else { throw e; }
+    }
     res.json(rows.rows);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });

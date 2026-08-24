@@ -3918,6 +3918,83 @@
 
   async function loadReportesRutas() { cargarReporteRutas(); cargarReporteRevisitas(); }
 
+  function descargarCSV(nombre, header, rows) {
+    const sep = ';';
+    const esc = v => { const s = String(v ?? ''); return s.includes(sep) || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const csv = [header.map(esc).join(sep), ...rows.map(r => r.map(esc).join(sep))].join('\n');
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  }
+
+  window.exportarCumplimientoRutas = async function() {
+    try {
+      const data = await API.request('GET', '/api/reportes/rutas');
+      const fEnlace = document.getElementById('rr-enlace')?.value || '';
+      const fEstado = document.getElementById('rr-estado')?.value || '';
+      let rutas = data.rutas || [];
+      if (fEnlace) rutas = rutas.filter(r => r.enlace_id === fEnlace);
+      if (fEstado === 'atrasadas') rutas = rutas.filter(r => r.atrasada);
+      else if (fEstado) rutas = rutas.filter(r => r.estado === fEstado);
+      if (!rutas.length) { modalInformativo('Sin datos', 'No hay rutas para exportar con los filtros actuales.'); return; }
+      const header = ['Enlace', 'Sección', 'Municipio', 'Tipo', 'Estado', 'Paradas', 'Visitadas', '% Visitadas', 'GPS', 'Foto', 'No abrió', 'Contestaron', 'Km', 'Min', 'Creada', 'Completada'];
+      const rows = rutas.map(r => [
+        r.enlace_nombre, r.seccion_num, r.municipio, r.tipo === 'encuesta' ? 'Encuesta' : 'Simpatizantes',
+        r.atrasada ? 'Atrasada' : (r.estado === 'completada' ? 'Completada' : r.estado === 'en_progreso' ? 'En progreso' : 'Pendiente'),
+        r.paradas_total, r.paradas_visitadas, r.pct_visitadas + '%', r.paradas_con_gps, r.paradas_con_foto,
+        r.paradas_no_abrio || 0, r.contestaron || 0, r.distancia_total_km, r.tiempo_total_minutos,
+        r.creado_en ? new Date(r.creado_en).toLocaleDateString() : '',
+        r.completado_en ? new Date(r.completado_en).toLocaleDateString() : ''
+      ]);
+      descargarCSV('cumplimiento-rutas.csv', header, rows);
+    } catch (e) { modalInformativo('Error', 'No se pudo exportar: ' + (e.message || e)); }
+  };
+
+  window.exportarRevisitas = async function() {
+    try {
+      const dias = parseInt(document.getElementById('rv-dias')?.value) || 60;
+      const r = await API.getReporteRevisitas(dias);
+      const lista = r.lista || [];
+      if (!lista.length) { modalInformativo('Sin datos', 'No hay ciudadanos pendientes de re-visita.'); return; }
+      const estNombre = clave => {
+        const est = (window._estatusVisita || []).find(x => x.clave === clave);
+        return est ? est.nombre : (clave === 'no_abrio' ? 'No abrió' : clave || '');
+      };
+      const header = ['Nombre', 'Teléfono', 'Dirección', 'Colonia', 'Sección', 'Última visita', 'Resultado', 'Días sin visita'];
+      const rows = lista.map(c => [
+        c.nombre, c.telefono || '', [c.calle, c.numero].filter(Boolean).join(' ') || '',
+        c.colonia || '', 'Sec. ' + (c.seccion_num || ''),
+        c.ultima_visita ? new Date(c.ultima_visita).toLocaleDateString() : 'Nunca',
+        estNombre(c.ultimo_resultado), c.dias_desde_visita != null ? c.dias_desde_visita : ''
+      ]);
+      descargarCSV('revisitas.csv', header, rows);
+    } catch (e) { modalInformativo('Error', 'No se pudo exportar: ' + (e.message || e)); }
+  };
+
+  window.exportarConfirmaciones = async function() {
+    try {
+      const r = await API.getReporteConfirmaciones();
+      const lista = r.lista || [];
+      if (!lista.length) { modalInformativo('Sin datos', 'No hay simpatizantes registrados.'); return; }
+      const header = ['Nombre', 'Teléfono', 'Sección', 'Municipio', 'Dirección', 'Confirmación', 'Última confirmación', 'Última visita ruta'];
+      const rows = lista.map(c => [
+        [c.nombre, c.apellidos].filter(Boolean).join(' ').trim() || '(sin nombre)',
+        c.telefono || '', 'Sec. ' + (c.seccion_num || ''), c.municipio || '',
+        [c.calle, c.numero].filter(Boolean).join(' ') + (c.colonia ? ', ' + c.colonia : ''),
+        c.estado_confirmacion === 'confirmado' ? 'Confirmó apoyo' : c.estado_confirmacion === 'retirado' ? 'Retiró apoyo' : 'Sin confirmar',
+        c.ultima_confirmacion ? new Date(c.ultima_confirmacion).toLocaleString() : '',
+        c.ultima_visita_ruta ? new Date(c.ultima_visita_ruta).toLocaleDateString() : 'Nunca'
+      ]);
+      descargarCSV('confirmaciones-simpatizantes.csv', header, rows);
+    } catch (e) { modalInformativo('Error', 'No se pudo exportar: ' + (e.message || e)); }
+  };
+
   window.cargarReporteRevisitas = async function() {
     const body = document.getElementById('rv-body');
     const resumenEl = document.getElementById('rv-resumen');
@@ -5718,8 +5795,10 @@
     rutaData.paradas.forEach((p, i) => {
       const dir = [p.direccion, p.colonia].filter(Boolean).join(', ') || 'Sin direccion';
       const visitadoLabel = rutaVisitados.has(p.id) ? '✓ Visitado' : 'No visitado';
+      const estLabel = p.resultado ? ` · ${estatusNombre(p.resultado)}` : '';
       const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
-      const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px" onclick="abrirEncuestaCiudadano('${p.id}','${(p.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}')">📋 Encuesta</button>` : '';
+      const encEsComp = rutaFull && rutaFull.tipo === 'seguros';
+      const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px" onclick="abrirEncuestaCiudadano('${p.id}','${(p.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}',null,${encEsComp})">📋 Encuesta</button>` : '';
       const marker = L.circleMarker([p.ubicacion.lat, p.ubicacion.lng], {
         radius: 10, fillColor: C_PRIMARY, color: '#fff', weight: 3, fillOpacity: 0.9
       }).addTo(rutaMap).bindPopup(`
@@ -5869,16 +5948,24 @@
   async function tomarFoto() {
     return new Promise(resolve => {
       const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
+      inp.type = 'file'; inp.accept = 'image/*';
+      if (window.innerWidth <= 768) inp.capture = 'environment';
       inp.onchange = async e => {
         const f = e.target.files?.[0];
         if (!f) { resolve(null); return; }
         const r = new FileReader();
         r.onload = async () => {
+          let overlay;
           try {
+            overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center';
+            overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;text-align:center"><div style="width:32px;height:32px;border:3px solid #eee;border-top-color:var(--pri-green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="font-size:13px;color:#555;margin:0">Subiendo foto...</p></div>';
+            document.body.appendChild(overlay);
             const res = await API.uploadImage(r.result);
+            if (overlay) overlay.remove();
             resolve(res?.url || null);
           } catch {
+            if (overlay) overlay.remove();
             resolve(r.result);
           }
         };
@@ -5913,7 +6000,7 @@
       while (true) {
         const foto = await tomarFoto();
         if (foto) return foto;
-        alert('Debe tomar una foto como evidencia para marcar la visita.');
+        modalInformativo('Foto requerida', 'Debe tomar una foto como evidencia para marcar la visita.');
       }
     }
 
@@ -5931,25 +6018,73 @@
       renderParadas();
       actualizarMarkerPopup(idx);
       dibujarTramoActual();
-      if (rutaActivaId && rutaData.paradas.every(x => rutaVisitados.has(x.id))) completarRuta();
+      if (rutaActivaId && rutaData.paradas.every(x => rutaVisitados.has(x.id))) { completarRuta(); return; }
+      if (p.no_abrio) return;
+      const esSeguros = rutaFull && rutaFull.tipo === 'seguros';
+      const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
+      if (esSeguros && !p.estado_confirmacion) {
+        await confirmarSimpatizante(id, idx);
+      }
+      if (tieneEncuesta) {
+        abrirEncuestaCiudadano(id, p.nombre, rutaFull.encuesta_campana_id, null, esSeguros);
+      }
     }
 
     await asegurarEstatusVisita();
 
     if (!navigator.geolocation) {
-      alert('GPS no disponible. Debe tomar una foto como evidencia.');
+      modalInformativo('Sin GPS', 'GPS no disponible. Debe tomar una foto como evidencia.');
       abrirSelectorEstatus(idx, clave => marcar(false, clave, null), false); return;
     }
     const pos = await obtenerPosicionRapida();
     if (!pos) {
-      alert('No se pudo obtener la ubicacion GPS. Debe tomar una foto como evidencia.');
+      modalInformativo('Sin ubicación', 'No se pudo obtener la ubicacion GPS. Debe tomar foto como evidencia.');
       abrirSelectorEstatus(idx, clave => marcar(false, clave, null), false); return;
     }
     const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
     const dist = distanciaGPS(coords.lat, coords.lng, p.ubicacion.lat, p.ubicacion.lng);
     if (dist <= 100) abrirSelectorEstatus(idx, clave => marcar(true, clave, coords), false);
-    else if (confirm('Estas a ' + Math.round(dist) + 'm del domicilio. ¿Marcar como visitado de todas formas? Debera tomar foto como evidencia.')) abrirSelectorEstatus(idx, clave => marcar(false, clave, coords), false);
+    else {
+      const ok = await modalConfirmar(
+        'Ubicación lejana',
+        `Estás a <strong>${Math.round(dist)}m</strong> del domicilio. ¿Marcar como visitado de todas formas? Deberás tomar foto como evidencia.`,
+        'Marcar visitado',
+        'Cancelar'
+      );
+      if (ok) abrirSelectorEstatus(idx, clave => marcar(false, clave, coords), false);
+    }
   };
+
+  // Utilidades modales bonitos (reemplazo de confirm/alert nativos)
+  function modalConfirmar(titulo, mensaje, textoOk, textoCancel) {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center';
+      overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:18px;max-width:360px;width:88%;text-align:center">
+        <h3 style="margin:0 0 8px;font-size:15px">${titulo}</h3>
+        <p style="font-size:13px;color:#555;margin:0 0 14px;line-height:1.4">${mensaje}</p>
+        <div style="display:flex;gap:8px">
+          <button id="mc-ok" class="btn-primary" style="flex:1;padding:10px;font-size:13px">${textoOk || 'Aceptar'}</button>
+          <button id="mc-cancel" class="btn-secondary" style="flex:1;padding:10px;font-size:13px">${textoCancel || 'Cancelar'}</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#mc-ok').onclick = () => { overlay.remove(); resolve(true); };
+      overlay.querySelector('#mc-cancel').onclick = () => { overlay.remove(); resolve(false); };
+      overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(false); } });
+    });
+  }
+  function modalInformativo(titulo, mensaje) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:18px;max-width:360px;width:88%;text-align:center">
+      <h3 style="margin:0 0 8px;font-size:15px">${titulo}</h3>
+      <p style="font-size:13px;color:#555;margin:0 0 14px;line-height:1.4">${mensaje}</p>
+      <button class="btn-primary" style="width:100%;padding:10px;font-size:13px" onclick="this.closest('div[style]').remove()">Entendido</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
 
   // Selector de estatus de visita (opciones del catálogo cat_estatus_visita).
   // En rutas de seguros incluye la confirmación de apoyo del simpatizante.
@@ -6016,20 +6151,57 @@
     }, true);
   };
 
+  window.confirmarSimpatizante = function(id, idx) {
+    return new Promise(resolve => {
+      if (!rutaData) { resolve(); return; }
+      const p = rutaData.paradas[idx]; if (!p) { resolve(); return; }
+      let overlay = document.getElementById('estatus-visita-overlay');
+      if (overlay) overlay.remove();
+      overlay = document.createElement('div');
+      overlay.id = 'estatus-visita-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center';
+      overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:18px;max-width:340px;width:88%">
+        <h3 style="margin:0 0 10px;font-size:14px">Confirmación del simpatizante</h3>
+        <p style="font-size:12px;color:#666;margin:0 0 10px">${p.nombre}</p>
+        <div style="display:flex;gap:8px">
+          <button id="btn-conf-si" class="btn-primary" style="flex:1;font-size:13px;padding:10px">✅ Confirmó voto</button>
+          <button id="btn-conf-no" class="btn-danger" style="flex:1;font-size:13px;padding:10px">❌ Retiró apoyo</button>
+        </div>
+        <button id="btn-conf-cancel" class="btn-secondary" style="width:100%;margin-top:8px">Cancelar</button>
+      </div>`;
+      document.body.appendChild(overlay);
+      const done = () => { overlay.remove(); resolve(); };
+      overlay.querySelector('#btn-conf-cancel').onclick = done;
+      overlay.addEventListener('click', e => { if (e.target === overlay) done(); });
+      overlay.querySelector('#btn-conf-si').onclick = async () => {
+        p.estado_confirmacion = 'confirmado';
+        persistirParada(idx, true, false, null, false, 'confirmado', null);
+        renderParadas(); actualizarMarkerPopup(idx);
+        done();
+      };
+      overlay.querySelector('#btn-conf-no').onclick = async () => {
+        p.estado_confirmacion = 'retirado';
+        persistirParada(idx, true, false, null, false, 'retirado', null);
+        renderParadas(); actualizarMarkerPopup(idx);
+        done();
+      };
+    });
+  };
+
   window.marcarParadaVoto = async function(id) {
     if (!rutaFull) return;
     if (!(votacionEstado?.activa)) {
       const msg = votacionEstado?.fecha ? `Solo se registran votos el día de la elección (${votacionEstado.fecha})` : 'Configura el día de la elección para habilitar este botón';
-      alert(msg); return;
+      modalInformativo('Votación no disponible', msg); return;
     }
-    if (rutaVotados.has(id)) { alert('Esta persona ya está registrada como votante. Si fue un error, quita el toque en Casilla (Representante).'); return; }
+    if (rutaVotados.has(id)) { modalInformativo('Ya registrado', 'Esta persona ya está registrada como votante. Si fue un error, quita el toque en Casilla (Representante).'); return; }
     const tipo = rutaFull.tipo === 'seguros' ? 'comprometido' : 'ciudadano';
     try {
       if (tipo === 'seguros') await API.marcarVoto(null, id);
       else await API.marcarVoto(id, null);
       rutaVotados.add(id);
       renderParadas();
-    } catch (err) { alert('Error al registrar el voto: ' + (err?.message || err)); }
+    } catch (err) { modalInformativo('Error', 'Error al registrar el voto: ' + (err?.message || err)); }
   };
 
   async function completarRuta() {
@@ -6085,11 +6257,19 @@
     rutaMarkers[idx]?.closePopup();
     const dir = [p.direccion, p.colonia].filter(Boolean).join(', ') || 'Sin direccion';
     const evidenciaHtml = p.evidencia ? `<div style="margin:4px 0"><img src="${fullUrl(p.evidencia)}" style="width:100%;max-height:100px;object-fit:cover;border-radius:4px;border:1px solid #ddd"></div>` : '';
-    const visitadoLabel = rutaVisitados.has(id) ? '✓ Visitado' : 'No visitado';
-    const estLabel = p.resultado ? ` · ${estatusNombre(p.resultado)}` : '';
+    const visit = rutaVisitados.has(id);
+    const visitadoLabel = visit ? '✓ Visitado' : 'No visitado';
     const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
     const encEsComp = rutaFull && rutaFull.tipo === 'seguros';
-    const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px" onclick="abrirEncuestaCiudadano('${id}','${(p.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}',null,${encEsComp})">📋 Encuesta</button>` : '';
+    const btnDis = visit ? 'opacity:.5;pointer-events:none;' : '';
+    const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px;${btnDis}" onclick="abrirEncuestaCiudadano('${id}','${(p.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}',null,${encEsComp})" title="${visit?'Ya fue visitado':'Responder encuesta'}">📋 Encuesta</button>` : '';
+    let confHtml = '';
+    if (!rutaReadOnly && rutaFull && rutaFull.tipo === 'seguros') {
+      const ec = p.estado_confirmacion;
+      if (ec === 'confirmado') confHtml = `<div style="margin-top:3px;font-size:11px;color:var(--pri-green);font-weight:600">✅ Confirmó apoyo</div>`;
+      else if (ec === 'retirado') confHtml = `<div style="margin-top:3px;font-size:11px;color:var(--pri-red);font-weight:600">❌ Retiró apoyo</div>`;
+      else confHtml = `<button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px;${btnDis}" onclick="confirmarSimpatizante('${id}',${idx})" title="Registrar confirmación">✋ Confirmar voto</button>`;
+    }
     rutaMarkers[idx]?.setPopupContent(`
       <div style="min-width:160px">
         <b>#${idx+1} ${p.nombre}</b>
@@ -6100,11 +6280,12 @@
         </div>
         <div style="font-size:11px;color:#666;margin-top:3px">${visitadoLabel} ${p.gps_confirmado ? '· GPS ✓' : p.evidencia ? '· Foto ✓' : ''}</div>
         ${evidenciaHtml}
-        <button class="btn-small ${rutaVisitados.has(id)?'btn-primary':'btn-secondary'}" style="margin-top:4px;width:100%;font-size:11px" onclick="toggleVisitado('${id}',${idx})">
-          ${rutaVisitados.has(id) ? '✓ Visitado' : 'Marcar visitado'}
+        <button class="btn-small btn-secondary" style="margin-top:4px;width:100%;font-size:11px;${btnDis}" onclick="toggleVisitado('${id}',${idx})">
+          ${visit ? '✓ Visitado' : 'Marcar visitado'}
         </button>
         ${encBtn}
-        ${rutaReadOnly ? '' : `<button class="btn-small btn-danger" style="margin-top:4px;width:100%;font-size:11px" onclick="marcarNoAbrio('${id}',${idx})">${p.no_abrio ? 'No abrió ✓' : 'No abrió'}</button>`}
+        ${confHtml}
+        ${rutaReadOnly ? '' : `<button class="btn-small btn-danger" style="margin-top:4px;width:100%;font-size:11px;${btnDis}" onclick="marcarNoAbrio('${id}',${idx})">${p.no_abrio ? '🚪 No abrió ✓' : '🚪 No abrió'}</button>`}
       </div>`);
   }
 
@@ -6135,17 +6316,30 @@
         const vcBlock = Array.isArray(s.votantes_casa) && s.votantes_casa.length ? `<div style="margin-top:3px;font-size:10px;color:#444;background:#f2f7f2;border-left:3px solid var(--pri-green);border-radius:4px;padding:3px 6px;line-height:1.4">En casa: ${s.votantes_casa.map(v => `${v.nombre || 'Sin registrar'} (${v.pendiente || (!v.pres && !v.dip) ? 'Indeciso' : [v.pres ? 'Pres ' + v.pres : '', v.dip ? 'Dip ' + v.dip : ''].filter(Boolean).join(' · ')})`).join(', ')}</div>` : '';
         const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
         const encEsComp = rutaFull && rutaFull.tipo === 'seguros';
-        const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px" onclick="event.stopPropagation();abrirEncuestaCiudadano('${s.id}','${(s.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}',null,${encEsComp})" title="Responder encuesta de esta parada">📋 Encuesta</button>` : '';
+        const encBtn = tieneEncuesta ? `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px;${visit?'opacity:.5;pointer-events:none':''}" onclick="event.stopPropagation();abrirEncuestaCiudadano('${s.id}','${(s.nombre||'').replace(/'/g,"\\'")}','${rutaFull.encuesta_campana_id}',null,${encEsComp})" title="${visit?'Ya fue visitado':'Responder encuesta de esta parada'}">📋 Encuesta</button>` : '';
         const yaVoto = s.ya_voto || rutaVotados.has(s.id);
         const votoTxt = yaVoto ? '🗳 Ya votó' : '🗳 Ya votó?';
         let votoBtn = '';
         if (!rutaReadOnly) {
           if (votacionEstado?.activa) {
-            votoBtn = `<button class="btn-small" style="padding:2px 6px;font-size:9px;margin-top:2px;background:${yaVoto?'var(--pri-green)':'#eee'};color:${yaVoto?'#fff':'#333'};border:none" onclick="event.stopPropagation();marcarParadaVoto('${s.id}')" title="Registrar voto en tiempo real">${votoTxt}</button>`;
+            votoBtn = `<button class="btn-small" style="padding:2px 6px;font-size:9px;margin-top:2px;background:${yaVoto?'var(--pri-green)':'#eee'};color:${yaVoto?'#fff':'#333'};border:none;${visit?'opacity:.4;pointer-events:none':''}" onclick="event.stopPropagation();marcarParadaVoto('${s.id}')" title="Registrar voto en tiempo real">${votoTxt}</button>`;
           } else if (votacionEstado?.fecha) {
             votoBtn = `<button class="btn-small" style="padding:2px 6px;font-size:9px;margin-top:2px;background:#f3f3f3;color:#bbb;border:none;cursor:not-allowed" onclick="event.stopPropagation()" title="Solo se registran votos el día de la elección (${votacionEstado.fecha})">🗳 Elección ${votacionEstado.fecha.slice(5)}</button>`;
           }
         }
+        let confBtn = '';
+        if (!rutaReadOnly && rutaFull && rutaFull.tipo === 'seguros') {
+          const ec = s.estado_confirmacion;
+          if (ec === 'confirmado') {
+            confBtn = `<button class="btn-small" style="padding:2px 6px;font-size:9px;margin-top:2px;background:var(--pri-green);color:#fff;border:none;cursor:default" title="Confirmó apoyo">✅ Confirmado</button>`;
+          } else if (ec === 'retirado') {
+            confBtn = `<button class="btn-small" style="padding:2px 6px;font-size:9px;margin-top:2px;background:var(--pri-red);color:#fff;border:none;cursor:default" title="Retiró apoyo">❌ Retirado</button>`;
+          } else {
+            confBtn = `<button class="btn-small btn-secondary" style="padding:2px 6px;font-size:9px;margin-top:2px;${visit?'opacity:.4;pointer-events:none':''}" onclick="event.stopPropagation();confirmarSimpatizante('${s.id}',${i})" title="Registrar confirmación del simpatizante">✋ Confirmar</button>`;
+          }
+        }
+        const btnDisabled = visit ? 'opacity:.4;pointer-events:none;' : '';
+        const btnTitle = visit ? 'Ya visitado' : '';
         return `<div class="ruta-parada-card ${visit?'ruta-parada-visitada':''}" onclick="irAParada(${i})">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="width:24px;height:24px;border-radius:50%;background:${C_PRIMARY};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">${i+1}</div>
@@ -6155,14 +6349,15 @@
               ${evThumb}
               ${encBtn}
               ${votoBtn}
+              ${confBtn}
               ${noAbrioBadge}
               ${resBadge}
               ${vcBlock}
             </div>
             <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
               ${gpsBadge}
-              <button class="btn-small ${visit?'btn-primary':'btn-secondary'}" data-id="${s.id}" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();toggleVisitado('${s.id}',${i})" title="${visitLabel}">${visit?'✓':'○'}</button>
-              <button class="btn-small btn-danger" data-id="${s.id}" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();marcarNoAbrio('${s.id}',${i})" title="${s.no_abrio?'Quitar "no abrió"':'Marcar como no abrió'}">${s.no_abrio?'No abrió ✓':'No abrió'}</button>
+              <button class="btn-small btn-secondary" data-id="${s.id}" style="padding:2px 6px;font-size:9px;${btnDisabled}" onclick="event.stopPropagation();toggleVisitado('${s.id}',${i})" title="${btnTitle||'Marcar como visitado'}">${visit?'✓ Visitado':'○'}</button>
+              <button class="btn-small btn-danger" data-id="${s.id}" style="padding:2px 6px;font-size:9px;${btnDisabled}" onclick="event.stopPropagation();marcarNoAbrio('${s.id}',${i})" title="${btnTitle||'Marcar como no abrió'}">${s.no_abrio?'No abrió ✓':'No abrió'}</button>
             </div>
           </div>
         </div>`;
@@ -6297,7 +6492,7 @@
     URL.revokeObjectURL(url);
   }
 
-  function irAParada(idx) {
+  window.irAParada = function(idx) {
     if (!rutaData || !rutaMap || idx < 0 || idx >= rutaData.paradas.length) return;
     const p = rutaData.paradas[idx];
     rutaMap.setView([p.ubicacion.lat, p.ubicacion.lng], 18);
@@ -7081,7 +7276,13 @@
   }
 
   function partesNombre(nombre, apPaterno, apMaterno) {
-    if (apPaterno || apMaterno) return { nombre: nombre || '', apPaterno: apPaterno || '', apMaterno: apMaterno || '' };
+    if (apPaterno || apMaterno) {
+      let n = (nombre || '').trim();
+      const upper = n.toUpperCase();
+      if (apMaterno && upper.endsWith(' ' + apMaterno.toUpperCase())) n = n.slice(0, -(apMaterno.length + 1)).trim();
+      if (apPaterno && n.toUpperCase().endsWith(' ' + apPaterno.toUpperCase())) n = n.slice(0, -(apPaterno.length + 1)).trim();
+      return { nombre: n, apPaterno: apPaterno || '', apMaterno: apMaterno || '' };
+    }
     const t = String(nombre || '').trim().split(/\s+/).filter(Boolean);
     if (t.length >= 3) return { nombre: t.slice(0, t.length - 2).join(' '), apPaterno: t[t.length - 2], apMaterno: t[t.length - 1] };
     if (t.length === 2) return { nombre: t[0], apPaterno: t[1], apMaterno: '' };
@@ -7165,34 +7366,34 @@
       <input type="text" id="f-colonia" placeholder="Colonia" value="${data.colonia || ''}" style="flex:1.5" autocomplete="off">
       <div id="f-colonia-sug" style="position:absolute;top:100%;left:0;right:0;z-index:999;background:#fff;border:1px solid #ddd;border-radius:4px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;font-size:13px"></div></div>
       <div class="form-row" style="align-items:flex-end">
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Sección (auto-detectada)</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" style="width:100%;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;box-sizing:border-box"><option value="">Auto-detectar</option></select></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
         <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
         <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
-        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
+        <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;box-sizing:border-box"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;box-sizing:border-box"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;box-sizing:border-box"><option value=""></option></select></label>
+        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Prioridad</span><select id="f-prioridad" style="width:100%;box-sizing:border-box"><option value="0" ${data.prioridad==0?'selected':''}>Baja</option><option value="1" ${data.prioridad==1?'selected':''}>Media</option><option value="2" ${data.prioridad==2?'selected':''}>Alta</option><option value="3" ${data.prioridad==3?'selected':''}>Máxima</option></select></label>
       </div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-      <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label>
-      <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado Local</span><select id="f-intencion_voto_diputado" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label></div>
+      <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente Municipal</span><select id="f-intencion_voto_presidente" style="width:100%;box-sizing:border-box"></select></label>
+      <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado Local</span><select id="f-intencion_voto_diputado" style="width:100%;box-sizing:border-box"></select></label></div>
       <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
         <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
           <label style="flex:2;min-width:160px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Estatus Visita</span>
-          <select id="f-motivo_puerta" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0" title="Si la persona no abrió o no quiso dar información, elige el estatus">
+          <select id="f-motivo_puerta" style="width:100%;box-sizing:border-box" title="Si la persona no abrió o no quiso dar información, elige el estatus">
             <option value="">Entrevista realizada</option>
             ${(window._estatusVisita && window._estatusVisita.length ? window._estatusVisita : [{ clave: 'no_abrio', nombre: 'No abrió' }, { clave: 'sin_info', nombre: 'No proporcionó info' }, { clave: 'con_prisa', nombre: 'Tenía prisa' }, { clave: 'otro', nombre: 'Otro motivo' }])
               .map(e => `<option value="${e.clave}" ${(data.motivo_puerta === e.clave || (esNuevo && !data.motivo_puerta && e.clave === 'no_abrio')) ? 'selected' : ''}>${e.nombre}</option>`).join('')}
           </select></label>
           <input type="hidden" id="f-no_abrio" value="${data.no_abrio ? '1' : ''}">
           <label style="flex:none;width:96px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Votantes extra</span>
-          <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:100%;height:42px;box-sizing:border-box;text-align:center;padding:0;margin-bottom:0"></label>
+          <input type="number" id="f-votantes_casa" min="0" max="20" value="${Math.max(0, (data.votantes_casa || 1) - 1)}" style="flex:none;width:60px;box-sizing:border-box;text-align:center"></label>
           <button type="button" class="btn-small btn-secondary" id="f-btn-vc" style="flex:none;font-size:11px;height:42px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin:0" onclick="abrirModalVotantesCasa('f')">👥 Votantes</button>
         </div>
       </div>
@@ -7204,15 +7405,15 @@
       <div class="form-row"><input type="text" id="f-nombre" placeholder="Nombre(s)" value="${nm.nombre}" required style="flex:1.4">
       <input type="text" id="f-apellido_paterno" placeholder="Apellido paterno" value="${nm.apPaterno}" style="flex:1">
       <input type="text" id="f-apellido_materno" placeholder="Apellido materno" value="${nm.apMaterno}" style="flex:1"></div>
-      <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Fecha de nacimiento</span><input type="date" id="f-fecha_nacimiento" value="${data.fecha_nacimiento ? String(data.fecha_nacimiento).slice(0,10) : ''}" max="${new Date().toISOString().slice(0,10)}" required style="width:100%;height:42px;box-sizing:border-box"></label>
-      <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Edad</span><input type="number" id="f-edad" placeholder="auto" value="${data.edad || ''}" min="0" max="150" style="width:100%;height:42px;box-sizing:border-box"></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Teléfono</span><input type="tel" id="f-telefono" value="${data.telefono || ''}" required style="width:100%;height:42px;box-sizing:border-box"></label></div>
+      <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Fecha de nacimiento</span><input type="date" id="f-fecha_nacimiento" value="${data.fecha_nacimiento ? String(data.fecha_nacimiento).slice(0,10) : ''}" max="${new Date().toISOString().slice(0,10)}" required style="width:100%;box-sizing:border-box"></label>
+      <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Edad</span><input type="number" id="f-edad" placeholder="auto" value="${data.edad || ''}" min="0" max="150" style="width:100%;box-sizing:border-box"></label>
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Teléfono</span><input type="tel" id="f-telefono" value="${data.telefono || ''}" required style="width:100%;box-sizing:border-box"></label></div>
       <div class="form-row"><input type="email" id="f-correo" placeholder="Correo electronico (opcional)" value="${data.correo || ''}" style="flex:1">
       <input type="text" id="f-curp" placeholder="CURP (18 caracteres)" value="${data.curp || ''}" maxlength="18" required style="flex:1" autocomplete="off">
       <input type="text" id="f-ine" placeholder="INE / Credencial" value="${data.ine || ''}" required style="flex:1"></div>
-      <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Vigencia INE</span><input type="date" id="f-vigencia_ine" value="${data.vigencia_ine ? String(data.vigencia_ine).slice(0,10) : ''}" required style="width:100%;height:42px;box-sizing:border-box"></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente</span><select id="f-intencion_voto_presidente" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado</span><select id="f-intencion_voto_diputado" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"></select></label></div>
+      <div class="form-row"><label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Vigencia INE</span><input type="date" id="f-vigencia_ine" value="${data.vigencia_ine ? String(data.vigencia_ine).slice(0,10) : ''}" required style="width:100%;box-sizing:border-box"></label>
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Presidente</span><select id="f-intencion_voto_presidente" style="width:100%;box-sizing:border-box"></select></label>
+      <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado</span><select id="f-intencion_voto_diputado" style="width:100%;box-sizing:border-box"></select></label></div>
       <div class="form-row"><select id="f-estado" required style="flex:1"></select><select id="f-municipio" required style="flex:1"></select>
       <input type="text" id="f-cp" placeholder="CP" value="${data.cp || ''}" required style="flex:0.5"></div>
       <div class="form-row" style="position:relative"><input type="text" id="f-calle" placeholder="Calle" value="${data.calle || ''}" required style="flex:2">
@@ -7220,16 +7421,16 @@
       <input type="text" id="f-colonia" placeholder="Colonia" value="${data.colonia || ''}" required style="flex:1.5" autocomplete="off">
       <div id="f-colonia-sug" style="position:absolute;top:100%;left:0;right:0;z-index:999;background:#fff;border:1px solid #ddd;border-radius:4px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;font-size:13px"></div></div>
       <div class="form-row" style="align-items:flex-end">
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" required style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Sección (auto-detectada)</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value="">Auto-detectar</option></select></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="width:100%;height:42px;box-sizing:border-box"></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" required style="width:100%;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;box-sizing:border-box"><option value="">Auto-detectar</option></select></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
         <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
         <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;height:42px;box-sizing:border-box;padding:0 10px;margin-bottom:0"><option value=""></option></select></label>
+        <label style="flex:none;width:100px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;box-sizing:border-box"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;box-sizing:border-box"><option value=""></option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Ocupación</span><select id="f-ocupacion" data-valor="${data.ocupacion_id || ''}" style="width:100%;box-sizing:border-box"><option value=""></option></select></label>
       </div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>

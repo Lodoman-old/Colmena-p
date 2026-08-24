@@ -328,7 +328,7 @@ const API = (() => {
     actualizarFiltroCampana(id, data) { return request('PUT', `/api/filtros-campana/${id}`, data); },
     eliminarFiltroCampana(id) { return request('DELETE', `/api/filtros-campana/${id}`); },
     detectarSeccion(lat, lng) { return request('GET', `/api/detectar-seccion?lat=${lat}&lng=${lng}`); },
-    uploadImage(base64) { return request('POST', '/api/upload', { image: base64 }, 8000); },
+    uploadImage(base64) { return request('POST', '/api/upload', { image: base64 }, 30000); },
     requestWithTimeout(method, path, body, timeoutMs) { return request(method, path, body, timeoutMs); },
     limpiarCache: limpiarCache,
     isStaleData() { return _staleServed; }

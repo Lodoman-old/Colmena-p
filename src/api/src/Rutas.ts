@@ -148,7 +148,8 @@ export class RoutingService {
                true as es_simpatizante,
                0 as prioridad,
                c.calle, c.numero, c.colonia,
-               (v.id IS NOT NULL) AS ya_voto
+               (v.id IS NOT NULL) AS ya_voto,
+               c.estado_confirmacion, c.ultima_confirmacion
         FROM ciudadanos_comprometidos c
         LEFT JOIN votos v ON v.comprometido_id = c.id
         WHERE c.seccion_id = $1
@@ -239,7 +240,9 @@ export class RoutingService {
       ya_voto: !!row.ya_voto,
       direccion: [row.calle, row.numero].filter(Boolean).join(' '),
       colonia: row.colonia,
-      votantes_casa: vcPorCiudadano.get(row.id) || []
+      votantes_casa: vcPorCiudadano.get(row.id) || [],
+      estado_confirmacion: row.estado_confirmacion || null,
+      ultima_confirmacion: row.ultima_confirmacion || null
     }));
   }
 
