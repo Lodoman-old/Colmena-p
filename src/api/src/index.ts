@@ -3839,15 +3839,28 @@ app.get('/api/exportar/excel', authenticateToken, async (req: Request, res: Resp
       COALESCE(${tbl}.apellido_materno, CASE WHEN array_length(p.t, 1) >= 3 THEN p.t[array_length(p.t, 1)] END) as apellido_materno`;
     const joinPartes = (tbl: string, alias: string) => `
       JOIN (SELECT id, string_to_array(btrim(regexp_replace(${tbl}.nombre, '\\s+', ' ', 'g')), ' ') AS t FROM ${tbl}) p ON p.id = ${alias}.id`;
-    const excelResponse = (sheetName: string, filename: string, header: string[], rows: any[][]) => {
+    const excelResponse = (sheetName: string, filename: string, header: string[], rows: any[][], cellStyles?: (row: number, col: number, val: any) => any) => {
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      if (cellStyles) {
+        for (let r = 0; r < rows.length; r++) {
+          for (let c = 0; c < rows[r].length; c++) {
+            const addr = XLSX.utils.encode_cell({ r: r + 1, c });
+            const sty = cellStyles(r + 1, c, rows[r][c]);
+            if (sty) ws[addr].s = sty;
+          }
+        }
+        for (let c = 0; c < header.length; c++) {
+          const addr = XLSX.utils.encode_cell({ r: 0, c });
+          ws[addr].s = { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: '1F4E79' } }, alignment: { horizontal: 'center' } };
+        }
+      }
       ws['!cols'] = header.map((h, i) => {
         const maxLen = rows.reduce((m, r) => Math.max(m, String(r[i] ?? '').length), h.length);
         return { wch: Math.min(Math.max(maxLen + 2, h.length + 2), 40) };
       });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(buf);
@@ -3954,6 +3967,62 @@ const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'C
       return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.calle, r.numero, r.colonia, r.cp, r.edad, r.seccion_num, r.municipio, r.prioridad, r.notas, r.timestamp_registro];
     });
     excelResponse('Ciudadanos', 'ciudadanos.xlsx', header, body);
+    return;
+  }
+  if (tipo === 'votacion-secciones' || tipo === 'votacion-casillas') {
+    const ExcelJS = require('exceljs');
+    const secId = String(req.query.seccion_id || '');
+    let query = `SELECT c.id as seccion_id, cas.nombre as casilla, cas.meta_votos,
+        COALESCE(v.cnt,0) as votos, COALESCE(v.fav,0) as votos_favorito
+      FROM casillas cas
+      JOIN secciones_electorales c ON c.id = cas.seccion_id
+      LEFT JOIN LATERAL (
+        SELECT count(*)::int cnt, count(*) FILTER (WHERE partido_id = (SELECT id FROM partidos_politicos WHERE es_favorito LIMIT 1))::int fav
+        FROM votos WHERE casilla_id = cas.id
+      ) v ON true`;
+    const params: any[] = [];
+    if (secId) { query += ' WHERE c.id = $1'; params.push(secId); }
+    query += ' ORDER BY c.id, cas.nombre';
+    const result = await pool.query(query, params);
+    const hf = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+    const hfont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    const bdr: any[] = [{ style: 'thin', color: { argb: 'FFB0B0B0' } }, { style: 'thin', color: { argb: 'FFB0B0B0' } }, { style: 'thin', color: { argb: 'FFB0B0B0' } }, { style: 'thin', color: { argb: 'FFB0B0B0' } }];
+    const colorir = (row: any, pct: number) => {
+      const ec = row.getCell('estatus'), pc = row.getCell('pct');
+      let f: any, fn: any;
+      if (pct >= 100) { f = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5F5E3' } }; fn = { bold: true, color: { argb: 'FF1E8449' } }; }
+      else if (pct >= 50) { f = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDEBD0' } }; fn = { bold: true, color: { argb: 'FFB7950B' } }; }
+      else { f = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFADBD8' } }; fn = { bold: true, color: { argb: 'FFC0392B' } }; }
+      pc.fill = f; pc.font = fn; ec.fill = f; ec.font = fn;
+    };
+    if (tipo === 'votacion-secciones') {
+      const ps: any = {};
+      for (const r of result.rows) {
+        if (!ps[r.seccion_id]) ps[r.seccion_id] = { seccion_id: r.seccion_id, casillas: 0, meta: 0, votos: 0, votos_favorito: 0 };
+        ps[r.seccion_id].casillas++; ps[r.seccion_id].meta += r.meta_votos || 0; ps[r.seccion_id].votos += r.votos; ps[r.seccion_id].votos_favorito += r.votos_favorito;
+      }
+      const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Votacion por Seccion', { views: [{ state: 'frozen', ySplit: 1 }] });
+      ws.columns = [{ header: 'Seccion', key: 'seccion', width: 12 }, { header: 'Casillas', key: 'casillas', width: 12 }, { header: 'Meta', key: 'meta', width: 10 }, { header: 'Ya votaron', key: 'votos', width: 14 }, { header: 'Favorito', key: 'fav', width: 12 }, { header: '% Avance', key: 'pct', width: 12 }, { header: 'Estatus', key: 'estatus', width: 16 }];
+      ws.getRow(1).eachCell(c => { c.fill = hf; c.font = hfont; c.border = bdr; c.alignment = { horizontal: 'center', vertical: 'middle' }; }); ws.getRow(1).height = 22;
+      Object.values(ps).forEach((s: any) => {
+        const pct = s.meta ? Math.round((s.votos / s.meta) * 100) : 0;
+        const row = ws.addRow({ seccion: s.seccion_id, casillas: s.casillas, meta: s.meta, votos: s.votos, fav: s.votos_favorito, pct: pct + '%', estatus: pct >= 100 ? 'COMPLETADA' : pct >= 50 ? 'EN PROCESO' : 'PENDIENTE' });
+        row.eachCell(c => { c.border = bdr; c.alignment = { horizontal: 'center', vertical: 'middle' }; }); colorir(row, pct);
+      });
+      const buf = await wb.xlsx.writeBuffer(); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.setHeader('Content-Disposition', 'attachment; filename="votacion-secciones.xlsx"'); res.send(buf);
+    } else {
+      const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Votacion por Casilla', { views: [{ state: 'frozen', ySplit: 1 }] });
+      ws.columns = [{ header: 'Seccion', key: 'seccion', width: 12 }, { header: 'Casilla', key: 'casilla', width: 22 }, { header: 'Meta', key: 'meta', width: 10 }, { header: 'Ya votaron', key: 'votos', width: 14 }, { header: 'Favorito', key: 'fav', width: 12 }, { header: '% Avance', key: 'pct', width: 12 }, { header: 'Estatus', key: 'estatus', width: 16 }];
+      ws.getRow(1).eachCell(c => { c.fill = hf; c.font = hfont; c.border = bdr; c.alignment = { horizontal: 'center', vertical: 'middle' }; }); ws.getRow(1).height = 22;
+      result.rows.forEach((r: any) => {
+        const pct = r.meta_votos ? Math.round((r.votos / r.meta_votos) * 100) : 0;
+        const row = ws.addRow({ seccion: r.seccion_id, casilla: r.casilla, meta: r.meta_votos, votos: r.votos, fav: r.votos_favorito, pct: pct + '%', estatus: pct >= 100 ? 'COMPLETADA' : pct >= 50 ? 'EN PROCESO' : 'PENDIENTE' });
+        row.eachCell(c => { c.border = bdr; c.alignment = { horizontal: 'center', vertical: 'middle' }; }); row.getCell('casilla').alignment = { horizontal: 'left', vertical: 'middle' }; colorir(row, pct);
+      });
+      const buf = await wb.xlsx.writeBuffer(); res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.setHeader('Content-Disposition', 'attachment; filename="votacion-casillas.xlsx"'); res.send(buf);
+    }
+    return;
+  }
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

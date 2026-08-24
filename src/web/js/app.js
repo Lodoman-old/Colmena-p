@@ -3513,18 +3513,17 @@
   }
 
   window.exportarSeguimientoCsv = async function(tipo) {
-    const secId = document.getElementById('rep-filtro-seccion').value || null;
-    const filtroTexto = secId ? `-seccion-${secId}` : '';
+    const secId = document.getElementById('rep-filtro-seccion').value || '';
+    const tipoExcel = tipo === 'secciones' ? 'votacion-secciones' : 'votacion-casillas';
+    const params = secId ? `?seccion_id=${secId}` : '';
     try {
-      const v = await API.getReporteVotacion(secId);
-      if (tipo === 'secciones') {
-        const filas = (v.por_seccion || []).map(s => [s.seccion_id, s.casillas, s.meta, s.votos, s.votos_favorito, s.meta ? Math.round((s.votos / s.meta) * 100) : 0]);
-        descargarCsv(`seguimiento-secciones${filtroTexto}.csv`, filas, ['Seccion', 'Casillas', 'Meta', 'Ya votaron', 'Votos favorito', '% avance']);
-      } else {
-        const filas = (v.por_casilla || []).map(c => [c.seccion_id, c.casilla, c.meta_votos, c.votos, c.votos_favorito, c.meta_votos ? Math.round((c.votos / c.meta_votos) * 100) : 0]);
-        descargarCsv(`seguimiento-casillas${filtroTexto}.csv`, filas, ['Seccion', 'Casilla', 'Meta', 'Ya votaron', 'Votos favorito', '% avance']);
-      }
-    } catch (err) { alert('Error al exportar CSV: ' + (err?.message || err)); }
+      const blob = await API.requestBlob('GET', `/api/exportar/excel?tipo=${tipoExcel}${params}`);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = tipo === 'secciones' ? 'votacion-secciones.xlsx' : 'votacion-casillas.xlsx';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) { alert('Error al exportar: ' + (err?.message || err)); }
   };
 
   const INC_TIPOS = { material: 'Falta material', instalacion: 'No instaló / tardó', presencia: 'Presencia o provocaciones', larga_fila: 'Filas largas', seguridad: 'Problema de seguridad', otro: 'Otro' };
