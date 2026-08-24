@@ -5567,7 +5567,7 @@
       : (rutaModalTipo === 'filtro'
         ? 'Visitar solo a los ciudadanos que cumplan los filtros elegidos (sexo, edad, discapacidad, ocupación, etc.).'
         : 'Visitar a todos los ciudadanos de la sección para aplicar la encuesta.');
-    document.getElementById('ruta-modal-encuesta-opts').classList.toggle('hidden', !(rutaModalTipo === 'encuesta' || rutaModalTipo === 'seguros'));
+    document.getElementById('ruta-modal-encuesta-opts').classList.toggle('hidden', !(rutaModalTipo === 'encuesta' || rutaModalTipo === 'seguros' || rutaModalTipo === 'filtro'));
     const filtroOpts = document.getElementById('ruta-modal-filtro-opts');
     if (filtroOpts) {
       filtroOpts.classList.toggle('hidden', rutaModalTipo !== 'filtro');
@@ -5674,7 +5674,7 @@
       const status = document.getElementById('ruta-modal-status');
       const selected = [...document.querySelectorAll('.ruta-enlace-cb:checked')].map(cb => cb.value);
       if (!selected.length) { status.textContent = 'Selecciona al menos un enlace'; return; }
-      const encuestaId = (rutaModalTipo === 'encuesta' || rutaModalTipo === 'seguros') ? (document.getElementById('ruta-modal-encuesta').value || null) : null;
+      const encuestaId = (rutaModalTipo === 'encuesta' || rutaModalTipo === 'seguros' || rutaModalTipo === 'filtro') ? (document.getElementById('ruta-modal-encuesta').value || null) : null;
       let filtros;
       let destino;
       if (rutaModalTipo === 'filtro') {
