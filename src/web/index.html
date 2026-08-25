@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#e53935">
+  <meta name="theme-color" content="#CC0000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -29,7 +29,7 @@
         <form id="config-form">
           <div class="form-group">
             <label for="server-url">URL del Servidor</label>
-            <input type="url" id="server-url" placeholder="http://192.168.0.16" required>
+            <input type="url" id="server-url" placeholder="http://192.168.0.16" required autocapitalize="none" autocomplete="url" inputmode="url" autocorrect="off" spellcheck="false">
             <small style="color:#999;font-size:11px">Ej: http://192.168.0.16 o https://tudominio.com</small>
           </div>
           <button type="button" class="btn-secondary" id="btn-test-server" style="margin-bottom:8px">Probar conexión</button>
@@ -48,11 +48,11 @@
         <form id="login-form">
           <div class="form-group">
             <label for="email">Correo o usuario</label>
-            <input type="text" id="email" placeholder="correo@ejemplo.com o tu usuario" required autocomplete="username">
+            <input type="text" id="email" placeholder="correo@ejemplo.com o tu usuario" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
           </div>
           <div class="form-group">
             <label for="password">Contraseña</label>
-            <input type="password" id="password" placeholder="••••••••" required>
+            <input type="password" id="password" placeholder="••••••••" required autocapitalize="none" autocomplete="current-password">
           </div>
           <button type="submit" class="btn-primary">Ingresar</button>
           <p id="login-error" class="error-msg"></p>
@@ -580,10 +580,10 @@
               <button class="btn-small btn-secondary" onclick="loadCiudadanos()" title="Refrescar lista" style="margin-left:4px">↻</button></div>
             <div id="ciu-barrido" class="hidden" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
               <div id="ciu-barrido-form" style="flex:1;min-width:280px;background:#fff;border-radius:8px;padding:12px;box-shadow:var(--shadow)">
-                <div style="display:flex;gap:6px;margin-bottom:6px;position:relative">
-                  <input type="text" id="bf-nombre" placeholder="Nombre(s)" style="flex:1.4;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
-                  <input type="text" id="bf-apellido_paterno" placeholder="Ap. paterno" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
-                  <input type="text" id="bf-apellido_materno" placeholder="Ap. materno" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                <div style="display:flex;gap:6px;margin-bottom:6px;position:relative;flex-wrap:wrap">
+                  <input type="text" id="bf-nombre" placeholder="Nombre(s)" style="flex:1.4;min-width:0;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <input type="text" id="bf-apellido_paterno" placeholder="Ap. paterno" style="flex:1;min-width:0;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  <input type="text" id="bf-apellido_materno" placeholder="Ap. materno" style="flex:1;min-width:0;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
                 </div>
                 <div style="display:flex;gap:6px;margin-bottom:6px">
                   <input type="text" id="bf-telefono" placeholder="Telefono" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
@@ -1427,5 +1427,15 @@
   <script src="js/api.js?v=257"></script>
   <script src="js/biometric.js?v=100"></script>
   <script src="js/app.js?v=271"></script>
+  <script>
+    (function(){
+      function lowerInput(e){var i=this.selectionStart,l=this.value.length;this.value=this.value.toLowerCase();this.setSelectionRange(i,i);if(this.value.length!==l)this.setSelectionRange(this.value.length,this.value.length)}
+      ['server-url','email'].forEach(function(id){
+        var el=document.getElementById(id);if(!el)return;
+        el.addEventListener('input',lowerInput);
+        el.addEventListener('blur',lowerInput);
+      });
+    })();
+  </script>
 </body>
 </html>

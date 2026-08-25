@@ -603,12 +603,20 @@
       })
       .catch(function() {});
   }
+  function limpiarBlobCache() {
+    var keys = Object.keys(_blobImgCache);
+    if (keys.length > 50) {
+      var toRemove = keys.slice(0, keys.length - 30);
+      toRemove.forEach(function(k) { URL.revokeObjectURL(_blobImgCache[k]); delete _blobImgCache[k]; });
+    }
+  }
   document.addEventListener('error', function(e) {
     var t = e.target;
     if (t && t.tagName === 'IMG' && t.src && !t.src.startsWith('blob:') && !t.src.startsWith('data:')) {
       if (t.getAttribute('data-blob-tried')) return;
       t.setAttribute('data-blob-tried', '1');
       cargarImgViaBlob(t);
+      limpiarBlobCache();
     }
   }, true);
 
@@ -969,7 +977,7 @@
     }
     document.getElementById('config-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const url = document.getElementById('server-url').value.replace(/\/+$/, '');
+      const url = document.getElementById('server-url').value.trim().toLowerCase().replace(/\/+$/, '');
       if (!url) { document.getElementById('config-status').textContent = 'Ingresa una URL válida'; return; }
       localStorage.setItem('colmena_server', url);
       document.getElementById('config-status').textContent = 'Conectando...';
@@ -977,7 +985,7 @@
       location.reload();
     });
     document.getElementById('btn-test-server').addEventListener('click', async () => {
-      const url = document.getElementById('server-url').value.replace(/\/+$/, '');
+      const url = document.getElementById('server-url').value.trim().toLowerCase().replace(/\/+$/, '');
       const status = document.getElementById('config-status');
       if (!url) { status.textContent = 'Ingresa una URL válida'; status.style.color = cssColor('--color-primary'); return; }
       status.textContent = 'Probando...'; status.style.color = '#999';

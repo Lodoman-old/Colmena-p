@@ -1,4 +1,4 @@
-const CACHE = 'colmena-v30';
+const CACHE = 'colmena-v31';
 const PRECACHE = [
   '/css/styles.css',
   '/js/app.js',
@@ -58,10 +58,17 @@ self.addEventListener('fetch', e => {
 async function cacheFirst(req) {
   const hit = await caches.match(req);
   if (hit) {
-    fetch(req).then(res => {
+    fetch(req).then(async res => {
       if (res && res.ok) {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        const oldText = await hit.clone().text().catch(() => '');
+        const newText = await res.clone().text().catch(() => '');
+        if (oldText !== newText) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+          const path = new URL(req.url).pathname;
+          const list = await clients.matchAll({ includeUncontrolled: true });
+          list.forEach(client => client.postMessage({ type: 'sw-refresh', path }));
+        }
       }
     }).catch(() => {});
     return hit;

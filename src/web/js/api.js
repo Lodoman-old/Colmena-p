@@ -40,6 +40,7 @@ const API = (() => {
   const BASE = localStorage.getItem('colmena_server') || '';
   const _getCache = new Map();
   const _getCacheTtl = 20000;
+  let _refreshing = false;
   const _lsPathRe = /^\/api\/(secciones\/\d+|secciones|partidos|estados(\/default)?|municipios(\/\d+|\/default)?)$/;
   function _lsKey(path) { return 'colmena_api_cache_' + path.replace(/[^a-z0-9]/gi, '_'); }
   function lsCacheGet(path) {
@@ -143,8 +144,11 @@ const API = (() => {
     let data;
     try { data = JSON.parse(text); } catch { data = { error: text || 'Error de conexión' }; }
     if (!res.ok) {
-      if ((res.status === 401 || res.status === 403) && /token/i.test(data.error || '')) {
-        if (await renovarSesion()) return request(method, path, body, timeoutMs);
+      if ((res.status === 401 || res.status === 403) && /token/i.test(data.error || '') && !_refreshing) {
+        _refreshing = true;
+        const ok = await renovarSesion();
+        _refreshing = false;
+        if (ok) return request(method, path, body, timeoutMs);
         cerrarSesionTokenExpirado();
       }
       if (method === 'GET') {
@@ -163,7 +167,14 @@ const API = (() => {
         _getCache.set(cacheKey, { ts: Date.now(), data });
         lsCacheSet(path, data);
       }
-    } else _getCache.clear();
+    } else {
+      for (const k of _getCache.keys()) {
+        const reqPath = k.split(' ')[1];
+        if (reqPath && path && (reqPath.startsWith(path.split('/').slice(0, 3).join('/')) || path.startsWith(reqPath.split('/').slice(0, 3).join('/')))) {
+          _getCache.delete(k);
+        }
+      }
+    }
     return data;
   }
 
