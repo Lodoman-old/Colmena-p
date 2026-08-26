@@ -1,23 +1,24 @@
-﻿{
-    "name":  "colmena",
-    "version":  "1.0.0",
-    "private":  true,
-    "scripts":  {
-                    "cap:add":  "npx cap add android",
-                    "cap:sync":  "npx cap sync",
-                    "cap:open":  "npx cap open android",
-                    "cap:build":  "npx cap copy \u0026\u0026 cd android \u0026\u0026 ./gradlew assembleDebug",
-                    "postinstall":  "patch-package"
-                },
-    "dependencies":  {
-                         "@capacitor/android":  "^8.4.2",
-                         "@capacitor/cli":  "^8.4.2",
-                         "@capacitor/core":  "^8.4.2",
-                         "@capacitor/geolocation":  "^8.2.0",
-                         "@capacitor/push-notifications":  "^8.1.2",
-                         "capacitor-native-biometric":  "^4.2.2"
-                     },
-    "devDependencies":  {
-                            "patch-package":  "^8.0.1"
-                        }
+{
+    "name": "colmena",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "cap:add": "npx cap add android",
+        "cap:sync": "npx cap sync",
+        "cap:open": "npx cap open android",
+        "cap:build": "npx cap copy && cd android && ./gradlew assembleDebug",
+        "postinstall": "patch-package"
+    },
+    "dependencies": {
+        "@capacitor/android": "^8.4.2",
+        "@capacitor/cli": "^8.4.2",
+        "@capacitor/core": "^8.4.2",
+        "@capacitor/geolocation": "^8.2.0",
+        "@capacitor/push-notifications": "^8.1.2",
+        "capacitor-native-biometric": "^4.2.2",
+        "puppeteer": "^25.9.0"
+    },
+    "devDependencies": {
+        "patch-package": "^8.0.1"
+    }
 }

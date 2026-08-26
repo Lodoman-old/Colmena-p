@@ -1649,6 +1649,41 @@ app.post('/api/comprometidos/:id/solicitar-correccion', authenticateToken, async
   } catch { res.status(500).json({ error: 'Error al solicitar corrección' }); }
 });
 
+app.post('/api/comprometidos/:id/reasignar', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!esAdminOCoordinador(user) && user.rol !== 'seccional') { res.status(403).json({ error: 'No autorizado' }); return; }
+    const { capturista_id } = req.body;
+    if (!capturista_id) { res.status(400).json({ error: 'capturista_id requerido' }); return; }
+    const scope = user.rol === 'seccional'
+      ? ' AND c.created_by IN (SELECT capturista_id FROM seccional_capturistas WHERE seccional_id=$2)'
+      : '';
+    const owner = await pool.query(
+      'SELECT c.id, c.created_by, c.nombre, c.correccion_solicitada_at FROM ciudadanos_comprometidos c WHERE c.id=$1' + scope,
+      [req.params.id, ...(user.rol === 'seccional' ? [user.userId] : [])]
+    );
+    if (!owner.rows.length) { res.status(404).json({ error: 'Captura no encontrada en tu alcance' }); return; }
+    const capCheck = user.rol === 'seccional'
+      ? await pool.query('SELECT u.id FROM usuarios u JOIN seccional_capturistas sc ON sc.capturista_id=u.id WHERE u.id=$1 AND sc.seccional_id=$2', [capturista_id, user.userId])
+      : await pool.query('SELECT id FROM usuarios WHERE id=$1 AND rol=$2', [capturista_id, 'capturista']);
+    if (!capCheck.rows.length) { res.status(400).json({ error: 'Capturista no válido o no asignado a ti' }); return; }
+    const oldCapturista = owner.rows[0].created_by;
+    if (oldCapturista === capturista_id) { res.status(400).json({ error: 'El ciudadano ya está asignado a ese capturista' }); return; }
+    await pool.query(
+      'UPDATE ciudadanos_comprometidos SET created_by=$1, correccion_solicitada_at=NULL, correccion_solicitada_by=NULL WHERE id=$2',
+      [capturista_id, req.params.id]
+    );
+    try { await notificacionService.enviarPushAUsuarios([capturista_id], 'Ciudadano reasignado', `Se te asignó el registro de ${owner.rows[0].nombre || 'un ciudadano'}`); } catch (e) { console.warn('push reasignar:', e); }
+    try {
+      const sockets = await io.fetchSockets();
+      sockets.forEach(s => { if ((s as any).userId === capturista_id) s.emit('ciudadano-reasignado', { id: req.params.id }); });
+    } catch (e) { console.warn('emit reasignar:', e); }
+    const oldName = await pool.query('SELECT nombre FROM usuarios WHERE id=$1', [oldCapturista]);
+    const newName = await pool.query('SELECT nombre FROM usuarios WHERE id=$1', [capturista_id]);
+    res.json({ message: `Reasignado de ${(oldName.rows[0] as any)?.nombre || 'desconocido'} a ${(newName.rows[0] as any)?.nombre || 'desconocido'}` });
+  } catch (e: any) { console.error('POST /api/comprometidos/:id/reasignar error:', e?.message || e); res.status(500).json({ error: 'Error al reasignar' }); }
+});
+
 app.get('/api/reportes/capturas-por-capturista', authenticateToken, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;

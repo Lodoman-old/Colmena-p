@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual del Representante de Casilla - PRIoridad Territorial</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="manual">
+
+  <div class="cover">
+    <img src="../src/web/img/PRI_logo.jpg" alt="Logo PRI" class="logo">
+    <h1>PRIoridad Territorial</h1>
+    <h2>Manual del Representante de Casilla</h2>
+    <p class="subtitle">Gesti&oacute;n de casilla, listado electoral y reporte de incidencias</p>
+    <p class="version">Versi&oacute;n 1.0 | Agosto 2026</p>
+  </div>
+
+  <div class="toc">
+    <h3>Contenido</h3>
+    <ol>
+      <li><a href="#casilla">Mi Casilla (Vista Principal)</a></li>
+      <li><a href="#listado">Listado Electoral</a></li>
+      <li><a href="#ya-voto">Marcar "Ya Voto"</a></li>
+      <li><a href="#incidencias">Incidencias</a></li>
+    </ol>
+  </div>
+
+  <p><span class="badge badge-representante">Representante de Casilla</span> El Representante gestiona su casilla asignada: visualiza el listado electoral, marca ciudadanos que ya votaron y reporta incidencias del proceso electoral.</p>
+
+  <!-- 1. MI CASILLA -->
+  <h2 id="casilla">1. Mi Casilla (Vista Principal)</h2>
+  <p>Al iniciar sesi&oacute;n, la primera pantalla muestra la informaci&oacute;n de tu casilla asignada.</p>
+
+  <h3>1.1 Ver mis casillas</h3>
+  <div class="step">
+    <span class="step-number">1</span> Al iniciar sesi&oacute;n, ver&aacute;s la informaci&oacute;n de tu casilla.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Se muestra: n&uacute;mero de casilla, secci&oacute;n, direcci&oacute;n del punto de votaci&oacute;n.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Si tienes m&aacute;s de una casilla asignada, puedes alternar entre ellas.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/12-casillas.png" alt="Informacin de la casilla asignada" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 2. LISTADO ELECTORAL -->
+  <h2 id="listado">2. Listado Electoral</h2>
+  <p>Desde tu casilla puedes ver el listado completo de ciudadanos habilitados para votar en esa casilla.</p>
+
+  <h3>2.1 Ver el listado</h3>
+  <div class="step">
+    <span class="step-number">1</span> En la secci&oacute;n de casilla, toca <strong>"Ver listado"</strong> o navega a la pesta&ntilde;a de listado.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Se muestra la tabla con todos los ciudadanos de la casilla:
+    <ul>
+      <li>Nombre completo</li>
+      <li>Direcci&oacute;n</li>
+      <li>Estatus (pendiente / ya vot&oacute;)</li>
+    </ul>
+  </div>
+
+  <h3>2.2 Buscar ciudadano en el listado</h3>
+  <div class="step">
+    <span class="step-number">1</span> Usa la barra de b&uacute;squeda para encontrar a un ciudadano por nombre.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/12-casillas.png" alt="Listado electoral de la casilla con estatus" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 3. YA VOTO -->
+  <h2 id="ya-voto">3. Marcar "Ya Voto"</h2>
+  <p>Cuando un ciudadano se presenta a votar, puedes marcarlo en el sistema:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Busca al ciudadano en el listado (por nombre o desplaz&aacute;ndote).
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca el bot&oacute;n o checkbox <strong>"Ya vot&oacute;"</strong> al lado de su nombre.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> El estatus del ciudadano cambiar&aacute; de <strong>"Pendiente"</strong> a <strong>"Ya vot&oacute;"</strong> (marcado en verde).
+  </div>
+
+  <div class="info-box">
+    <strong>Conteo en tiempo real:</strong> A medida que marcas ciudadanos, el sistema actualiza autom&aacute;ticamente el conteo de participaci&oacute;n de la casilla.
+  </div>
+
+  <div class="warning-box">
+    <strong>Importante:</strong> Una vez marcado "Ya vot&oacute;", no se puede deshacer desde esta interfaz. Si marcas por error, contacta a tu coordinador.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/12-casillas.png" alt="Listado con algunos ciudadanos marcados como "Ya vot"" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 4. INCIDENCIAS -->
+  <h2 id="incidencias">4. Incidencias</h2>
+  <p>Si detectas alg&uacute;n problema en tu casilla, puedes reportarlo:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Incidencias</strong> en el men&uacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nueva incidencia"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Selecciona el tipo de incidencia:
+    <ul>
+      <li>Falla en equipamiento</li>
+      <li>Falta de insumos</li>
+      <li>Problemas de seguridad</li>
+      <li>Afluencia excesiva</li>
+      <li>Otro</li>
+    </ul>
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Escribe una descripci&oacute;n detallada.
+  </div>
+  <div class="step">
+    <span class="step-number">5</span> Agrega fotos de evidencia si es posible.
+  </div>
+  <div class="step">
+    <span class="step-number">6</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="info-box">
+    <strong>Las incidencias se env&iacute;an en tiempo real</strong> al coordinador y administrador para que tomen acci&oacute;n.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/07-incidencias.png" alt="Formulario de incidencia de casilla" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <div class="footer">
+    <p>PRIoridad Territorial &copy; 2026 | Manual del Representante de Casilla</p>
+  </div>
+
+</div>
+</body>
+</html>

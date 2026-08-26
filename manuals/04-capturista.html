@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual del Capturista - PRIoridad Territorial</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="manual">
+
+  <div class="cover">
+    <img src="../src/web/img/PRI_logo.jpg" alt="Logo PRI" class="logo">
+    <h1>PRIoridad Territorial</h1>
+    <h2>Manual del Capturista</h2>
+    <p class="subtitle">Registro de ciudadanos y simpatizantes</p>
+    <p class="version">Versi&oacute;n 1.0 | Agosto 2026</p>
+  </div>
+
+  <div class="toc">
+    <h3>Contenido</h3>
+    <ol>
+      <li><a href="#vista-general">Vista General</a></li>
+      <li><a href="#ver-simpatizantes">Ver Simpatizantes</a></li>
+      <li><a href="#crear-simpatizante">Crear Simpatizante</a></li>
+      <li><a href="#editar-simpatizante">Editar Simpatizante</a></li>
+      <li><a href="#buscar">Buscar Ciudadanos</a></li>
+      <li><a href="#correccion">Correcciones Solicitadas</a></li>
+    </ol>
+  </div>
+
+  <p><span class="badge badge-capturista">Capturista</span> El Capturista tiene acceso exclusivo a la secci&oacute;n de Ciudadanos. Puede crear y editar simpatizantes, y atender correcciones solicitadas por el seccional.</p>
+
+  <div class="warning-box">
+    <strong>Restricciones del rol:</strong>
+    <ul>
+      <li>Solo ve la pesta&ntilde;a de <strong>Simpatizantes</strong> (no la pesta&ntilde;a General)</li>
+      <li>No puede ver rutas, encuestas, reportes ni estad&iacute;sticas</li>
+      <li>Solo puede editar ciudadanos que &eacute;l mismo haya creado (o correcciones asignadas)</li>
+      <li>No puede eliminar ciudadanos</li>
+    </ul>
+  </div>
+
+  <!-- 1. VISTA GENERAL -->
+  <h2 id="vista-general">1. Vista General</h2>
+  <p>Al iniciar sesi&oacute;n, ver&aacute;s directamente la secci&oacute;n de <strong>Ciudadanos</strong> con la pesta&ntilde;a de <strong>Simpatizantes</strong> activa.</p>
+
+  <p>La pantalla muestra una tabla con los ciudadanos que has capturado, incluyendo:</p>
+  <ul>
+    <li>Nombre completo</li>
+    <li>Direcci&oacute;n</li>
+    <li>Secci&oacute;n y casilla</li>
+    <li>Tel&eacute;fono</li>
+    <li>Fecha de captura</li>
+  </ul>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Tabla de simpatizantes del capturista" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 2. VER SIMPATIZANTES -->
+  <h2 id="ver-simpatizantes">2. Ver Simpatizantes</h2>
+
+  <h3>2.1 Ver lista completa</h3>
+  <p>Al acceder a Ciudadanos, se muestra autom&aacute;ticamente la lista de simpatizantes que has registrado.</p>
+
+  <h3>2.2 Ver detalles</h3>
+  <div class="step">
+    <span class="step-number">1</span> Toca el icono de <strong>ver</strong> (ojo) en la fila del ciudadano.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Se mostrar&aacute; toda la informaci&oacute;n registrada del ciudadano.
+  </div>
+
+  <h3>2.3 Filtrar</h3>
+  <div class="step">
+    <span class="step-number">1</span> Usa la barra de b&uacute;squeda para filtrar por nombre, direcci&oacute;n o tel&eacute;fono.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Vista de detalles de un simpatizante" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 3. CREAR SIMPATIZANTE -->
+  <h2 id="crear-simpatizante">3. Crear Simpatizante</h2>
+
+  <div class="step">
+    <span class="step-number">1</span> Toca el bot&oacute;n <strong>"+"</strong> o <strong>"Nuevo ciudadano"</strong>.
+  </div>
+
+  <div class="step">
+    <span class="step-number">2</span> Completa los campos obligatorios:
+    <table>
+      <thead>
+        <tr><th>Campo</th><th>Requerido</th><th>Descripci&oacute;n</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nombre</td><td>S&iacute;</td><td>Nombre del ciudadano</td></tr>
+        <tr><td>Apellido Paterno</td><td>S&iacute;</td><td>Apellido paterno</td></tr>
+        <tr><td>Apellido Materno</td><td>No</td><td>Apellido materno</td></tr>
+        <tr><td>Calle</td><td>S&iacute;</td><td>Calle y n&uacute;mero</td></tr>
+        <tr><td>Colonia</td><td>S&iacute;</td><td>Colonia o localidad</td></tr>
+        <tr><td>Secci&oacute;n</td><td>S&iacute;</td><td>Secci&oacute;n electoral</td></tr>
+        <tr><td>Casilla</td><td>S&iacute;</td><td>Casilla de votaci&oacute;n</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="step">
+    <span class="step-number">3</span> Completa campos opcionales:
+    <ul>
+      <li><strong>Tel&eacute;fono</strong> - N&uacute;mero de contacto</li>
+      <li><strong>Email</strong> - Correo electr&oacute;nico</li>
+      <li><strong>Ocupaci&oacute;n</strong> - Profesi&oacute;n u oficio</li>
+      <li><strong>Partido</strong> - Partido pol&iacute;tico afiliado</li>
+      <li><strong>Discapacidad</strong> - Tipo de discapacidad (si aplica)</li>
+      <li><strong>Observaciones</strong> - Notas adicionales</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="step-number">4</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="tip-box">
+    <strong>Consejo:</strong> Si el sistema detecta un ciudadano con datos similares, te mostrar&aacute; una alerta de posible duplicado. Verifica antes de crear uno nuevo.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Formulario de nuevo ciudadano con campos obligatorios marcados" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 4. EDITAR SIMPATIZANTE -->
+  <h2 id="editar-simpatizante">4. Editar Simpatizante</h2>
+
+  <div class="step">
+    <span class="step-number">1</span> En la tabla, toca el icono de <strong>editar</strong> (l&aacute;piz) en la fila del ciudadano.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Modifica los campos necesarios.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Toca <strong>"Actualizar"</strong>.
+  </div>
+
+  <div class="warning-box">
+    <strong>Importante:</strong> Solo puedes editar ciudadanos que t&uacute; hayas creado. Si necesitas editar un ciudadano de otro capturista, solicita una correcci&oacute;n a trav&eacute;s del seccional.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Formulario de edicin de ciudadano" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 5. BUSCAR -->
+  <h2 id="buscar">5. Buscar Ciudadanos</h2>
+
+  <div class="step">
+    <span class="step-number">1</span> En la barra de b&uacute;squeda superior, escribe el nombre, direcci&oacute;n o tel&eacute;fono.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Los resultados se filtran en tiempo real.
+  </div>
+
+  <div class="info-box">
+    <strong>B&uacute;squeda r&aacute;pida:</strong> Puedes buscar por cualquier campo visible en la tabla. El sistema filtra autom&aacute;ticamente mientras escribes.
+  </div>
+
+  <!-- 6. CORRECCIONES -->
+  <h2 id="correccion">6. Correcciones Solicitadas</h2>
+  <p>Cuando un seccional solicita una correcci&oacute;n en los datos de un ciudadano:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Recibir&aacute;s una notificaci&oacute;n o ver&aacute;s el ciudadano marcado para correcci&oacute;n.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca el icono de <strong>editar</strong> en ese ciudadano.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Realiza las correcciones indicadas.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Toca <strong>"Actualizar"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Ciudadano con notificacin de correccin pendiente" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <div class="footer">
+    <p>PRIoridad Territorial &copy; 2026 | Manual del Capturista</p>
+  </div>
+
+</div>
+</body>
+</html>

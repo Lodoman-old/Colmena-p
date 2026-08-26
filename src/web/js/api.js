@@ -257,6 +257,7 @@ const API = (() => {
     actualizarComprometido(id, data) { return request('PUT', `/api/comprometidos/${id}`, data); },
     eliminarComprometido(id) { return request('DELETE', `/api/comprometidos/${id}`); },
     solicitarCorreccionComprometido(id) { return request('POST', `/api/comprometidos/${id}/solicitar-correccion`); },
+    reasignarComprometido(id, capturista_id) { return request('POST', `/api/comprometidos/${id}/reasignar`, { capturista_id }); },
 
     getCatalogo(tipo, todos) { return request('GET', `/api/catalogos/${tipo}${todos ? '?todos=1' : ''}`); },
     crearCatalogoItem(tipo, data) { return request('POST', `/api/catalogos/${tipo}`, data); },

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual del Administrador - PRIoridad Territorial</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="manual">
+
+  <!-- PORTADA -->
+  <div class="cover">
+    <img src="../src/web/img/PRI_logo.jpg" alt="Logo PRI" class="logo">
+    <h1>PRIoridad Territorial</h1>
+    <h2>Manual del Administrador</h2>
+    <p class="subtitle">Control total del sistema - Gesti&oacute;n de usuarios, cat&aacute;logos, reportes y configuraci&oacute;n</p>
+    <p class="version">Versi&oacute;n 1.0 | Agosto 2026</p>
+  </div>
+
+  <!-- CONTENIDO -->
+  <div class="toc">
+    <h3>Contenido</h3>
+    <ol>
+      <li><a href="#vista-general">Vista General del Dashboard</a></li>
+      <li><a href="#usuarios">Gesti&oacute;n de Usuarios</a></li>
+      <li><a href="#catalogos">Gesti&oacute;n de Cat&aacute;logos</a></li>
+      <li><a href="#campanas">Campa&ntilde;as y Filtros</a></li>
+      <li><a href="#rutas">Creaci&oacute;n de Rutas</a></li>
+      <li><a href="#encuestas">Encuestas y Preguntas</a></li>
+      <li><a href="#reportes">Reportes</a></li>
+      <li><a href="#configuracion">Configuraci&oacute;n del Sistema</a></li>
+      <li><a href="#auditoria">Auditor&iacute;a</a></li>
+      <li><a href="#backup">Copia de Seguridad</a></li>
+      <li><a href="#ubicacion-enlaces">Ubicaci&oacute;n de Enlaces</a></li>
+    </ol>
+  </div>
+
+  <p><span class="badge badge-admin">Administrador</span> El rol de Administrador tiene acceso completo a todas las funcionalidades del sistema.</p>
+
+  <!-- 1. DASHBOARD -->
+  <h2 id="vista-general">1. Vista General del Dashboard</h2>
+  <p>Al iniciar sesi&oacute;n, el dashboard muestra un resumen completo de la operaci&oacute;n:</p>
+
+  <ul>
+    <li><strong>Mapa interactivo</strong> - Ubicaci&oacute;n de enlaces en tiempo real, geocercas y rutas</li>
+    <li><strong>Estad&iacute;sticas generales</strong> - Total de ciudadanos, encuestas completadas, rutas activas</li>
+    <li><strong>Filtros</strong> - Por municipio, secci&oacute;n, fecha, tipo de acci&oacute;n</li>
+    <li><strong>Checkbox "Ver ubicaci&oacute;n de enlaces"</strong> - Activa/desactiva la visualizaci&oacute;n en mapa de los enlaces de campo</li>
+  </ul>
+
+  <div class="screenshot-placeholder">
+    <img src="img/01-dashboard.png" alt="Dashboard principal con mapa y estadsticas" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 2. USUARIOS -->
+  <h2 id="usuarios">2. Gesti&oacute;n de Usuarios</h2>
+  <p>Acceso: <strong>Men&uacute; usuario &rarr; Usuarios</strong></p>
+
+  <h3>2.1 Ver lista de usuarios</h3>
+  <div class="step">
+    <span class="step-number">1</span> Haz clic en tu nombre &rarr; <strong>"Usuarios"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Se muestra la tabla con todos los usuarios del sistema, incluyendo: nombre, email, rol, municipio, secci&oacute;n y estatus.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/14-usuarios.png" alt="Tabla de usuarios con columnas de rol, municipio, seccin" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <h3>2.2 Crear nuevo usuario</h3>
+  <div class="step">
+    <span class="step-number">1</span> Toca <strong>"Nuevo usuario"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Completa los campos:
+    <ul>
+      <li><strong>Nombre</strong> - Nombre completo del usuario</li>
+      <li><strong>Email</strong> - Correo electr&oacute;nico (ser&aacute; usado para iniciar sesi&oacute;n)</li>
+      <li><strong>Nombre de usuario</strong> - Alias para login (opcional)</li>
+      <li><strong>Contrase&ntilde;a</strong> - Contrase&ntilde;a inicial</li>
+      <li><strong>Rol</strong> - Selecciona: Administrador, Coordinador, Enlace, Capturista, Seccional o Representante</li>
+      <li><strong>Municipio</strong> - Municipio asignado</li>
+      <li><strong>Secci&oacute;n</strong> - Secci&oacute;n electoral (para enlaces y capturistas)</li>
+      <li><strong>Tel&eacute;fono</strong> - N&uacute;mero de contacto</li>
+    </ul>
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/14-usuarios.png" alt="Formulario de creacin de usuario con todos los campos" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <h3>2.3 Editar usuario</h3>
+  <div class="step">
+    <span class="step-number">1</span> En la tabla de usuarios, toca el <strong>icono de editar</strong> (l&aacute;piz) en la fila del usuario.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Modifica los campos necesarios.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Toca <strong>"Actualizar"</strong>.
+  </div>
+
+  <h3>2.4 Desactivar/Eliminar usuario</h3>
+  <div class="step">
+    <span class="step-number">1</span> Toca el <strong>icono de eliminar</strong> (cruz) en la fila del usuario.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Confirma la acci&oacute;n.
+  </div>
+
+  <div class="warning-box">
+    <strong>Precauci&oacute;n:</strong> No elimines tu propio usuario. Si necesitas desactivar un administrador, contacta soporte t&eacute;cnico.
+  </div>
+
+  <!-- 3. CATALOGOS -->
+  <h2 id="catalogos">3. Gesti&oacute;n de Cat&aacute;logos</h2>
+  <p>Acceso: <strong>Men&uacute; Cat&aacute;logo</strong></p>
+  <p>El men&uacute; de cat&aacute;logos permite administrar todas las entidades base del sistema:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Cat&aacute;logo</th>
+        <th>Funci&oacute;n</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Estados</strong></td>
+        <td>Administrar estados de la rep&uacute;blica</td>
+      </tr>
+      <tr>
+        <td><strong>Municipios</strong></td>
+        <td>Gestionar municipios por estado</td>
+      </tr>
+      <tr>
+        <td><strong>Secciones</strong></td>
+        <td>Secciones electorales por municipio</td>
+      </tr>
+      <tr>
+        <td><strong>Casillas</strong></td>
+        <td>Casillas de votaci&oacute;n por secci&oacute;n</td>
+      </tr>
+      <tr>
+        <td><strong>Partidos</strong></td>
+        <td>Partidos pol&iacute;ticos registrados</td>
+      </tr>
+      <tr>
+        <td><strong>Discapacidades</strong></td>
+        <td>Tipos de discapacidad para registro</td>
+      </tr>
+      <tr>
+        <td><strong>Ocupaciones</strong></td>
+        <td>Cat&aacute;logo de ocupaciones</td>
+      </tr>
+      <tr>
+        <td><strong>Estatus de Visita</strong></td>
+        <td>Resultados posibles de una visita (atendido, no abierto, rechazado, etc.)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.1 Agregar elemento a un cat&aacute;logo</h3>
+  <div class="step">
+    <span class="step-number">1</span> Selecciona el cat&aacute;logo deseado (ej: "Municipios").
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nuevo"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Completa los campos requeridos.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/10-municipios.png" alt="Formulario de catlogo con campos de municipio" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 4. CAMPANAS -->
+  <h2 id="campanas">4. Campa&ntilde;as y Filtros</h2>
+  <p>Acceso: <strong>Men&uacute; Campa&ntilde;as</strong> o <strong>Filtros Campa&ntilde;as</strong></p>
+
+  <h3>4.1 Crear una campa&ntilde;a</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Campa&ntilde;as</strong> en el men&uacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nueva Campa&ntilde;a"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Define: nombre, fecha inicio, fecha fin, tipo (encuesta, barrido, etc.).
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Publica la campa&ntilde;a para que est&eacute; disponible para los enlaces.
+  </div>
+
+  <h3>4.2 Filtros de campa&ntilde;a</h3>
+  <p>Los filtros permiten segmentar la informaci&oacute;n por: municipio, secci&oacute;n, casilla, fecha, tipo deacci&oacute;n, y resultado.</p>
+
+  <div class="screenshot-placeholder">
+    <img src="img/04-campanas.png" alt="Panel de filtros de campaa" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 5. RUTAS -->
+  <h2 id="rutas">5. Creaci&oacute;n de Rutas</h2>
+  <p>Acceso: <strong>Men&uacute; Rutas</strong></p>
+
+  <h3>5.1 Crear nueva ruta</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Rutas</strong> en el men&uacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nueva Ruta"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Define los par&aacute;metros:
+    <ul>
+      <li><strong>Nombre de la ruta</strong></li>
+      <li><strong>Tipo</strong>: Encuesta, Seguros o Filtro</li>
+      <li><strong>Enlace asignado</strong> - El campo de campo que ejecutar&aacute; la ruta</li>
+      <li><strong>Campa&ntilde;a asociada</strong></li>
+    </ul>
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Selecciona las paradas (ciudadanos o casillas) en el mapa o por secci&oacute;n.
+  </div>
+  <div class="step">
+    <span class="step-number">5</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="info-box">
+    <strong>Tipos de ruta:</strong>
+    <ul>
+      <li><strong>Encuesta</strong> - Aplica encuesta definida en la campa&ntilde;a</li>
+      <li><strong>Seguros</strong> - Visita a ciudadanos comprometidos (usa tabla ciudadanos_comprometidos)</li>
+      <li><strong>Filtro</strong> - Combina encuesta + seguros seg&uacute;n resultado</li>
+    </ul>
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/03-rutas.png" alt="Formulario de creacin de ruta con mapa" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 6. ENCUESTAS -->
+  <h2 id="encuestas">6. Encuestas y Preguntas</h2>
+  <p>Acceso: <strong>Men&uacute; Encuesta</strong></p>
+
+  <h3>6.1 Definir preguntas de encuesta</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Encuesta</strong> en el men&uacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nueva Pregunta"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Escribe el texto de la pregunta.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Define las opciones de respuesta.
+  </div>
+  <div class="step">
+    <span class="step-number">5</span> Asocia la pregunta a una campa&ntilde;a.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/05-encuesta.png" alt="Formulario de creacin de preguntas de encuesta" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 7. REPORTES -->
+  <h2 id="reportes">7. Reportes</h2>
+  <p>Acceso: <strong>Men&uacute; Reportes</strong></p>
+
+  <p>El administrador tiene acceso a todos los reportes disponibles:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Reporte</th>
+        <th>Descripci&oacute;n</th>
+        <th>Formato</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Votaci&oacute;n</strong></td>
+        <td>Resultados de votaci&oacute;n por secci&oacute;n/casilla con status de avance</td>
+        <td>Excel</td>
+      </tr>
+      <tr>
+        <td><strong>Respuestas Encuesta</strong></td>
+        <td>Resultados de encuestas aplicadas con desglose por pregunta</td>
+        <td>Excel</td>
+      </tr>
+      <tr>
+        <td><strong>Ciudadanos</strong></td>
+        <td>Listado completo de ciudadanos capturados</td>
+        <td>Excel</td>
+      </tr>
+      <tr>
+        <td><strong>Cumplimiento de Rutas</strong></td>
+        <td>Porcentaje de avance y completado de cada ruta</td>
+        <td>Excel</td>
+      </tr>
+      <tr>
+        <td><strong>Capturas por Capturista</strong></td>
+        <td>N&uacute;mero de ciudadanos capturados por cada capturista</td>
+        <td>Excel</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>7.1 Generar un reporte</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Reportes</strong> en el men&uacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Selecciona el tipo de reporte.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Aplica los filtros deseados (municipio, secci&oacute;n, fecha, etc.).
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Toca <strong>"Descargar Excel"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/13-reportes.png" alt="Panel de reportes con filtros y botn de descarga" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 8. CONFIGURACION -->
+  <h2 id="configuracion">8. Configuraci&oacute;n del Sistema</h2>
+  <p>Acceso: <strong>Men&uacute; usuario &rarr; Configuraci&oacute;n</strong></p>
+
+  <p>Solo los administradores pueden acceder a la configuraci&oacute;n del sistema. Aqu&iacute; puedes:</p>
+  <ul>
+    <li><strong>Configurar R2</strong> - Almacenamiento en la nube para im&aacute;genes</li>
+    <li><strong>Migrar im&aacute;genes</strong> - Mover im&aacute;genes locales a R2</li>
+    <li><strong>Probar conexi&oacute;n R2</strong> - Verificar que el almacenamiento funciona correctamente</li>
+    <li><strong>Ajustes generales</strong> - Par&aacute;metros del sistema</li>
+  </ul>
+
+  <div class="screenshot-placeholder">
+    <img src="img/16-configuracion.png" alt="Panel de configuracin del sistema" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 9. AUDITORIA -->
+  <h2 id="auditoria">9. Auditor&iacute;a</h2>
+  <p>Acceso: <strong>Men&uacute; usuario &rarr; Auditor&iacute;a</strong></p>
+
+  <p>El registro de auditor&iacute;a muestra un historial de todas las acciones realizadas en el sistema:</p>
+  <ul>
+    <li>Creaci&oacute;n/edici&oacute;n/eliminaci&oacute;n de usuarios</li>
+    <li>Cambios en configuraci&oacute;n</li>
+    <li>Acciones de importaci&oacute;n</li>
+    <li>Modificaciones a cat&aacute;logos</li>
+  </ul>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Auditor&iacute;a</strong> en el men&uacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Filtra por fecha, usuario o tipo de acci&oacute;n.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Consulta el historial completo.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/14-usuarios.png" alt="Tabla de auditora con registros" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 10. BACKUP -->
+  <h2 id="backup">10. Copia de Seguridad (Backup)</h2>
+  <p>Acceso: <strong>Men&uacute; usuario &rarr; Backup</strong></p>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Backup</strong> en el men&uacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Descargar Backup"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Se descargar&aacute; un archivo <code>.sql</code> con toda la base de datos.
+  </div>
+
+  <div class="warning-box">
+    <strong>Importante:</strong> Realiza backups regularmente. El archivo contiene toda la informaci&oacute;n del sistema. Gu&aacute;rdalo en un lugar seguro.
+  </div>
+
+  <!-- 11. UBICACION ENLACES -->
+  <h2 id="ubicacion-enlaces">11. Ubicaci&oacute;n de Enlaces</h2>
+  <p>El mapa del dashboard puede mostrar la ubicaci&oacute;n en tiempo real de los enlaces de campo:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> En el dashboard, marca la casilla <strong>"Ver ubicaci&oacute;n de enlaces"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Los marcadores aparecer&aacute;n en el mapa indicando la posici&oacute;n actual de cada enlace.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/01-dashboard.png" alt="Dashboard con ubicacin de enlaces en mapa" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <div class="footer">
+    <p>PRIoridad Territorial &copy; 2026 | Manual del Administrador</p>
+  </div>
+
+</div>
+</body>
+</html>

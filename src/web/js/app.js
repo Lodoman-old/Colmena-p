@@ -4358,9 +4358,10 @@
         const corrBadge = c.correccion_solicitada_at ? '<span class="badge badge-no">Corrección</span>' : '<span style="color:#ccc">—</span>';
         let accion = '';
         if (rol === 'seccional') {
-          accion = c.correccion_solicitada_at
+          const corrBtn = c.correccion_solicitada_at
             ? '<span style="color:#e65100;font-size:11px">Corrección solicitada</span>'
             : `<button class="btn-small btn-secondary" onclick="solicitarCorreccionComprometido('${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}')">Solicitar corrección</button>`;
+          accion = `${corrBtn} <button class="btn-small" style="background:#6c757d;color:#fff;margin-left:4px" onclick="abrirModalReasignar('${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}')">Reasignar</button>`;
         } else if (rol === 'capturista') {
           accion = c.correccion_solicitada_at
             ? `<button class="btn-small btn-primary" onclick="abrirModal('comprometido','${c.id}')">Corregir registro</button>`
@@ -4389,6 +4390,47 @@
       alert('Corrección solicitada. El capturista recibirá el aviso.');
       loadComprometidos();
     } catch (e) { alert('Error: ' + (e.message || 'No se pudo solicitar la corrección')); }
+  };
+
+  window.abrirModalReasignar = async function(ciudadanoId, ciudadanoNombre) {
+    const user = API.getUser();
+    if (!user) return;
+    try {
+      const resp = await fetch(`${localStorage.getItem('colmena_server') || ''}/api/seccional/capturistas`, { headers: { 'Authorization': `Bearer ${API.getToken()}` } });
+      const caps = await resp.json();
+      if (!caps.length) { alert('No tienes capturistas asignados.'); return; }
+      let optionsHtml = caps.map(c => `<option value="${c.capturista_id || c.id}">${c.nombre} (${c.email})</option>`).join('');
+      const html = `
+        <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center" id="modal-reasignar-overlay">
+          <div style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,0.3)">
+            <h3 style="margin:0 0 8px;color:#333">Reasignar ciudadano</h3>
+            <p style="margin:0 0 12px;color:#666;font-size:14px">Reasignar <strong>${ciudadanoNombre}</strong> a otro capturista:</p>
+            <select id="select-reasignar-cap" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:16px">
+              <option value="">Selecciona un capturista...</option>
+              ${optionsHtml}
+            </select>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button onclick="document.getElementById('modal-reasignar-overlay').remove()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:14px">Cancelar</button>
+              <button onclick="confirmarReasignar('${ciudadanoId}')" style="padding:8px 16px;border:none;border-radius:6px;background:#6c757d;color:#fff;cursor:pointer;font-size:14px">Reasignar</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.insertAdjacentHTML('beforeend', html);
+    } catch (e) { alert('Error al cargar capturistas: ' + (e.message || e)); }
+  };
+
+  window.confirmarReasignar = async function(ciudadanoId) {
+    const sel = document.getElementById('select-reasignar-cap');
+    const capId = sel?.value;
+    if (!capId) { alert('Selecciona un capturista.'); return; }
+    const capName = sel.options[sel.selectedIndex].text;
+    if (!confirm(`¿Reasignar a ${capName}?`)) return;
+    try {
+      const result = await API.reasignarComprometido(ciudadanoId, capId);
+      document.getElementById('modal-reasignar-overlay')?.remove();
+      alert(result?.message || 'Reasignado correctamente');
+      loadComprometidos();
+    } catch (e) { alert('Error: ' + (e.message || 'No se pudo reasignar')); }
   };
 
   async function loadMetas() {

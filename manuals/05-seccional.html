@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual del Seccional - PRIoridad Territorial</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="manual">
+
+  <div class="cover">
+    <img src="../src/web/img/PRI_logo.jpg" alt="Logo PRI" class="logo">
+    <h1>PRIoridad Territorial</h1>
+    <h2>Manual del Seccional</h2>
+    <p class="subtitle">Supervisi&oacute;n de capturistas, metas de captura e incidencias</p>
+    <p class="version">Versi&oacute;n 1.0 | Agosto 2026</p>
+  </div>
+
+  <div class="toc">
+    <h3>Contenido</h3>
+    <ol>
+      <li><a href="#dashboard">Dashboard</a></li>
+      <li><a href="#asignar-capturistas">Asignar Capturistas</a></li>
+      <li><a href="#ver-ciudadanos">Ver Ciudadanos (Simpatizantes)</a></li>
+      <li><a href="#crear-ciudadano">Crear Ciudadano</a></li>
+      <li><a href="#solicitar-correccion">Solicitar Correcci&oacute;n</a></li>
+      <li><a href="#metas">Metas de Captura</a></li>
+      <li><a href="#reportes">Reportes</a></li>
+      <li><a href="#incidencias">Incidencias</a></li>
+    </ol>
+  </div>
+
+  <p><span class="badge badge-seccional">Seccional</span> El Seccional supervisa a los capturistas de su &aacute;rea, asigna metas de captura y gestiona incidencias. Ve los ciudadanos capturados por sus capturistas asignados.</p>
+
+  <!-- 1. DASHBOARD -->
+  <h2 id="dashboard">1. Dashboard</h2>
+  <p>Al iniciar sesi&oacute;n, el dashboard muestra un resumen de la operaci&oacute;n en tu &aacute;rea:</p>
+  <ul>
+    <li><strong>Estad&iacute;sticas generales</strong> de captura en tu zona</li>
+    <li><strong>Avance de metas</strong> por capturista</li>
+    <li><strong>Gr&aacute;ficas</strong> de progreso</li>
+  </ul>
+
+  <div class="screenshot-placeholder">
+    <img src="img/01-dashboard.png" alt="Dashboard del seccional con estadsticas" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 2. ASIGNAR CAPTURISTAS -->
+  <h2 id="asignar-capturistas">2. Asignar Capturistas</h2>
+  <p>Los capturistas deben ser asignados a tu usuario seccional para que puedas ver sus capturas.</p>
+
+  <div class="step">
+    <span class="step-number">1</span> En la secci&oacute;n de <strong>Capturistas</strong> (dentro de Ciudadanos), ver&aacute;s la lista de capturistas disponibles.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Asignar capturista"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Selecciona el capturista de la lista.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> El capturista quedar&aacute; vinculado a tu cuenta seccional.
+  </div>
+
+  <div class="info-box">
+    <strong>Nota:</strong> Solo puedes ver ciudadanos capturados por los capturistas que est&aacute;n asignados a ti. Los capturistas no asignados no aparecer&aacute;n en tu vista.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Panel de asignacin de capturistas" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 3. VER CIUDADANOS -->
+  <h2 id="ver-ciudadanos">3. Ver Ciudadanos (Simpatizantes)</h2>
+  <p>Acceso: <strong>Men&uacute; Ciudadanos</strong></p>
+
+  <p>Desde la pesta&ntilde;a de <strong>Simpatizantes</strong> puedes ver todos los ciudadanos capturados por tus capturistas asignados.</p>
+
+  <h3>3.1 Ver la lista</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Ciudadanos</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Se muestra la tabla con todos los simpatizantes de tus capturistas.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Cada fila indica qu&eacute; capturista lo registr&oacute;.
+  </div>
+
+  <h3>3.2 Filtrar por capturista</h3>
+  <div class="step">
+    <span class="step-number">1</span> Usa el filtro de capturista en la parte superior.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Selecciona el capturista cuyos registros quieres ver.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Tabla de simpatizantes con filtro de capturista" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 4. CREAR CIUDADANO -->
+  <h2 id="crear-ciudadano">4. Crear Ciudadano</h2>
+  <p>Como seccional, tambi&eacute;n puedes crear ciudadanos directamente:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Toca <strong>"+"</strong> o <strong>"Nuevo ciudadano"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Completa los campos (mismos que el capturista).
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <!-- 5. SOLICITAR CORRECCION -->
+  <h2 id="solicitar-correccion">5. Solicitar Correcci&oacute;n</h2>
+  <p>Si detectas errores en los datos de un ciudadano, puedes solicitar una correcci&oacute;n al capturista:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Selecciona el ciudadano en la tabla.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Solicitar correcci&oacute;n"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Escribe qu&eacute; datos necesitan correcci&oacute;n y por qu&eacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Toca <strong>"Enviar"</strong>.
+  </div>
+
+  <div class="info-box">
+    <strong>Flujo:</strong> El capturista recibir&aacute; una notificaci&oacute;n, editar&aacute; el ciudadano y la correcci&oacute;n quedar&aacute; registrada.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Formulario de solicitud de correccin" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 6. METAS -->
+  <h2 id="metas">6. Metas de Captura</h2>
+  <p>Acceso: <strong>Men&uacute; Metas de Captura</strong></p>
+
+  <p>Desde esta secci&oacute;n puedes definir y revisar las metas de captura para cada capturista:</p>
+
+  <h3>6.1 Ver metas actuales</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Metas de Captura</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Se muestra una tabla con: capturista, meta asignada, avance actual y porcentaje de cumplimiento.
+  </div>
+
+  <h3>6.2 Asignar/Actualizar meta</h3>
+  <div class="step">
+    <span class="step-number">1</span> Selecciona el capturista.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Define la meta (n&uacute;mero de ciudadanos a capturar).
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/06-metas.png" alt="Tabla de metas de captura con avance" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 7. REPORTES -->
+  <h2 id="reportes">7. Reportes</h2>
+  <p>Acceso: <strong>Men&uacute; Reportes</strong></p>
+
+  <p>Como seccional puedes generar reportes de captura:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Reportes</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Selecciona el tipo de reporte.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Los datos se filtrar&aacute;n autom&aacute;ticamente por tus capturistas asignados.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Descarga el archivo Excel.
+  </div>
+
+  <!-- 8. INCIDENCIAS -->
+  <h2 id="incidencias">8. Incidencias</h2>
+  <p>Acceso: <strong>Men&uacute; Incidencias</strong></p>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Incidencias</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Puedes ver incidencias reportadas por tus enlaces y capturistas.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Puedes crear nuevas incidencias desde el bot&oacute;n <strong>"Nueva incidencia"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/07-incidencias.png" alt="Lista de incidencias" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <div class="footer">
+    <p>PRIoridad Territorial &copy; 2026 | Manual del Seccional</p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual del Coordinador - PRIoridad Territorial</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="manual">
+
+  <div class="cover">
+    <img src="../src/web/img/PRI_logo.jpg" alt="Logo PRI" class="logo">
+    <h1>PRIoridad Territorial</h1>
+    <h2>Manual del Coordinador</h2>
+    <p class="subtitle">Gesti&oacute;n operativa regional - Usuarios, rutas, campa&ntilde;as y reportes</p>
+    <p class="version">Versi&oacute;n 1.0 | Agosto 2026</p>
+  </div>
+
+  <div class="toc">
+    <h3>Contenido</h3>
+    <ol>
+      <li><a href="#vista-general">Vista General del Dashboard</a></li>
+      <li><a href="#usuarios">Gesti&oacute;n de Usuarios</a></li>
+      <li><a href="#catalogos">Cat&aacute;logos</a></li>
+      <li><a href="#campanas">Campa&ntilde;as</a></li>
+      <li><a href="#encuestas">Encuestas</a></li>
+      <li><a href="#rutas">Creaci&oacute;n de Rutas</a></li>
+      <li><a href="#comprometidos">Ciudadanos Comprometidos</a></li>
+      <li><a href="#importacion">Importaci&oacute;n desde Excel</a></li>
+      <li><a href="#reportes">Reportes</a></li>
+    </ol>
+  </div>
+
+  <p><span class="badge badge-coordinador">Coordinador</span> El Coordinador tiene acceso operativo para gestionar usuarios, crear rutas, campa&ntilde;as y generar reportes. No tiene acceso a configuraci&oacute;n del sistema ni auditor&iacute;a.</p>
+
+  <!-- 1. DASHBOARD -->
+  <h2 id="vista-general">1. Vista General del Dashboard</h2>
+  <p>Al iniciar sesi&oacute;n, el dashboard muestra:</p>
+  <ul>
+    <li><strong>Mapa interactivo</strong> con ubicaci&oacute;n de enlaces (opcional: checkbox "Ver ubicaci&oacute;n de enlaces")</li>
+    <li><strong>Estad&iacute;sticas</strong> de la operaci&oacute;n: ciudadanos, encuestas, rutas</li>
+    <li><strong>Filtros</strong> por municipio, secci&oacute;n, fecha</li>
+  </ul>
+
+  <div class="screenshot-placeholder">
+    <img src="img/01-dashboard.png" alt="Dashboard del coordinador" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 2. USUARIOS -->
+  <h2 id="usuarios">2. Gesti&oacute;n de Usuarios</h2>
+  <p>Acceso: <strong>Men&uacute; usuario &rarr; Usuarios</strong></p>
+
+  <h3>2.1 Crear usuario</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Usuarios</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nuevo usuario"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Completa: nombre, email, contrase&ntilde;a, rol, municipio, secci&oacute;n (si aplica), tel&eacute;fono.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="info-box">
+    <strong>Roles disponibles:</strong> Puedes crear enlaces, capturistas, seccionales y representantes. Los roles de administrador y coordinador solo pueden ser creados por un administrador.
+  </div>
+
+  <h3>2.2 Editar/Desactivar usuario</h3>
+  <div class="step">
+    <span class="step-number">1</span> En la tabla de usuarios, toca el icono de <strong>editar</strong> (l&aacute;piz) o <strong>eliminar</strong> (cruz).
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Realiza los cambios y guarda.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/14-usuarios.png" alt="Tabla de usuarios con opciones de edicin" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 3. CATALOGOS -->
+  <h2 id="catalogos">3. Cat&aacute;logos</h2>
+  <p>Acceso: <strong>Men&uacute; Cat&aacute;logo</strong></p>
+
+  <p>Puedes administrar:</p>
+  <table>
+    <thead>
+      <tr><th>Cat&aacute;logo</th><th>Acci&oacute;n</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Estados</td><td>Crear, editar, eliminar</td></tr>
+      <tr><td>Municipios</td><td>Crear, editar, eliminar (asociados a estado)</td></tr>
+      <tr><td>Secciones</td><td>Crear, editar, eliminar (asociadas a municipio)</td></tr>
+      <tr><td>Casillas</td><td>Crear, editar, eliminar (asociadas a secci&oacute;n)</td></tr>
+      <tr><td>Partidos</td><td>Crear, editar, eliminar</td></tr>
+      <tr><td>Discapacidades</td><td>Crear, editar, eliminar</td></tr>
+      <tr><td>Ocupaciones</td><td>Crear, editar, eliminar</td></tr>
+      <tr><td>Estatus de Visita</td><td>Crear, editar, eliminar</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 4. CAMPANAS -->
+  <h2 id="campanas">4. Campa&ntilde;as</h2>
+  <p>Acceso: <strong>Men&uacute; Campa&ntilde;as</strong></p>
+
+  <h3>4.1 Crear campa&ntilde;a</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Campa&ntilde;as</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nueva Campa&ntilde;a"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Define: nombre, tipo (encuesta/barrido), fecha inicio, fecha fin.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Publica la campa&ntilde;a para que est&eacute; disponible.
+  </div>
+
+  <!-- 5. ENCUESTAS -->
+  <h2 id="encuestas">5. Encuestas</h2>
+  <p>Acceso: <strong>Men&uacute; Encuesta</strong></p>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Encuesta</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Crea preguntas con sus opciones de respuesta.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Asocia las preguntas a una campa&ntilde;a.
+  </div>
+
+  <!-- 6. RUTAS -->
+  <h2 id="rutas">6. Creaci&oacute;n de Rutas</h2>
+  <p>Acceso: <strong>Men&uacute; Rutas</strong></p>
+
+  <h3>6.1 Crear ruta</h3>
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Rutas</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nueva Ruta"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Define:
+    <ul>
+      <li><strong>Nombre</strong> de la ruta</li>
+      <li><strong>Tipo</strong>: Encuesta, Seguros o Filtro</li>
+      <li><strong>Enlace asignado</strong></li>
+      <li><strong>Campa&ntilde;a</strong> asociada</li>
+    </ul>
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Selecciona las paradas en el mapa o por secci&oacute;n.
+  </div>
+  <div class="step">
+    <span class="step-number">5</span> Guarda la ruta.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/03-rutas.png" alt="Formulario de creacin de ruta" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 7. COMPROMETIDOS -->
+  <h2 id="comprometidos">7. Ciudadanos Comprometidos</h2>
+  <p>Acceso: <strong>Men&uacute; Ciudadanos</strong></p>
+
+  <p>Como coordinador puedes gestionar ciudadanos comprometidos:</p>
+  <ul>
+    <li><strong>Crear</strong> nuevo comprometido</li>
+    <li><strong>Editar</strong> informaci&oacute;n existente</li>
+    <li><strong>Solicitar correcci&oacute;n</strong> a un capturista</li>
+    <li><strong>Ver duplicados</strong> detectados por el sistema</li>
+  </ul>
+
+  <!-- 8. IMPORTACION -->
+  <h2 id="importacion">8. Importaci&oacute;n desde Excel</h2>
+  <p>Acceso: <strong>Ciudadanos &rarr; Importar desde Excel</strong></p>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Ciudadanos</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Importar Excel"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Selecciona el archivo Excel con los datos.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> El sistema importar&aacute; los ciudadanos comprometidos.
+  </div>
+
+  <!-- 9. REPORTES -->
+  <h2 id="reportes">9. Reportes</h2>
+  <p>Acceso: <strong>Men&uacute; Reportes</strong></p>
+
+  <table>
+    <thead>
+      <tr><th>Reporte</th><th>Descripci&oacute;n</th><th>Formato</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Votaci&oacute;n</strong></td><td>Resultados por secci&oacute;n/casilla</td><td>Excel</td></tr>
+      <tr><td><strong>Respuestas Encuesta</strong></td><td>Resultados de encuestas</td><td>Excel</td></tr>
+      <tr><td><strong>Ciudadanos</strong></td><td>Listado de ciudadanos</td><td>Excel</td></tr>
+      <tr><td><strong>Cumplimiento de Rutas</strong></td><td>Avance de rutas</td><td>Excel</td></tr>
+    </tbody>
+  </table>
+
+  <div class="screenshot-placeholder">
+    <img src="img/13-reportes.png" alt="Panel de reportes" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <div class="footer">
+    <p>PRIoridad Territorial &copy; 2026 | Manual del Coordinador</p>
+  </div>
+
+</div>
+</body>
+</html>

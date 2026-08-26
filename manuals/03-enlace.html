@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual del Enlace de Campo - PRIoridad Territorial</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="manual">
+
+  <div class="cover">
+    <img src="../src/web/img/PRI_logo.jpg" alt="Logo PRI" class="logo">
+    <h1>PRIoridad Territorial</h1>
+    <h2>Manual del Enlace de Campo</h2>
+    <p class="subtitle">Ejecuci&oacute;n de rutas en terreno - Encuestas, captura y seguimiento</p>
+    <p class="version">Versi&oacute;n 1.0 | Agosto 2026</p>
+  </div>
+
+  <div class="toc">
+    <h3>Contenido</h3>
+    <ol>
+      <li><a href="#mi-ruta">Mi Ruta (Vista Principal)</a></li>
+      <li><a href="#ejecutar-ruta">Ejecutar una Ruta</a></li>
+      <li><a href="#parada">En una Parada - Formularios</a></li>
+      <li><a href="#encuesta">Aplicar Encuesta</a></li>
+      <li><a href="#fotos">Tomar Fotograf&iacute;as</a></li>
+      <li><a href="#no-abrio">Marca: No Abri&oacute;</a></li>
+      <li><a href="#completar-ruta">Completar Ruta</a></li>
+      <li><a href="#ciudadanos">Ciudadanos</a></li>
+      <li><a href="#incidencias">Incidencias</a></li>
+    </ol>
+  </div>
+
+  <p><span class="badge badge-enlace">Enlace de Campo</span> El Enlace ejecuta las rutas asignadas en terreno. Aplica encuestas, captura ciudadanos y reporta incidencias desde su zona de trabajo.</p>
+
+  <!-- 1. MI RUTA -->
+  <h2 id="mi-ruta">1. Mi Ruta (Vista Principal)</h2>
+  <p>Al iniciar sesi&oacute;n, la primera pantalla que ves es <strong>"Mi Ruta"</strong>, que muestra todas las rutas asignadas a ti.</p>
+
+  <h3>1.1 Ver mis rutas</h3>
+  <div class="step">
+    <span class="step-number">1</span> Al iniciar sesi&oacute;n, ver&aacute;s la lista de rutas asignadas.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Cada ruta muestra: nombre, tipo, campa&ntilde;a, n&uacute;mero de paradas y estatus.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Toca una ruta para ver sus paradas en el mapa.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/03-rutas.png" alt="Lista de rutas asignadas al enlace" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <h3>1.2 Ver paradas en el mapa</h3>
+  <div class="step">
+    <span class="step-number">1</span> Selecciona una ruta.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> El mapa muestra las paradas como marcadores numerados.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Los colores indican el estado:
+    <ul>
+      <li><strong>Verde</strong> - Completada</li>
+      <li><strong>Amarillo</strong> - En progreso</li>
+      <li><strong>Gris</strong> - Pendiente</li>
+    </ul>
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/03-rutas.png" alt="Mapa con paradas de ruta numeradas" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 2. EJECUTAR RUTA -->
+  <h2 id="ejecutar-ruta">2. Ejecutar una Ruta</h2>
+
+  <div class="step">
+    <span class="step-number">1</span> Selecciona la ruta que vas a ejecutar.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Iniciar ruta"</strong> o selecciona la primera parada.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> El sistema puede abrir Google Maps para navegar hasta la parada (bot&oacute;n de navegaci&oacute;n).
+  </div>
+
+  <div class="info-box">
+    <strong>Navegaci&oacute;n:</strong> Al tocar el icono de navegaci&oacute;n en una parada, se abre Google Maps con las coordenadas exactas del ciudadano para que puedas llegar al lugar.
+  </div>
+
+  <!-- 3. PARADA -->
+  <h2 id="parada">3. En una Parada - Formularios</h2>
+  <p>Al llegar a una parada y tocar el marcador, se abre el formulario correspondiente seg&uacute;n el tipo de ruta:</p>
+
+  <h3>3.1 Tipo Encuesta</h3>
+  <p>Se muestra el formulario de encuesta con las preguntas definidas en la campa&ntilde;a:</p>
+  <ul>
+    <li>Selecciona la opci&oacute;n de respuesta para cada pregunta</li>
+    <li>Agrega observaciones si es necesario</li>
+    <li>Agrega fotograf&iacute;as de evidencia</li>
+  </ul>
+
+  <h3>3.2 Tipo Seguros / Filtro + Simpatizantes</h3>
+  <p>Se muestra el formulario de captura con los datos del ciudadano pre-cargados:</p>
+  <ul>
+    <li>Nombre, apellidos, direcci&oacute;n</li>
+    <li>Tel&eacute;fono, email</li>
+    <li>Ocupaci&oacute;n, partido afiliado</li>
+    <li>Observaciones</li>
+  </ul>
+
+  <div class="screenshot-placeholder">
+    <img src="img/05-encuesta.png" alt="Formulario de encuesta con preguntas y opciones" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Formulario de captura de ciudadano comprometido" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <h3>3.3 Informaci&oacute;n de la parada</h3>
+  <p>En la parte superior del formulario ver&aacute;s:</p>
+  <ul>
+    <li><strong>Nombre del ciudadano</strong> / nombre de la parada</li>
+    <li><strong>Direcci&oacute;n</strong></li>
+    <li><strong>N&uacute;mero de parada</strong> en la ruta</li>
+  </ul>
+
+  <!-- 4. ENCUESTA -->
+  <h2 id="encuesta">4. Aplicar Encuesta</h2>
+
+  <div class="step">
+    <span class="step-number">1</span> Al tocar la parada, se cargan las preguntas de la encuesta.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Lee cada pregunta en voz alta al ciudadano.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Selecciona la respuesta que el ciudadano indique.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Si hay un campo de texto abierto, escribe la respuesta del ciudadano.
+  </div>
+  <div class="step">
+    <span class="step-number">5</span> Agrega observaciones adicionales si es necesario.
+  </div>
+  <div class="step">
+    <span class="step-number">6</span> Toca <strong>"Guardar"</strong> para registrar la encuesta.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/05-encuesta.png" alt="Encuesta en progreso con respuestas seleccionadas" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 5. FOTOS -->
+  <h2 id="fotos">5. Tomar Fotograf&iacute;as</h2>
+  <p>En cada parada puedes agregar fotos como evidencia:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Dentro del formulario de la parada, toca el bot&oacute;n de <strong>c&aacute;mara</strong> o <strong>"Agregar foto"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Se abrir&aacute; la c&aacute;mara de tu dispositivo.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Toma la foto y confirma.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> La foto se adjuntar&aacute; a la parada.
+  </div>
+
+  <div class="warning-box">
+    <strong>Consejo:</strong> Si no tienes conexi&oacute;n a internet, las fotos se guardan localmente y se suben autom&aacute;ticamente cuando recuperes la conexi&oacute;n.
+  </div>
+
+  <!-- 6. NO ABRIÓ -->
+  <h2 id="no-abrio">6. Marca: No Abri&oacute;</h2>
+  <p>Si el ciudadano no se presenta o no abre la puerta:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> En el formulario de la parada, selecciona <strong>"No abri&oacute;"</strong> como resultado.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> La parada se marcar&aacute; autom&aacute;ticamente como completada sin datos.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> El sistema avanzar&aacute; a la siguiente parada.
+  </div>
+
+  <div class="info-box">
+    <strong>Nota:</strong> El resultado "No abierto" se guarda en la base de datos para que el coordinador pueda revisar el cumplimiento de la ruta.
+  </div>
+
+  <!-- 7. COMPLETAR RUTA -->
+  <h2 id="completar-ruta">7. Completar Ruta</h2>
+
+  <div class="step">
+    <span class="step-number">1</span> Una vez que hayas visitado todas las paradas, el bot&oacute;n <strong>"Completar ruta"</strong> se habilitar&aacute;.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Completar ruta"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> El sistema guardar&aacute; el resumen de la ruta.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Podr&aacute;s ver el reporte de cumplimiento de la ruta completada.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/03-rutas.png" alt="Botn "Completar ruta" habilitado" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 8. CIUDADANOS -->
+  <h2 id="ciudadanos">8. Ciudadanos</h2>
+  <p>Acceso: <strong>Men&uacute; Ciudadanos</strong></p>
+
+  <p>Desde esta secci&oacute;n puedes:</p>
+  <ul>
+    <li><strong>Buscar ciudadanos</strong> por nombre, direcci&oacute;n o tel&eacute;fono</li>
+    <li><strong>Ver detalles</strong> de un ciudadano existente</li>
+    <li><strong>Crear nuevo ciudadano</strong> desde el bot&oacute;n de "+"</li>
+    <li><strong>Editar informaci&oacute;n</strong> de ciudadanos existentes</li>
+  </ul>
+
+  <h3>8.1 Buscar ciudadano</h3>
+  <div class="step">
+    <span class="step-number">1</span> En la barra de b&uacute;squeda, escribe el nombre o direcci&oacute;n.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Los resultados se filtran autom&aacute;ticamente.
+  </div>
+
+  <h3>8.2 Crear nuevo ciudadano</h3>
+  <div class="step">
+    <span class="step-number">1</span> Toca el bot&oacute;n <strong>"+"</strong> o <strong>"Nuevo ciudadano"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Completa los campos obligatorios: nombre, apellidos, direcci&oacute;n, secci&oacute;n, casilla.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Completa campos opcionales: tel&eacute;fono, email, ocupaci&oacute;n, partido, discapacidad.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/02-ciudadanos.png" alt="Formulario de ciudadano con campos llenados" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <!-- 9. INCIDENCIAS -->
+  <h2 id="incidencias">9. Incidencias</h2>
+  <p>Acceso: <strong>Men&uacute; Incidencias</strong></p>
+
+  <p>Las incidencias permiten reportar situaciones encontradas en campo:</p>
+
+  <div class="step">
+    <span class="step-number">1</span> Ve a <strong>Incidencias</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">2</span> Toca <strong>"Nueva incidencia"</strong>.
+  </div>
+  <div class="step">
+    <span class="step-number">3</span> Selecciona el tipo de incidencia.
+  </div>
+  <div class="step">
+    <span class="step-number">4</span> Escribe una descripci&oacute;n detallada.
+  </div>
+  <div class="step">
+    <span class="step-number">5</span> Agrega fotos de evidencia si es necesario.
+  </div>
+  <div class="step">
+    <span class="step-number">6</span> Toca <strong>"Guardar"</strong>.
+  </div>
+
+  <div class="screenshot-placeholder">
+    <img src="img/07-incidencias.png" alt="Formulario de incidencia" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); margin:10px 0;">
+  </div>
+
+  <div class="footer">
+    <p>PRIoridad Territorial &copy; 2026 | Manual del Enlace de Campo</p>
+  </div>
+
+</div>
+</body>
+</html>
