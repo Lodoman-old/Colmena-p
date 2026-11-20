@@ -324,6 +324,7 @@ tr:hover { background: var(--bg-light); }
 .modal-body .btn-primary { margin-top: 16px; }
 .modal-body .form-row { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
 .modal-body .checkbox-line { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; cursor: pointer; }
+.modal-body .checkbox-line input[type="checkbox"] { width: auto; padding: 0; margin: 0; flex: none; }
 .modal-body .form-row input, .modal-body .form-row select { flex: 1; min-width: 100px; min-height: 38px; padding: 8px 10px; box-sizing: border-box; }
 .modal-body .form-row select { min-width: 110px; }
 .modal-body .form-row label { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; margin: 0; font-size: 11px; color: var(--text-muted); cursor: pointer; white-space: nowrap; min-width: 0; }

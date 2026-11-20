@@ -819,6 +819,11 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
     const motivoPuerta = await validarMotivoPuerta(motivoRaw);
     const noAbrioFinal = !!no_abrio || !!motivoPuerta;
     if (!seccion_id || (!nombre && !noAbrioFinal)) { res.status(400).json({ error: 'seccion_id requerido; nombre requerido salvo que no haya abierto' }); return; }
+    const dirReal = leerDireccionReal(req.body);
+    if (dirReal.activa && !dirReal.tieneUbicacion) {
+      res.status(400).json({ error: 'La dirección real requiere ubicación: ajusta el pin en el mapa' }); return;
+    }
+    const seccionRealId = await resolverSeccionReal(dirReal, req.body.seccion_real_id);
     const nombreFinal = nombre || null;
     const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
     const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : null);
@@ -834,13 +839,24 @@ app.post('/api/ciudadanos', authenticateToken, async (req: Request, res: Respons
     const id = crypto.randomUUID();
     const ubiSql = 'ST_SetSRID(ST_MakePoint($12,$13),4326)';
     await pool.query(
-      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, ubicacion, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, created_by, sexo, discapacidad_id, ocupacion_id, motivo_puerta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${ubiSql},$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+      `INSERT INTO ciudadanos (id, seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, ubicacion, prioridad, intencion_voto_presidente, intencion_voto_diputado, notas, edad, idempotency_key, casilla_id, votantes_casa, no_abrio, created_by, sexo, discapacidad_id, ocupacion_id, motivo_puerta,
+         direccion_real, calle_real, numero_real, colonia_real, cp_real, ubicacion_real, seccion_real_id, nota_direccion)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${ubiSql},$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,
+         $28,$29,$30,$31,$32,ST_SetSRID(ST_MakePoint($33,$34),4326),$35,$36)`,
       [id, seccion_id, numero_hogar||null, nombreFinal, apellido_paterno||null, apellido_materno||null, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacion ? +lng : null, tieneUbicacion ? +lat : null, prioridad||0, intencion_voto_presidente||null, intencion_voto_diputado||null, notas||null, edad ? parseInt(edad) : null, idempotency_key||null, casillaAuto, votantes_casa ? parseInt(votantes_casa) : 1, noAbrioFinal, (req as any).user?.userId || null,
        ['H','M'].includes(req.body.sexo) ? req.body.sexo : null,
        req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null,
        req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null,
-       motivoPuerta]
+       motivoPuerta,
+       dirReal.activa,
+       dirReal.activa ? dirReal.calle : (calle || null),
+       dirReal.activa ? dirReal.numero : (numero || null),
+       dirReal.activa ? dirReal.colonia : (colonia || null),
+       dirReal.activa ? dirReal.cp : (cp || null),
+       dirReal.activa ? (dirReal.tieneUbicacion ? dirReal.lng : null) : (tieneUbicacion ? +lng : null),
+       dirReal.activa ? (dirReal.tieneUbicacion ? dirReal.lat : null) : (tieneUbicacion ? +lat : null),
+       dirReal.activa ? seccionRealId : (seccion_id ? parseInt(seccion_id) : null),
+       dirReal.activa ? dirReal.nota : null]
     );
     if (encuesta_campana_id) {
       await pool.query(
@@ -884,6 +900,13 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
   try {
     const { nombre, apellido_paterno, apellido_materno, telefono, seccion_id, calle, numero, colonia, cp, lat, lng, prioridad, numero_hogar, intencion_voto_presidente, intencion_voto_diputado, notas, edad, casilla_id, votantes_casa, no_abrio, votantes_casa_list, encuesta_campana_id } = req.body;
     const nombreFinal = nombre || null;
+    const tocaDirReal = req.body.direccion_real !== undefined;
+    const dirReal = leerDireccionReal(req.body);
+    let seccionRealId: number | null = null;
+    if (tocaDirReal && dirReal.activa) {
+      if (!dirReal.tieneUbicacion) { res.status(400).json({ error: 'La dirección real requiere ubicación: ajusta el pin en el mapa' }); return; }
+      seccionRealId = await resolverSeccionReal(dirReal, req.body.seccion_real_id);
+    }
     const tieneUbicacion = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
     const casillaAuto = casilla_id ? parseInt(casilla_id) : (tieneUbicacion && tieneDireccionValida(req.body) ? await asignarCasillaAutomatica(seccion_id, lat, lng) : (casilla_id === null ? null : undefined));
     // Perfil: motivo_puerta controla no_abrio; se puede limpiar enviando null/''
@@ -911,10 +934,33 @@ app.put('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
       parts.push('motivo_puerta=' + p(motivoPuerta));
       parts.push('no_abrio=' + p(!!motivoPuerta || !!no_abrio));
     } else if (no_abrio != null) parts.push('no_abrio=' + p(!!no_abrio));
+    if (tocaDirReal) {
+      parts.push('direccion_real=' + p(dirReal.activa));
+      if (dirReal.activa) {
+        parts.push('calle_real=' + p(dirReal.calle));
+        parts.push('numero_real=' + p(dirReal.numero));
+        parts.push('colonia_real=' + p(dirReal.colonia));
+        parts.push('cp_real=' + p(dirReal.cp));
+        if (dirReal.tieneUbicacion) {
+          parts.push('ubicacion_real=ST_SetSRID(ST_MakePoint(' + p(dirReal.lng) + ',' + p(dirReal.lat) + '),4326)');
+        }
+        parts.push('seccion_real_id=' + p(seccionRealId));
+      }
+      if (req.body.nota_direccion !== undefined) parts.push('nota_direccion=' + p(dirReal.nota));
+    }
     parts.push('updated_at=now()');
     parts.push('updated_by=' + p((req as any).user?.userId || null));
     params.push(req.params.id);
     await pool.query('UPDATE ciudadanos SET ' + parts.join(',') + ' WHERE id=$' + params.length, params);
+    // Sin dirección real: los campos reales se vuelven espejo de la dirección del INE
+    // (limpia cualquier dato real capturado previamente).
+    if (tocaDirReal && !dirReal.activa) {
+      await pool.query(
+        `UPDATE ciudadanos SET calle_real=calle, numero_real=numero, colonia_real=colonia, cp_real=cp,
+                ubicacion_real=ubicacion, seccion_real_id=seccion_id, nota_direccion=NULL
+          WHERE id=$1`, [req.params.id]
+      );
+    }
     if (encuesta_campana_id !== undefined) {
       const userId = (req as any).user?.userId || null;
       if (encuesta_campana_id) {
@@ -1010,6 +1056,9 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
     const seccionId = req.query.seccion_id;
     let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.apellido_paterno, c.apellido_materno, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.notas,
                   ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
+                  c.direccion_real, c.calle_real, c.numero_real, c.colonia_real, c.cp_real, c.nota_direccion, c.seccion_real_id,
+                  ST_X(c.ubicacion_real::geometry) as lng_real, ST_Y(c.ubicacion_real::geometry) as lat_real,
+                  src.id as seccion_real_num,
                   c.prioridad, c.timestamp_registro, c.sexo, c.motivo_puerta,
                   c.discapacidad_id, cd.nombre as discapacidad_nombre,
                   c.ocupacion_id, co2.nombre as ocupacion_nombre,
@@ -1032,7 +1081,8 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
                 LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
                 LEFT JOIN votos v ON v.ciudadano_id = c.id
                 LEFT JOIN cat_discapacidades cd ON cd.id = c.discapacidad_id
-                LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id`;
+                LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id
+                LEFT JOIN secciones_electorales src ON src.id = c.seccion_real_id`;
     const params: any[] = [];
     const conds: string[] = [];
     if (seccionId) { params.push(seccionId); conds.push(`c.seccion_id = $${params.length}`); }
@@ -1047,6 +1097,7 @@ app.get('/api/ciudadanos', authenticateToken, async (req: Request, res: Response
     }
     res.json(result.rows.map((r: any) => ({
       ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
+      ubicacion_real: r.lat_real ? { lat: r.lat_real, lng: r.lng_real } : null,
       partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
       partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null,
       votantes_casa_list: votantesCasa.filter((v: any) => v.ciudadano_id === r.id)
@@ -1112,10 +1163,13 @@ app.get('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
   try {
     const result = await pool.query(
       `SELECT c.*, ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
+        ST_X(c.ubicacion_real::geometry) as lng_real, ST_Y(c.ubicacion_real::geometry) as lat_real,
+        src.id as seccion_real_num,
         c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
         c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura,
         ce.campana_id as encuesta_campana_id
        FROM ciudadanos c
+       LEFT JOIN secciones_electorales src ON src.id = c.seccion_real_id
        LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
        LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
        LEFT JOIN ciudadanos_encuestas ce ON ce.ciudadano_id = c.id
@@ -1132,6 +1186,7 @@ app.get('/api/ciudadanos/:id', authenticateToken, async (req: Request, res: Resp
       votantesCasaList = vc.rows;
     } catch (e) { console.warn('votantes_casa GET by id:', e); }
     res.json({ ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
+      ubicacion_real: r.lat_real ? { lat: r.lat_real, lng: r.lng_real } : null,
       partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
       partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null,
       votantes_casa_list: votantesCasaList
@@ -1184,6 +1239,81 @@ async function asignarCasillaAutomatica(seccionId: any, lat: any, lng: any, casi
   return mejor;
 }
 
+// ── Dirección real (dónde vive hoy, distinta de la del INE) ──
+// La dirección del INE no se toca. Si direccion_real=true, rutas/visitas y campañas
+// por sección usan estos campos (seccion_real_id / ubicacion_real).
+type DireccionReal = {
+  activa: boolean;
+  calle: string | null;
+  numero: string | null;
+  colonia: string | null;
+  cp: string | null;
+  lat: number | null;
+  lng: number | null;
+  nota: string | null;
+  tieneUbicacion: boolean;
+};
+
+function leerDireccionReal(body: any): DireccionReal {
+  const raw = body?.direccion_real;
+  const activa = raw === true || raw === 'true' || raw === 1 || raw === '1';
+  const latN = body?.lat_real != null && body?.lat_real !== '' ? parseFloat(body.lat_real) : NaN;
+  const lngN = body?.lng_real != null && body?.lng_real !== '' ? parseFloat(body.lng_real) : NaN;
+  const tieneUbicacion = Number.isFinite(latN) && Number.isFinite(lngN) && !(latN === 0 && lngN === 0);
+  const txt = (v: any) => (v != null && String(v).trim() !== '' ? String(v).trim() : null);
+  return {
+    activa,
+    calle: txt(body?.calle_real),
+    numero: txt(body?.numero_real),
+    colonia: txt(body?.colonia_real),
+    cp: txt(body?.cp_real),
+    lat: tieneUbicacion ? latN : null,
+    lng: tieneUbicacion ? lngN : null,
+    nota: txt(body?.nota_direccion),
+    tieneUbicacion
+  };
+}
+
+// Sección electoral que corresponde a un punto (misma lógica que /api/detectar-seccion).
+async function seccionDesdeCoordenadas(lat: number, lng: number): Promise<number | null> {
+  try {
+    let r = await pool.query(
+      `SELECT s.seccion FROM seccion_geo s
+       JOIN secciones_electorales se ON se.id = s.seccion
+       WHERE ST_DWithin(s.geom::geography, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography, 10)
+       ORDER BY ST_Distance(s.geom::geography, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography)
+       LIMIT 1`, [lng, lat]);
+    if (!r.rows.length) {
+      r = await pool.query(
+        `SELECT s.seccion FROM seccion_geo s
+         JOIN secciones_electorales se ON se.id = s.seccion
+         WHERE ST_Contains(s.geom, ST_SetSRID(ST_MakePoint($1,$2),4326))
+         LIMIT 1`, [lng, lat]);
+    }
+    return r.rows.length ? parseInt(r.rows[0].seccion) : null;
+  } catch { return null; }
+}
+
+// Resuelve la sección real: la enviada, o la detectada por el pin real.
+async function resolverSeccionReal(dir: DireccionReal, enviada: any): Promise<number | null> {
+  if (!dir.activa) return null;
+  if (enviada != null && enviada !== '') {
+    const n = parseInt(enviada);
+    if (!Number.isNaN(n)) return n;
+  }
+  if (dir.tieneUbicacion) return seccionDesdeCoordenadas(dir.lat as number, dir.lng as number);
+  return null;
+}
+
+// Expresión SQL: sección efectiva (la real; si no hay, la del INE).
+// Cuando direccion_real=false, seccion_real_id se mantiene espejo de seccion_id.
+const SQL_SECCION_EFECTIVA = (alias: string) =>
+  `COALESCE(${alias}.seccion_real_id, ${alias}.seccion_id)`;
+
+// Expresión SQL: ubicación efectiva (pin real si existe).
+const SQL_UBICACION_EFECTIVA = (alias: string) =>
+  `COALESCE(${alias}.ubicacion_real, ${alias}.ubicacion)`;
+
 // Valida coherencia semántica: inicial del nombre (pos 4) y fecha de nacimiento (pos 5-10)
 // Regla SEGOB: si el primer nombre es María/José y hay segundo nombre, se usa la inicial del segundo.
 function validarCurpSemantica(curp: string, nombre: any, fechaNacimiento: any): string | null {
@@ -1228,6 +1358,9 @@ app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Respo
     const seccionId = req.query.seccion_id;
     let query = `SELECT c.id, c.seccion_id, c.numero_hogar, c.nombre, c.apellido_paterno, c.apellido_materno, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad, c.fecha_nacimiento, c.notas,
                   ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
+                  c.direccion_real, c.calle_real, c.numero_real, c.colonia_real, c.cp_real, c.nota_direccion, c.seccion_real_id,
+                  ST_X(c.ubicacion_real::geometry) as lng_real, ST_Y(c.ubicacion_real::geometry) as lat_real,
+                  src.id as seccion_real_num,
                   c.timestamp_registro, c.sexo,
                   c.discapacidad_id, cd.nombre as discapacidad_nombre,
                   c.ocupacion_id, co2.nombre as ocupacion_nombre,
@@ -1251,7 +1384,8 @@ app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Respo
                 LEFT JOIN usuarios ucb_corr ON ucb_corr.id = c.correccion_solicitada_by
                 LEFT JOIN votos v ON v.comprometido_id = c.id
                 LEFT JOIN cat_discapacidades cd ON cd.id = c.discapacidad_id
-                LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id`;
+                LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id
+                LEFT JOIN secciones_electorales src ON src.id = c.seccion_real_id`;
     const params: any[] = [];
     const conds: string[] = [];
     if (user.rol === 'capturista') {
@@ -1267,6 +1401,7 @@ app.get('/api/comprometidos', authenticateToken, async (req: Request, res: Respo
     const result = await pool.query(query, params);
     res.json(result.rows.map((r: any) => ({
       ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
+      ubicacion_real: r.lat_real ? { lat: r.lat_real, lng: r.lng_real } : null,
       partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
       partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null
     })));
@@ -1352,16 +1487,20 @@ app.get('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
     }
     const result = await pool.query(
       `SELECT c.*, ST_X(c.ubicacion::geometry) as lng, ST_Y(c.ubicacion::geometry) as lat,
+        ST_X(c.ubicacion_real::geometry) as lng_real, ST_Y(c.ubicacion_real::geometry) as lat_real,
+        src.id as seccion_real_num,
         c.intencion_voto_presidente, pp.nombre as partido_presidente_nombre, pp.color as partido_presidente_color, pp.abreviatura as partido_presidente_abreviatura,
         c.intencion_voto_diputado, pd.nombre as partido_diputado_nombre, pd.color as partido_diputado_color, pd.abreviatura as partido_diputado_abreviatura
        FROM ciudadanos_comprometidos c
        LEFT JOIN partidos_politicos pp ON pp.id = c.intencion_voto_presidente
        LEFT JOIN partidos_politicos pd ON pd.id = c.intencion_voto_diputado
+       LEFT JOIN secciones_electorales src ON src.id = c.seccion_real_id
        WHERE c.id=$1`, [req.params.id]
     );
     if (!result.rows.length) { res.status(404).json({ error: 'No encontrado' }); return; }
     const r = result.rows[0];
     res.json({ ...r, ubicacion: r.lat ? { lat: r.lat, lng: r.lng } : null,
+      ubicacion_real: r.lat_real ? { lat: r.lat_real, lng: r.lng_real } : null,
       partido_presidente: r.partido_presidente_nombre ? { id: r.intencion_voto_presidente, nombre: r.partido_presidente_nombre, color: r.partido_presidente_color, abreviatura: r.partido_presidente_abreviatura } : null,
       partido_diputado: r.partido_diputado_nombre ? { id: r.intencion_voto_diputado, nombre: r.partido_diputado_nombre, color: r.partido_diputado_color, abreviatura: r.partido_diputado_abreviatura } : null
     });
@@ -1375,6 +1514,11 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
     const { seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, lat, lng, intencion_voto_presidente, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, idempotency_key, casilla_id } = req.body;
     if (!seccion_id || !nombre) { res.status(400).json({ error: 'seccion_id y nombre requeridos' }); return; }
     const nombreFinal = nombre;
+    const dirReal = leerDireccionReal(req.body);
+    if (dirReal.activa && !dirReal.tieneUbicacion) {
+      res.status(400).json({ error: 'La dirección real requiere ubicación: ajusta el pin en el mapa' }); return;
+    }
+    const seccionRealId = await resolverSeccionReal(dirReal, req.body.seccion_real_id);
     // Captura obligatoria: todos los campos salvo el correo
     if (user.rol === 'capturista') {
       if (!telefono || !curp || !ine || !vigencia_ine || !calle || !numero || !colonia || !cp || !fecha_nacimiento) {
@@ -1408,12 +1552,23 @@ app.post('/api/comprometidos', authenticateToken, async (req: Request, res: Resp
     const tieneUbicacionComp = lat != null && lng != null && !Number.isNaN(+lat) && !Number.isNaN(+lng);
     const ubiSqlComp = 'ST_SetSRID(ST_MakePoint($12,$13),4326)';
     await pool.query(
-      `INSERT INTO ciudadanos_comprometidos (id, seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, ubicacion, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, capturado_por, idempotency_key, casilla_id, created_by, sexo, discapacidad_id, ocupacion_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${ubiSqlComp},$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+      `INSERT INTO ciudadanos_comprometidos (id, seccion_id, numero_hogar, nombre, apellido_paterno, apellido_materno, telefono, calle, numero, colonia, cp, ubicacion, intencion_voto_presidente, intencion_voto_diputado, notas, edad, fecha_nacimiento, correo, curp, ine, vigencia_ine, capturado_por, idempotency_key, casilla_id, created_by, sexo, discapacidad_id, ocupacion_id,
+         direccion_real, calle_real, numero_real, colonia_real, cp_real, ubicacion_real, seccion_real_id, nota_direccion)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${ubiSqlComp},$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,
+         $30,$31,$32,$33,$34,ST_SetSRID(ST_MakePoint($35,$36),4326),$37,$38)`,
       [id, seccion_id, numero_hogar||null, nombreFinal, apellido_paterno||null, apellido_materno||null, telefono||null, calle||null, numero||null, colonia||null, cp||null, tieneUbicacionComp ? +lng : null, tieneUbicacionComp ? +lat : null, intencion_voto_presidente||null, null, notas||null, edad ? parseInt(edad) : null, fechaNacVal, correo||null, curpVal, ine||null, vigenciaIneVal, user.userId, idempotency_key||null, casillaAuto, user.userId,
        ['H','M'].includes(req.body.sexo) ? req.body.sexo : null,
        req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null,
-       req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null]
+       req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null,
+       dirReal.activa,
+       dirReal.activa ? dirReal.calle : (calle || null),
+       dirReal.activa ? dirReal.numero : (numero || null),
+       dirReal.activa ? dirReal.colonia : (colonia || null),
+       dirReal.activa ? dirReal.cp : (cp || null),
+       dirReal.activa ? (dirReal.tieneUbicacion ? dirReal.lng : null) : (tieneUbicacionComp ? +lng : null),
+       dirReal.activa ? (dirReal.tieneUbicacion ? dirReal.lat : null) : (tieneUbicacionComp ? +lat : null),
+       dirReal.activa ? seccionRealId : (seccion_id ? parseInt(seccion_id) : null),
+       dirReal.activa ? dirReal.nota : null]
     );
     res.status(201).json({ id, message: 'Ciudadano comprometido creado' });
     try { io.emit('nuevo-comprometido', { id, seccion_id }); } catch (e) { console.warn('io.emit error:', e); }
@@ -1442,6 +1597,13 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
     const curpVal = normalizarCurp(curp);
     if (curpVal && !validarCurp(curpVal)) { res.status(400).json({ error: 'CURP inválida: debe tener 18 caracteres con el formato oficial (ej. GODE561231HDFRRN09)' }); return; }
     const nombreFinal = nombre;
+    const tocaDirReal = req.body.direccion_real !== undefined;
+    const dirReal = leerDireccionReal(req.body);
+    let seccionRealId: number | null = null;
+    if (tocaDirReal && dirReal.activa) {
+      if (!dirReal.tieneUbicacion) { res.status(400).json({ error: 'La dirección real requiere ubicación: ajusta el pin en el mapa' }); return; }
+      seccionRealId = await resolverSeccionReal(dirReal, req.body.seccion_real_id);
+    }
     let fechaNacVal: string | null = null;
     if (fecha_nacimiento) {
       fechaNacVal = String(fecha_nacimiento).slice(0, 10);
@@ -1479,10 +1641,31 @@ app.put('/api/comprometidos/:id', authenticateToken, async (req: Request, res: R
     if (['H','M'].includes(req.body.sexo)) parts.push('sexo=' + p(req.body.sexo));
     if (req.body.discapacidad_id !== undefined) parts.push('discapacidad_id=' + p(req.body.discapacidad_id ? parseInt(req.body.discapacidad_id) : null));
     if (req.body.ocupacion_id !== undefined) parts.push('ocupacion_id=' + p(req.body.ocupacion_id ? parseInt(req.body.ocupacion_id) : null));
+    if (tocaDirReal) {
+      parts.push('direccion_real=' + p(dirReal.activa));
+      if (dirReal.activa) {
+        parts.push('calle_real=' + p(dirReal.calle));
+        parts.push('numero_real=' + p(dirReal.numero));
+        parts.push('colonia_real=' + p(dirReal.colonia));
+        parts.push('cp_real=' + p(dirReal.cp));
+        if (dirReal.tieneUbicacion) {
+          parts.push('ubicacion_real=ST_SetSRID(ST_MakePoint(' + p(dirReal.lng) + ',' + p(dirReal.lat) + '),4326)');
+        }
+        parts.push('seccion_real_id=' + p(seccionRealId));
+      }
+      if (req.body.nota_direccion !== undefined) parts.push('nota_direccion=' + p(dirReal.nota));
+    }
     parts.push('updated_at=now()');
     parts.push('updated_by=' + p(user.userId || null));
     params.push(req.params.id);
     await pool.query('UPDATE ciudadanos_comprometidos SET ' + parts.join(',') + ' WHERE id=$' + params.length, params);
+    if (tocaDirReal && !dirReal.activa) {
+      await pool.query(
+        `UPDATE ciudadanos_comprometidos SET calle_real=calle, numero_real=numero, colonia_real=colonia, cp_real=cp,
+                ubicacion_real=ubicacion, seccion_real_id=seccion_id, nota_direccion=NULL
+          WHERE id=$1`, [req.params.id]
+      );
+    }
     res.json({ message: 'Ciudadano comprometido actualizado' });
     try { io.emit('actualizar-comprometido', { id: req.params.id }); } catch (e) { console.warn('io.emit error:', e); }
     try {
@@ -1790,9 +1973,9 @@ app.post('/api/eventos/:id/disparar-alertas', authenticateToken, async (req: Req
     if (!plantilla) { res.status(400).json({ error: 'Plantilla no encontrada' }); return; }
     let ciudadanos: any[];
     if (ev.lat && ev.lng) {
-      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE telefono IS NOT NULL AND telefono != '' AND ST_DWithin(ubicacion, ST_SetSRID(ST_MakePoint($1,$2),4326), $3)`, [ev.lng, ev.lat, ev.radio_geocerca || 500])).rows;
+      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE telefono IS NOT NULL AND telefono != '' AND ST_DWithin(COALESCE(ubicacion_real, ubicacion), ST_SetSRID(ST_MakePoint($1,$2),4326), $3)`, [ev.lng, ev.lat, ev.radio_geocerca || 500])).rows;
     } else if (ev.seccion_id) {
-      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE seccion_id=$1 AND telefono IS NOT NULL AND telefono != ''`, [ev.seccion_id])).rows;
+      ciudadanos = (await pool.query(`SELECT id, nombre, telefono FROM ciudadanos WHERE COALESCE(seccion_real_id, seccion_id)=$1 AND telefono IS NOT NULL AND telefono != ''`, [ev.seccion_id])).rows;
     } else {
       ciudadanos = [];
     }
@@ -2005,7 +2188,8 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
     }
     let tablaParadas = tipoRuta === 'seguros' ? 'ciudadanos_comprometidos' : 'ciudadanos';
     if (tipoRuta === 'filtro') tablaParadas = destinoRuta === 'simpatizantes' ? 'ciudadanos_comprometidos' : 'ciudadanos';
-    let whereSql = 'seccion_id=$1';
+    // La ruta se arma por la sección REAL (donde vive) cuando está capturada.
+    let whereSql = `${SQL_SECCION_EFECTIVA('c')}=$1`;
     const countParams: any[] = [seccion_id];
     let filtrosEfectivos: any = undefined;
     if (tipoRuta === 'filtro') {
@@ -2015,7 +2199,7 @@ app.post('/api/rutas', authenticateToken, async (req: Request, res: Response) =>
         const svd = parseInt(filtros?.sin_visita_desde_dias);
         if (!Number.isNaN(svd) && svd > 0) fSimp.sin_visita_desde_dias = svd;
         filtrosEfectivos = fSimp;
-        whereSql += ' AND c.ubicacion IS NOT NULL';
+        whereSql += ` AND ${SQL_UBICACION_EFECTIVA('c')} IS NOT NULL`;
         if (fSimp.sin_visita_desde_dias) {
           countParams.push(fSimp.sin_visita_desde_dias);
           whereSql += ` AND NOT EXISTS (SELECT 1 FROM visitas v WHERE v.ciudadano_id = c.id AND v.created_at > NOW() - ($${countParams.length} || ' days')::interval)`;
@@ -2069,7 +2253,7 @@ app.post('/api/rutas/preview-filtro', authenticateToken, async (req: Request, re
     if (!seccion_id) { res.status(400).json({ error: 'seccion_id requerido' }); return; }
     const params: any[] = [seccion_id];
     if (destino === 'simpatizantes') {
-      let sql = `SELECT COUNT(*)::int AS total FROM ciudadanos_comprometidos c WHERE c.seccion_id=$1 AND c.ubicacion IS NOT NULL`;
+      let sql = `SELECT COUNT(*)::int AS total FROM ciudadanos_comprometidos c WHERE ${SQL_SECCION_EFECTIVA('c')}=$1 AND ${SQL_UBICACION_EFECTIVA('c')} IS NOT NULL`;
       const svd = parseInt(filtros?.sin_visita_desde_dias);
       if (!Number.isNaN(svd) && svd > 0) {
         params.push(svd);
@@ -2080,7 +2264,7 @@ app.post('/api/rutas/preview-filtro', authenticateToken, async (req: Request, re
       return;
     }
     const w = routingService.construirWhereFiltros(filtros || {}, params);
-    const r = await pool.query(`SELECT COUNT(*)::int AS total FROM ciudadanos c WHERE c.seccion_id=$1${w.sql}`, params);
+    const r = await pool.query(`SELECT COUNT(*)::int AS total FROM ciudadanos c WHERE ${SQL_SECCION_EFECTIVA('c')}=$1${w.sql}`, params);
     res.json({ total: r.rows[0]?.total || 0 });
   } catch (e: any) { res.status(500).json({ error: e.message || 'Error' }); }
 });
@@ -2848,6 +3032,8 @@ async function construirFiltrosCampana(filtros: any[]): Promise<{ where: string;
   let idx = 1;
   for (const key of Object.keys(byCol)) {
     const { col, items } = byCol[key];
+    // El filtro por sección usa la sección REAL (donde vive) si está capturada.
+    const colExpr = col === 'seccion_id' ? SQL_SECCION_EFECTIVA('ciudadanos') : `ciudadanos.${col}`;
     const sub: string[] = [];
     for (const it of items) {
       const { op, valor } = it;
@@ -2855,19 +3041,19 @@ async function construirFiltrosCampana(filtros: any[]): Promise<{ where: string;
       if (arr) {
         const clean = arr.filter((v: any) => v !== '' && v != null);
         if (!clean.length) continue;
-        sub.push(`ciudadanos.${col} = ANY($${idx++})`);
+        sub.push(`${colExpr} = ANY($${idx++})`);
         params.push(clean);
         continue;
       }
-      if (op === 'LIKE') { sub.push(`ciudadanos.${col} ILIKE $${idx++}`); params.push(`%${valor}%`); }
+      if (op === 'LIKE') { sub.push(`${colExpr} ILIKE $${idx++}`); params.push(`%${valor}%`); }
       else if (op === 'BETWEEN') {
         const parts = String(valor || '').split('-');
-        if (parts.length === 2) { sub.push(`ciudadanos.${col} BETWEEN $${idx++} AND $${idx++}`); params.push(parseInt(parts[0]), parseInt(parts[1])); }
+        if (parts.length === 2) { sub.push(`${colExpr} BETWEEN $${idx++} AND $${idx++}`); params.push(parseInt(parts[0]), parseInt(parts[1])); }
       }
-      else if (op === 'IS_NULL') { sub.push(valor === 'si' ? `ciudadanos.${col} IS NULL` : `ciudadanos.${col} IS NOT NULL`); }
-      else if (op === '>=') { sub.push(`ciudadanos.${col} >= $${idx++}`); params.push(valor); }
-      else if (op === '<=') { sub.push(`ciudadanos.${col} <= $${idx++}`); params.push(valor); }
-      else { sub.push(`ciudadanos.${col} ${op} $${idx++}`); params.push(valor); }
+      else if (op === 'IS_NULL') { sub.push(valor === 'si' ? `${colExpr} IS NULL` : `${colExpr} IS NOT NULL`); }
+      else if (op === '>=') { sub.push(`${colExpr} >= $${idx++}`); params.push(valor); }
+      else if (op === '<=') { sub.push(`${colExpr} <= $${idx++}`); params.push(valor); }
+      else { sub.push(`${colExpr} ${op} $${idx++}`); params.push(valor); }
     }
     if (sub.length) conditions.push('(' + sub.join(' OR ') + ')');
   }
@@ -3291,12 +3477,12 @@ setInterval(async () => {
           ciudadanos = (await pool.query(
             `SELECT id, nombre, telefono FROM ciudadanos
              WHERE telefono IS NOT NULL AND telefono != ''
-             AND ST_DWithin(ubicacion, ST_SetSRID(ST_MakePoint($1,$2),4326), $3)`,
+             AND ST_DWithin(COALESCE(ubicacion_real, ubicacion), ST_SetSRID(ST_MakePoint($1,$2),4326), $3)`,
             [ev.lng, ev.lat, ev.radio_geocerca || 500]
           )).rows;
         } else if (ev.seccion_id) {
           ciudadanos = (await pool.query(
-            `SELECT id, nombre, telefono FROM ciudadanos WHERE seccion_id=$1 AND telefono IS NOT NULL AND telefono != ''`,
+            `SELECT id, nombre, telefono FROM ciudadanos WHERE COALESCE(seccion_real_id, seccion_id)=$1 AND telefono IS NOT NULL AND telefono != ''`,
             [ev.seccion_id]
           )).rows;
         }
@@ -3939,6 +4125,7 @@ const porCiudadano = new Map<string, any>();
         `SELECT c.id, ${nombreExpr('c')} as nombre, ${apellidosExpr('c')}, c.telefono, c.no_abrio, c.edad, c.sexo, c.motivo_puerta,
                 cd.nombre as discapacidad, co2.nombre as ocupacion,
                 s.id as seccion_num, m.nombre as municipio,
+                c.direccion_real, c.calle_real, c.numero_real, c.colonia_real, c.cp_real, c.nota_direccion,
                 u.nombre as capturado_por, cam.nombre as encuesta_nombre, c.created_at, c.updated_at
          FROM ciudadanos c
          ${joinPartes('ciudadanos', 'c')}
@@ -3952,10 +4139,11 @@ const porCiudadano = new Map<string, any>();
          ${rowsCampanaQuery}
          ORDER BY c.created_at DESC`, campanaId ? [campanaId] : []
       )).rows;
-const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Abrio', 'Motivo puerta', 'Edad', 'Sexo', 'Discapacidad', 'Ocupación', 'Seccion', 'Municipio', 'Encuesta asignada', 'Capturado por', 'Capturado el', 'Actualizado el'];
+const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Abrio', 'Motivo puerta', 'Edad', 'Sexo', 'Discapacidad', 'Ocupación', 'Seccion', 'Municipio', 'Encuesta asignada', 'Capturado por', 'Capturado el', 'Actualizado el', 'Calle (real)', 'Numero (real)', 'Colonia (real)', 'CP (real)', 'Nota direccion', 'Usa direccion real'];
       const motivoTxt: Record<string, string> = { no_abrio: 'No abrió', sin_info: 'No proporcionó info', con_prisa: 'Tenía prisa', otro: 'Otro' };
       const body = rows.map(r => {
-        return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.no_abrio ? 'NO' : 'SI', r.motivo_puerta ? (motivoTxt[r.motivo_puerta] || r.motivo_puerta) : '', r.edad, r.sexo === 'H' ? 'Hombre' : (r.sexo === 'M' ? 'Mujer' : ''), r.discapacidad || '', r.ocupacion || '', r.seccion_num, r.municipio, r.encuesta_nombre, r.capturado_por, r.created_at, r.updated_at];
+        return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.no_abrio ? 'NO' : 'SI', r.motivo_puerta ? (motivoTxt[r.motivo_puerta] || r.motivo_puerta) : '', r.edad, r.sexo === 'H' ? 'Hombre' : (r.sexo === 'M' ? 'Mujer' : ''), r.discapacidad || '', r.ocupacion || '', r.seccion_num, r.municipio, r.encuesta_nombre, r.capturado_por, r.created_at, r.updated_at,
+          r.calle_real || '', r.numero_real || '', r.colonia_real || '', r.cp_real || '', r.nota_direccion || '', r.direccion_real ? 'SI' : 'NO'];
       });
       excelResponse('Ciudadanos generales', 'ciudadanos-general.xlsx', header, body);
       return;
@@ -3965,6 +4153,8 @@ const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'A
         `SELECT ${nombreExpr('c')} as nombre, ${apellidosExpr('c')}, c.telefono, c.correo, c.curp, c.ine, c.vigencia_ine, c.edad, c.sexo,
                 cd.nombre as discapacidad, co2.nombre as ocupacion,
                 s.id as seccion_num, m.nombre as municipio,
+                c.calle, c.numero, c.colonia, c.cp,
+                c.direccion_real, c.calle_real, c.numero_real, c.colonia_real, c.cp_real, c.nota_direccion,
                 u.nombre as capturado_por, c.created_at, c.updated_at
          FROM ciudadanos_comprometidos c
          ${joinPartes('ciudadanos_comprometidos', 'c')}
@@ -3975,9 +4165,11 @@ const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'A
          LEFT JOIN cat_ocupaciones co2 ON co2.id = c.ocupacion_id
          ORDER BY c.created_at DESC`
       )).rows;
-const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Correo', 'CURP', 'INE', 'Vigencia INE', 'Edad', 'Sexo', 'Discapacidad', 'Ocupación', 'Seccion', 'Municipio', 'Capturado por', 'Capturado el', 'Actualizado el'];
+const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Correo', 'CURP', 'INE', 'Vigencia INE', 'Edad', 'Sexo', 'Discapacidad', 'Ocupación', 'Seccion', 'Municipio', 'Capturado por', 'Capturado el', 'Actualizado el', 'Calle (INE)', 'Numero (INE)', 'Colonia (INE)', 'CP (INE)', 'Calle (real)', 'Numero (real)', 'Colonia (real)', 'CP (real)', 'Nota direccion', 'Usa direccion real'];
       const body = rows.map(r => {
-        return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.correo, r.curp, r.ine, r.vigencia_ine, r.edad, r.sexo === 'H' ? 'Hombre' : (r.sexo === 'M' ? 'Mujer' : ''), r.discapacidad || '', r.ocupacion || '', r.seccion_num, r.municipio, r.capturado_por, r.created_at, r.updated_at];
+        return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.correo, r.curp, r.ine, r.vigencia_ine, r.edad, r.sexo === 'H' ? 'Hombre' : (r.sexo === 'M' ? 'Mujer' : ''), r.discapacidad || '', r.ocupacion || '', r.seccion_num, r.municipio, r.capturado_por, r.created_at, r.updated_at,
+          r.calle || '', r.numero || '', r.colonia || '', r.cp || '',
+          r.calle_real || '', r.numero_real || '', r.colonia_real || '', r.cp_real || '', r.nota_direccion || '', r.direccion_real ? 'SI' : 'NO'];
       });
       excelResponse('Simpatizantes', 'simpatizantes.xlsx', header, body);
       return;
@@ -4038,6 +4230,7 @@ const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'C
     }
     const query = `SELECT ${nombreExpr('c')} as nombre, ${apellidosExpr('c')}, c.telefono, c.calle, c.numero, c.colonia, c.cp, c.edad,
               s.id as seccion_num, m.nombre as municipio, c.prioridad, c.notas,
+              c.direccion_real, c.calle_real, c.numero_real, c.colonia_real, c.cp_real, c.nota_direccion,
               c.timestamp_registro
             FROM ciudadanos c
             ${joinPartes('ciudadanos', 'c')}
@@ -4051,9 +4244,10 @@ const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'C
     const rows = params.length
       ? (await pool.query(query + ' WHERE c.seccion_id = ANY($1) ORDER BY c.nombre', params)).rows
       : (await pool.query(query + ' ORDER BY c.nombre')).rows;
-const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Calle', 'Numero', 'Colonia', 'CP', 'Edad', 'Seccion', 'Municipio', 'Prioridad', 'Notas', 'Registrado'];
+const header = ['Nombre', 'Apellido paterno', 'Apellido materno', 'Telefono', 'Calle', 'Numero', 'Colonia', 'CP', 'Edad', 'Seccion', 'Municipio', 'Prioridad', 'Notas', 'Registrado', 'Calle (real)', 'Numero (real)', 'Colonia (real)', 'CP (real)', 'Nota direccion', 'Usa direccion real'];
     const body = rows.map(r => {
-      return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.calle, r.numero, r.colonia, r.cp, r.edad, r.seccion_num, r.municipio, r.prioridad, r.notas, r.timestamp_registro];
+      return [r.nombre, r.apellido_paterno, r.apellido_materno, r.telefono, r.calle, r.numero, r.colonia, r.cp, r.edad, r.seccion_num, r.municipio, r.prioridad, r.notas, r.timestamp_registro,
+        r.calle_real || '', r.numero_real || '', r.colonia_real || '', r.cp_real || '', r.nota_direccion || '', r.direccion_real ? 'SI' : 'NO'];
     });
     excelResponse('Ciudadanos', 'ciudadanos.xlsx', header, body);
     return;

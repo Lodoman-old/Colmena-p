@@ -63,5 +63,6 @@ apply 028_intencion_voto_split
 apply 029_apellido_columnas
 apply 030_confirmaciones_rutas
 apply 031_drop_ciudadano_fk_rutas
+apply 032_direccion_real
 
 echo "==> Init completado"

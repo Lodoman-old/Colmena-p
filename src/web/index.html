@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.markercluster.css" />
   <link rel="stylesheet" href="vendor/leaflet.markercluster.default.css" />
-  <link rel="stylesheet" href="css/styles.css?v=222">
+  <link rel="stylesheet" href="css/styles.css?v=224">
 </head>
 <body>
   <div id="app">
@@ -599,7 +599,28 @@
                   </div>
                 </div>
                 <div style="display:flex;gap:6px;margin-bottom:6px">
-                  <select id="bf-seccion" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Seccion</option></select>
+                  <select id="bf-seccion" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Seccion (INE)</option></select>
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;margin:4px 0 6px">
+                  <input type="checkbox" id="bf-direccion_real" onchange="toggleDireccionReal('bf')"> Vive en una dirección diferente a la del INE
+                </label>
+                <div id="bf-dir-real" style="display:none;border:2px dashed var(--color-primary);border-radius:8px;padding:8px;margin-bottom:6px;background:#fdf7f7">
+                  <div style="font-size:11px;font-weight:600;color:var(--color-primary);margin-bottom:6px">Dirección real (rutas y campañas)</div>
+                  <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap">
+                    <input type="text" id="bf-calle_real" placeholder="Calle real" style="flex:3;min-width:90px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                    <input type="text" id="bf-numero_real" placeholder="N°" style="width:40px;flex:none;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                    <input type="text" id="bf-colonia_real" placeholder="Colonia real" style="flex:2;min-width:100px;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                    <input type="text" id="bf-cp_real" placeholder="CP" maxlength="5" inputmode="numeric" style="width:55px;flex:none;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+                  </div>
+                  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+                    <span id="bf-sec-real-auto" style="font-size:11px;color:#666">Sección real: sin detectar</span>
+                    <button type="button" id="bf-btn-gps-real" style="background:none;border:1px solid var(--border);border-radius:4px;padding:3px 6px;cursor:pointer;font-size:12px" title="Usar GPS para la dirección real">📍 GPS real</button>
+                    <button type="button" id="bf-btn-mapa-real" style="background:none;border:1px solid var(--border);border-radius:4px;padding:3px 6px;cursor:pointer;font-size:12px" title="Ajustar pin real en el mapa">🗺️ Pin real</button>
+                  </div>
+                  <input type="text" id="bf-nota_direccion" placeholder="Nota (ej. aún no actualiza su INE)" style="width:100%;box-sizing:border-box;padding:6px;border:2px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:6px">
+                  <div id="bf-mapa-real" style="height:180px;border-radius:6px;border:1px solid #ddd;display:none"></div>
+                  <input type="hidden" id="bf-lat-real" value="">
+                  <input type="hidden" id="bf-lng-real" value="">
                 </div>
                 <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
                   <select id="bf-sexo" style="width:90px;flex:none;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px"><option value="">Sexo</option><option value="H">Hombre</option><option value="M">Mujer</option></select>
@@ -656,7 +677,7 @@
             </div>
             <div id="cpr-status" style="font-size:12px;color:var(--color-secondary);margin-bottom:6px"></div>
             <div class="table-container">
-              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>CURP</th><th>INE</th><th>Vigencia INE</th><th>Sección</th><th>Perfil</th><th>Partido</th><th>Corrección</th><th></th></tr></thead>
+              <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Correo</th><th>CURP</th><th>INE</th><th>Vigencia INE</th><th>Sección</th><th>Perfil</th><th>Partido</th><th>Corrección</th><th></th></tr></thead>
                 <tbody id="comprometidos-body"></tbody>
               </table>
             </div>
@@ -1424,9 +1445,9 @@
   </div>
   <div id="notify-toast" class="notify-toast" style="display:none"></div>
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
-  <script src="js/api.js?v=257"></script>
+  <script src="js/api.js?v=258"></script>
   <script src="js/biometric.js?v=100"></script>
-  <script src="js/app.js?v=271"></script>
+  <script src="js/app.js?v=273"></script>
   <script>
     (function(){
       function lowerInput(e){var i=this.selectionStart,l=this.value.length;this.value=this.value.toLowerCase();this.setSelectionRange(i,i);if(this.value.length!==l)this.setSelectionRange(this.value.length,this.value.length)}

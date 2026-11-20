@@ -106,14 +106,14 @@ export class EventService {
         c.id as ciudadano_id,
         c.nombre,
         c.telefono,
-        ST_Distance(c.ubicacion::geometry, e.ubicacion::geometry) as distancia_metros,
+        ST_Distance(COALESCE(c.ubicacion_real, c.ubicacion)::geometry, e.ubicacion::geometry) as distancia_metros,
         c.simpatizante as es_simpatizante,
         g.id as geocerca_id,
         g.nombre as geocerca_nombre
       FROM eventos e
       JOIN geofences g ON g.evento_id = e.id AND g.activo = TRUE
-      JOIN ciudadanos c ON c.seccion_id = e.seccion_id
-        AND ST_DWithin(c.ubicacion::geometry, e.ubicacion::geometry, e.radio_geocerca)
+      JOIN ciudadanos c ON COALESCE(c.seccion_real_id, c.seccion_id) = e.seccion_id
+        AND ST_DWithin(COALESCE(c.ubicacion_real, c.ubicacion)::geometry, e.ubicacion::geometry, e.radio_geocerca)
       WHERE e.id = $1
       ORDER BY distancia_metros ASC`,
       [eventoId]
@@ -212,7 +212,7 @@ export class EventService {
     geocercaId: string
   ): Promise<number | null> {
     const result = await this.pool.query(
-      `SELECT ST_Distance(c.ubicacion::geometry, g.ubicacion::geometry) as distancia
+      `SELECT ST_Distance(COALESCE(c.ubicacion_real, c.ubicacion)::geometry, g.ubicacion::geometry) as distancia
        FROM ciudadanos c, geofences g
        WHERE c.id = $1 AND g.id = $2`,
       [ciudadanoId, geocercaId]

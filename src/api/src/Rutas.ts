@@ -25,6 +25,7 @@ export interface Parada {
   distancia_desde_origen?: number;
   direccion?: string;
   colonia?: string;
+  direccion_real?: boolean;
   votantes_casa?: VotanteCasaInfo[];
 }
 
@@ -140,20 +141,31 @@ export class RoutingService {
     const params: any[] = [seccionId];
     let filtrosSql = '';
 
+    // La ruta usa la sección y ubicación REALES. Si el ciudadano no tiene dirección
+    // real capturada, estos campos son espejo de los del INE.
+    const seccionEfectiva = `COALESCE(c.seccion_real_id, c.seccion_id)`;
+    const ubicacionEfectiva = `COALESCE(c.ubicacion_real, c.ubicacion)`;
+    const calleEfectiva = `COALESCE(NULLIF(c.calle_real, ''), c.calle)`;
+    const numeroEfectiva = `COALESCE(NULLIF(c.numero_real, ''), c.numero)`;
+    const coloniaEfectiva = `COALESCE(NULLIF(c.colonia_real, ''), c.colonia)`;
+
     if (tipo === 'seguros') {
       query = `
         SELECT c.id, c.nombre, c.telefono,
-               ST_X(c.ubicacion::geometry) as lng,
-               ST_Y(c.ubicacion::geometry) as lat,
+               ST_X(${ubicacionEfectiva}::geometry) as lng,
+               ST_Y(${ubicacionEfectiva}::geometry) as lat,
                true as es_simpatizante,
                0 as prioridad,
-               c.calle, c.numero, c.colonia,
+               ${calleEfectiva} as calle,
+               ${numeroEfectiva} as numero,
+               ${coloniaEfectiva} as colonia,
+               c.direccion_real,
                (v.id IS NOT NULL) AS ya_voto,
                c.estado_confirmacion, c.ultima_confirmacion
         FROM ciudadanos_comprometidos c
         LEFT JOIN votos v ON v.comprometido_id = c.id
-        WHERE c.seccion_id = $1
-          AND c.ubicacion IS NOT NULL
+        WHERE ${seccionEfectiva} = $1
+          AND ${ubicacionEfectiva} IS NOT NULL
       `;
       query += ` ORDER BY c.nombre`;
     } else {
@@ -161,16 +173,19 @@ export class RoutingService {
       if (tipo === 'filtro' && (filtros as any)?.destino === 'simpatizantes') {
         query = `
           SELECT c.id, c.nombre, c.telefono,
-                 ST_X(c.ubicacion::geometry) as lng,
-                 ST_Y(c.ubicacion::geometry) as lat,
+                 ST_X(${ubicacionEfectiva}::geometry) as lng,
+                 ST_Y(${ubicacionEfectiva}::geometry) as lat,
                  true as es_simpatizante,
                  0 as prioridad,
-                 c.calle, c.numero, c.colonia,
+                 ${calleEfectiva} as calle,
+                 ${numeroEfectiva} as numero,
+                 ${coloniaEfectiva} as colonia,
+                 c.direccion_real,
                  (v.id IS NOT NULL) AS ya_voto
           FROM ciudadanos_comprometidos c
           LEFT JOIN votos v ON v.comprometido_id = c.id
-          WHERE c.seccion_id = $1
-            AND c.ubicacion IS NOT NULL
+          WHERE ${seccionEfectiva} = $1
+            AND ${ubicacionEfectiva} IS NOT NULL
         `;
         const svd = parseInt((filtros as any)?.sin_visita_desde_dias);
         if (!Number.isNaN(svd) && svd > 0) {
@@ -185,16 +200,19 @@ export class RoutingService {
       }
       query = `
         SELECT c.id, c.nombre, c.telefono,
-               ST_X(c.ubicacion::geometry) as lng,
-               ST_Y(c.ubicacion::geometry) as lat,
+               ST_X(${ubicacionEfectiva}::geometry) as lng,
+               ST_Y(${ubicacionEfectiva}::geometry) as lat,
                false as es_simpatizante,
                c.prioridad,
-               c.calle, c.numero, c.colonia,
+               ${calleEfectiva} as calle,
+               ${numeroEfectiva} as numero,
+               ${coloniaEfectiva} as colonia,
+               c.direccion_real,
                (v.id IS NOT NULL) AS ya_voto
         FROM ciudadanos c
         LEFT JOIN votos v ON v.ciudadano_id = c.id
-        WHERE c.seccion_id = $1
-          AND c.ubicacion IS NOT NULL${filtrosSql}
+        WHERE ${seccionEfectiva} = $1
+          AND ${ubicacionEfectiva} IS NOT NULL${filtrosSql}
       `;
       query += ` ORDER BY c.prioridad DESC, c.nombre`;
       }
@@ -240,6 +258,7 @@ export class RoutingService {
       ya_voto: !!row.ya_voto,
       direccion: [row.calle, row.numero].filter(Boolean).join(' '),
       colonia: row.colonia,
+      direccion_real: !!row.direccion_real,
       votantes_casa: vcPorCiudadano.get(row.id) || [],
       estado_confirmacion: row.estado_confirmacion || null,
       ultima_confirmacion: row.ultima_confirmacion || null

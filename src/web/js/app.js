@@ -1417,8 +1417,17 @@
           no_abrio: document.getElementById('f-motivo_puerta') ? !!document.getElementById('f-motivo_puerta').value : (document.getElementById('f-no_abrio') ? document.getElementById('f-no_abrio').checked : false),
           sexo: (document.getElementById('f-sexo')?.value) || null,
           discapacidad_id: (document.getElementById('f-discapacidad')?.value) ? parseInt(document.getElementById('f-discapacidad').value) : null,
-          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null
+          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null,
+          direccion_real: !!document.getElementById('f-direccion_real')?.checked,
+          calle_real: document.getElementById('f-calle_real')?.value || null,
+          numero_real: document.getElementById('f-numero_real')?.value || null,
+          colonia_real: document.getElementById('f-colonia_real')?.value || null,
+          cp_real: document.getElementById('f-cp_real')?.value || null,
+          lat_real: parseFloat(document.getElementById('f-lat-real')?.value) || null,
+          lng_real: parseFloat(document.getElementById('f-lng-real')?.value) || null,
+          nota_direccion: document.getElementById('f-nota_direccion')?.value || null
         };
+        if (data.direccion_real && (data.lat_real == null || data.lng_real == null)) { msg.textContent = 'Dirección real: ajusta el pin en el mapa (obligatorio)'; msg.style.color = 'var(--pri-red)'; return; }
         const vcTotal = parseInt(document.getElementById('f-votantes_casa').value) || 0;
         const vcRaw = Array.isArray(window._vcList) ? window._vcList : [];
         // Enviar la lista completa (incluidos acompañantes sin nombre) para que la
@@ -1480,8 +1489,17 @@
           casilla_id: document.getElementById('f-casilla').value ? parseInt(document.getElementById('f-casilla').value) : null,
           sexo: (document.getElementById('f-sexo')?.value) || null,
           discapacidad_id: (document.getElementById('f-discapacidad')?.value) ? parseInt(document.getElementById('f-discapacidad').value) : null,
-          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null
+          ocupacion_id: (document.getElementById('f-ocupacion')?.value) ? parseInt(document.getElementById('f-ocupacion').value) : null,
+          direccion_real: !!document.getElementById('f-direccion_real')?.checked,
+          calle_real: document.getElementById('f-calle_real')?.value || null,
+          numero_real: document.getElementById('f-numero_real')?.value || null,
+          colonia_real: document.getElementById('f-colonia_real')?.value || null,
+          cp_real: document.getElementById('f-cp_real')?.value || null,
+          lat_real: parseFloat(document.getElementById('f-lat-real')?.value) || null,
+          lng_real: parseFloat(document.getElementById('f-lng-real')?.value) || null,
+          nota_direccion: document.getElementById('f-nota_direccion')?.value || null
         };
+        if (data.direccion_real && (data.lat_real == null || data.lng_real == null)) { msg.textContent = 'Dirección real: ajusta el pin en el mapa (obligatorio)'; msg.style.color = 'var(--pri-red)'; return; }
         const errTel = validarTelefono(data.telefono);
         if (errTel) { msg.textContent = errTel; msg.style.color = 'var(--pri-red)'; return; }
         if (editId) await API.actualizarComprometido(editId, data);
@@ -4283,9 +4301,13 @@
         const barridoCell = c.motivo_puerta
           ? `<span style="font-size:11px;background:#fff3cd;border:1px solid #d4a017;color:#6b4f00;border-radius:4px;padding:2px 6px;white-space:normal;display:inline-block;line-height:1.3">${motivoNombre(c.motivo_puerta)}</span>`
           : `<span style="font-size:11px;color:${c.sexo || c.discapacidad_nombre || c.ocupacion_nombre ? '#333' : '#bbb'};white-space:normal;display:inline-block;line-height:1.35">${[c.sexo === 'H' ? 'Hombre' : (c.sexo === 'M' ? 'Mujer' : ''), c.discapacidad_nombre || '', c.ocupacion_nombre || ''].filter(Boolean).join(' · ') || '—'}</span>`;
+        const usaReal = !!(c.direccion_real && (c.calle_real || c.colonia_real));
+        const calleTxt = usaReal ? [c.calle_real, c.numero_real].filter(Boolean).join(' ') : [c.calle, c.numero].filter(Boolean).join(' ');
+        const coloniaTxt = usaReal ? c.colonia_real : c.colonia;
+        const badgeReal = usaReal ? ' <span style="font-size:9px;background:#e8f5e9;color:#1b5e20;border:1px solid #81c784;border-radius:3px;padding:1px 3px;vertical-align:middle">REAL</span>' : '';
         return `<tr><td><strong>${c.nombre || (c.no_abrio ? '🚪 No abrió' : '—')}</strong></td><td>${c.telefono || '-'}</td>
-        <td>${[c.calle, c.numero].filter(Boolean).join(' ') || '-'}</td><td>${c.colonia || '-'}</td>
-        <td>Sec. ${c.seccion_num}</td>
+        <td>${calleTxt || '-'}${badgeReal}</td><td>${coloniaTxt || '-'}</td>
+        <td>Sec. ${c.seccion_num}${usaReal && c.seccion_real_num ? '<br><span style="font-size:10px;color:#1b5e20">real: '+c.seccion_real_num+'</span>' : ''}</td>
         <td>${barridoCell}</td>
         <td>${c.prioridad || 0}</td>
         <td>${fotoUrl ? '<div style="position:relative;display:inline-block"><img src="'+fotoUrl+'" style="height:32px;width:32px;object-fit:cover;border-radius:4px;border:1px solid #ddd;cursor:pointer" onclick="window.open(\''+fotoUrl+'\',\'_blank\')"><span style="position:absolute;top:-4px;right:-4px;background:var(--pri-red);color:#fff;border-radius:50%;width:14px;height:14px;font-size:10px;line-height:14px;text-align:center;cursor:pointer" onclick="event.stopPropagation();eliminarFotoCiudadano(\''+c.id+'\',\''+c.nombre+'\',this)">×</span></div>' : '-'}</td>
@@ -4349,7 +4371,10 @@
           (c.telefono || '').toLowerCase().includes(busqueda) ||
           (c.correo || '').toLowerCase().includes(busqueda) ||
           (c.calle || '').toLowerCase().includes(busqueda) ||
-          (c.colonia || '').toLowerCase().includes(busqueda)
+          (c.colonia || '').toLowerCase().includes(busqueda) ||
+          (c.calle_real || '').toLowerCase().includes(busqueda) ||
+          (c.colonia_real || '').toLowerCase().includes(busqueda) ||
+          (c.nota_direccion || '').toLowerCase().includes(busqueda)
         );
       }
       document.getElementById('comprometidos-body').innerHTML = filtrados.length ? filtrados.map(c => {
@@ -4369,15 +4394,18 @@
         } else {
           accion = `<button class="btn-small btn-primary" onclick="abrirModal('comprometido','${c.id}')">Editar</button> <button class="btn-small btn-danger" onclick="eliminarItem('comprometido','${c.id}','${(c.nombre||'').replace(/'/g,"\\'")}')">X</button>`;
         }
+        const usaRealC = !!(c.direccion_real && (c.calle_real || c.colonia_real));
+        const dirC = usaRealC ? [c.calle_real, c.numero_real, c.colonia_real].filter(Boolean).join(' ') : [c.calle, c.numero, c.colonia].filter(Boolean).join(' ');
+        const badgeRealC = usaRealC ? ' <span style="font-size:9px;background:#e8f5e9;color:#1b5e20;border:1px solid #81c784;border-radius:3px;padding:1px 3px">REAL</span>' : '';
         return `<tr><td><strong>${c.nombre}</strong>${c.edad ? ` <span style="color:#999;font-size:11px">(${c.edad}${nac ? ', ' + nac : ''})</span>` : nac ? ` <span style="color:#999;font-size:11px">(${nac})</span>` : ''}</td>
-        <td>${c.telefono || '-'}</td><td>${c.correo || '-'}</td><td>${c.curp || '-'}</td><td>${c.ine || '-'}</td>
+        <td>${c.telefono || '-'}</td><td style="font-size:11px">${dirC || '-'}${badgeRealC}</td><td>${c.correo || '-'}</td><td>${c.curp || '-'}</td><td>${c.ine || '-'}</td>
         <td>${vig}</td>
-        <td>Sec. ${c.seccion_num}</td>
+        <td>Sec. ${c.seccion_num}${usaRealC && c.seccion_real_num ? '<br><span style="font-size:10px;color:#1b5e20">real: '+c.seccion_real_num+'</span>' : ''}</td>
         <td><span style="font-size:11px;color:${c.sexo || c.discapacidad_nombre || c.ocupacion_nombre ? '#333' : '#bbb'};white-space:normal;display:inline-block;line-height:1.35">${[c.sexo === 'H' ? 'Hombre' : (c.sexo === 'M' ? 'Mujer' : ''), c.discapacidad_nombre || '', c.ocupacion_nombre || ''].filter(Boolean).join(' · ') || '—'}</span></td>
         <td>${c.partido_presidente?.abreviatura || '-'}</td>
         <td>${corrBadge}</td>
         <td style="white-space:nowrap">${accion}</td></tr>`;
-      }).join('') : `<tr><td colspan="11" style="text-align:center;color:#999">${busqueda || filtro.value ? 'Sin resultados para la búsqueda' : 'No hay simpatizantes registrados'}</td></tr>`;
+      }).join('') : `<tr><td colspan="12" style="text-align:center;color:#999">${busqueda || filtro.value ? 'Sin resultados para la búsqueda' : 'No hay simpatizantes registrados'}</td></tr>`;
       finalizarStatus();
     } catch (err) { console.error(err); finalizarStatus(); }
   }
@@ -4708,6 +4736,63 @@
     resaltarSeccionBarrido(this.value);
   });
 
+  // ── Dirección real en modo barrido ──
+  let barridoMapReal = null, barridoMarkerReal = null;
+  function detectarSeccionRealBarrido(lat, lng) {
+    const el = document.getElementById('bf-sec-real-auto');
+    if (!el) return;
+    el.textContent = 'Sección real: detectando...'; el.style.color = '#999';
+    API.detectarSeccion(lat, lng).then(function(r) {
+      if (r.seccion) { el.textContent = 'Sección real: ' + r.seccion; el.style.color = 'var(--pri-green)'; }
+      else { el.textContent = 'Sección real: no detectada'; el.style.color = 'var(--pri-red)'; }
+    }).catch(function() { el.textContent = 'Sección real: error'; el.style.color = 'var(--pri-red)'; });
+  }
+  window.inicializarMapaRealBarrido = function() {
+    const cont = document.getElementById('bf-mapa-real');
+    if (!cont) return;
+    cont.style.display = 'block';
+    const lat = parseFloat(document.getElementById('bf-lat-real')?.value) || parseFloat(document.getElementById('bf-lat')?.value) || 20.6434;
+    const lng = parseFloat(document.getElementById('bf-lng-real')?.value) || parseFloat(document.getElementById('bf-lng')?.value) || -100.9929;
+    if (barridoMapReal) { setTimeout(function() { barridoMapReal.invalidateSize(); }, 80); return; }
+    barridoMapReal = L.map(cont, { maxZoom: 19 }).setView([lat, lng], 16);
+    crearTileLayer({ maxNativeZoom: 19 }).addTo(barridoMapReal);
+    barridoMarkerReal = L.marker([lat, lng], { draggable: true }).addTo(barridoMapReal);
+    barridoMarkerReal.on('dragend', function() {
+      const p = barridoMarkerReal.getLatLng();
+      const la = document.getElementById('bf-lat-real'); const ln = document.getElementById('bf-lng-real');
+      if (la) la.value = p.lat.toFixed(6);
+      if (ln) ln.value = p.lng.toFixed(6);
+      detectarSeccionRealBarrido(p.lat, p.lng);
+    });
+    setTimeout(function() { barridoMapReal.invalidateSize(); }, 100);
+  };
+  document.getElementById('bf-btn-mapa-real')?.addEventListener('click', function() {
+    const cont = document.getElementById('bf-mapa-real');
+    if (!cont) return;
+    cont.style.display = cont.style.display === 'none' ? 'block' : 'none';
+    if (cont.style.display !== 'none') window.inicializarMapaRealBarrido();
+  });
+  document.getElementById('bf-btn-gps-real')?.addEventListener('click', function() {
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      const la = pos.coords.latitude, ln = pos.coords.longitude;
+      const ila = document.getElementById('bf-lat-real'); const iln = document.getElementById('bf-lng-real');
+      if (ila) ila.value = la.toFixed(6);
+      if (iln) iln.value = ln.toFixed(6);
+      if (barridoMapReal && barridoMarkerReal) { barridoMarkerReal.setLatLng([la, ln]); barridoMapReal.panTo([la, ln]); }
+      detectarSeccionRealBarrido(la, ln);
+    }, function() {}, { enableHighAccuracy: true, timeout: 10000 });
+  });
+  ['bf-lat-real', 'bf-lng-real'].forEach(function(id) {
+    document.getElementById(id)?.addEventListener('change', function() {
+      const la = parseFloat(document.getElementById('bf-lat-real')?.value);
+      const ln = parseFloat(document.getElementById('bf-lng-real')?.value);
+      if (isNaN(la) || isNaN(ln)) return;
+      if (barridoMapReal && barridoMarkerReal) barridoMarkerReal.setLatLng([la, ln]);
+      detectarSeccionRealBarrido(la, ln);
+    });
+  });
+
   function limpiarFormularioBarrido() {
     const bfVc = document.getElementById('bf-votantes_casa'); if (bfVc) bfVc.value = '0';
     window._vcListBf = [];
@@ -4730,6 +4815,13 @@
     document.getElementById('bf-partido-diputado').selectedIndex = 0;
     document.getElementById('bf-lat').value = '';
     document.getElementById('bf-lng').value = '';
+    const bfDirReal = document.getElementById('bf-direccion_real'); if (bfDirReal) bfDirReal.checked = false;
+    const bfDirRealBox = document.getElementById('bf-dir-real'); if (bfDirRealBox) bfDirRealBox.style.display = 'none';
+    ['bf-calle_real', 'bf-numero_real', 'bf-colonia_real', 'bf-cp_real', 'bf-lat-real', 'bf-lng-real', 'bf-nota_direccion'].forEach(function(id) {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const bfSecReal = document.getElementById('bf-sec-real-auto'); if (bfSecReal) { bfSecReal.textContent = 'Sección real: sin detectar'; bfSecReal.style.color = '#666'; }
+    const bfMapaReal = document.getElementById('bf-mapa-real'); if (bfMapaReal) bfMapaReal.style.display = 'none';
     limpiarEvidenciaBarrido();
     actualizarEstadoGuardarBarrido();
   }
@@ -5095,7 +5187,23 @@
     const gpsIndicator = document.getElementById('bf-gps-indicator');
     const gpsText = document.getElementById('bf-gps-text');
     const status = document.getElementById('bf-status');
-    const data = { nombre: nombreCompleto(nombre, apellidoPaterno, apellidoMaterno), apellido_paterno: apellidoPaterno || null, apellido_materno: apellidoMaterno || null, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado, motivo_puerta: motivoPuerta || null, no_abrio: noAbrio, sexo: (document.getElementById('bf-sexo')?.value) || null, discapacidad_id: (document.getElementById('bf-discapacidad')?.value) ? parseInt(document.getElementById('bf-discapacidad').value) : null, ocupacion_id: (document.getElementById('bf-ocupacion')?.value) ? parseInt(document.getElementById('bf-ocupacion').value) : null, encuesta_campana_id: (window._encuestaBarrido && window._encuestaBarrido.id) || null };
+    const dirRealActiva = !!document.getElementById('bf-direccion_real')?.checked;
+    const latRealVal = parseFloat(document.getElementById('bf-lat-real')?.value);
+    const lngRealVal = parseFloat(document.getElementById('bf-lng-real')?.value);
+    if (dirRealActiva && (isNaN(latRealVal) || isNaN(lngRealVal))) {
+      document.getElementById('bf-status').textContent = 'Dirección real: ajusta el pin en el mapa (obligatorio)';
+      document.getElementById('bf-status').style.color = 'var(--pri-red)';
+      return;
+    }
+    const data = { nombre: nombreCompleto(nombre, apellidoPaterno, apellidoMaterno), apellido_paterno: apellidoPaterno || null, apellido_materno: apellidoMaterno || null, telefono, edad: parseInt(document.getElementById('bf-edad').value) || null, calle, numero, colonia, cp, seccion_id: seccionId, intencion_voto_presidente: intencionVotoPresidente, intencion_voto_diputado: intencionVotoDiputado, motivo_puerta: motivoPuerta || null, no_abrio: noAbrio, sexo: (document.getElementById('bf-sexo')?.value) || null, discapacidad_id: (document.getElementById('bf-discapacidad')?.value) ? parseInt(document.getElementById('bf-discapacidad').value) : null, ocupacion_id: (document.getElementById('bf-ocupacion')?.value) ? parseInt(document.getElementById('bf-ocupacion').value) : null, encuesta_campana_id: (window._encuestaBarrido && window._encuestaBarrido.id) || null,
+      direccion_real: dirRealActiva,
+      calle_real: document.getElementById('bf-calle_real')?.value || null,
+      numero_real: document.getElementById('bf-numero_real')?.value || null,
+      colonia_real: document.getElementById('bf-colonia_real')?.value || null,
+      cp_real: document.getElementById('bf-cp_real')?.value || null,
+      lat_real: isNaN(latRealVal) ? null : latRealVal,
+      lng_real: isNaN(lngRealVal) ? null : lngRealVal,
+      nota_direccion: document.getElementById('bf-nota_direccion')?.value || null };
     const bfExtras = parseInt(document.getElementById('bf-votantes_casa').value) || 0;
     if (bfExtras > 0) data.votantes_casa = bfExtras + 1;
     // Enviar lista completa (incluidos sin nombre) para sincronizar con el conteo
@@ -5842,7 +5950,7 @@
       });
     }
     rutaData.paradas.forEach((p, i) => {
-      const dir = [p.direccion, p.colonia].filter(Boolean).join(', ') || 'Sin direccion';
+      const dir = ([p.direccion, p.colonia].filter(Boolean).join(', ') || 'Sin direccion') + (p.direccion_real ? ' · 📍 real' : '');
       const visitadoLabel = rutaVisitados.has(p.id) ? '✓ Visitado' : 'No visitado';
       const estLabel = p.resultado ? ` · ${estatusNombre(p.resultado)}` : '';
       const tieneEncuesta = rutaFull && rutaFull.encuesta_campana_id;
@@ -6890,6 +6998,92 @@
           }
         }, 300);
       });
+      // ── Pin de la dirección REAL (solo ciudadano / comprometido) ──
+      if (tipo === 'ciudadano' || tipo === 'comprometido') {
+        let mapaReal = null, marcadorReal = null;
+        const contReal = document.getElementById('f-mapa-real-container');
+        const latReal = document.getElementById('f-lat-real');
+        const lngReal = document.getElementById('f-lng-real');
+        function detectarSeccionReal(lat, lng) {
+          const el = document.getElementById('f-sec-real-auto');
+          if (!el) return;
+          el.textContent = 'Detectando sección real...'; el.style.color = '#999';
+          API.detectarSeccion(lat, lng).then(function(r) {
+            if (r.seccion) { el.textContent = 'Sección real: ' + r.seccion; el.style.color = 'var(--pri-green)'; }
+            else { el.textContent = 'Sin sección detectada'; el.style.color = 'var(--pri-red)'; }
+          }).catch(function() { el.textContent = 'Error al detectar sección'; el.style.color = 'var(--pri-red)'; });
+        }
+        function initMapaReal() {
+          if (!contReal) return;
+          if (mapaReal) { setTimeout(function() { mapaReal.invalidateSize(); }, 100); return; }
+          const lat = parseFloat(latReal?.value) || parseFloat(latField?.value) || 20.6434;
+          const lng = parseFloat(lngReal?.value) || parseFloat(lngField?.value) || -100.9929;
+          mapaReal = L.map(contReal, { maxZoom: 19, zoomAnimation: false }).setView([lat, lng], 16);
+          crearTileLayer({ maxNativeZoom: 19 }).addTo(mapaReal);
+          activarPrefetchMapa(mapaReal);
+          marcadorReal = L.marker([lat, lng], { draggable: true }).addTo(mapaReal);
+          marcadorReal.on('dragend', function() {
+            const p = marcadorReal.getLatLng();
+            if (latReal) latReal.value = p.lat.toFixed(6);
+            if (lngReal) lngReal.value = p.lng.toFixed(6);
+            detectarSeccionReal(p.lat, p.lng);
+          });
+          setTimeout(function() { mapaReal.invalidateSize(); }, 100);
+        }
+        document.getElementById('btn-mapa-real')?.addEventListener('click', function() {
+          if (!contReal) return;
+          contReal.style.display = contReal.style.display === 'none' ? 'block' : 'none';
+          if (contReal.style.display !== 'none') initMapaReal();
+        });
+        document.getElementById('btn-gps-real')?.addEventListener('click', function() {
+          if (!('geolocation' in navigator)) return;
+          navigator.geolocation.getCurrentPosition(function(pos) {
+            const la = pos.coords.latitude, ln = pos.coords.longitude;
+            if (latReal) latReal.value = la.toFixed(6);
+            if (lngReal) lngReal.value = ln.toFixed(6);
+            if (mapaReal && marcadorReal) { marcadorReal.setLatLng([la, ln]); mapaReal.panTo([la, ln]); }
+            detectarSeccionReal(la, ln);
+          }, function() {}, { enableHighAccuracy: true, timeout: 10000 });
+        });
+        function onRealChange() {
+          const la = parseFloat(latReal?.value), ln = parseFloat(lngReal?.value);
+          if (isNaN(la) || isNaN(ln)) return;
+          if (mapaReal && marcadorReal) marcadorReal.setLatLng([la, ln]);
+          detectarSeccionReal(la, ln);
+        }
+        latReal?.addEventListener('change', onRealChange);
+        lngReal?.addEventListener('change', onRealChange);
+      }
+    }
+  };
+
+  // Muestra u oculta el bloque de dirección real en los formularios ('f' modal, 'bf' barrido).
+  // - Al activar: precarga con la dirección del INE si está vacío.
+  // - Al desactivar: limpia lo capturado; al guardar, el backend espeja el INE.
+  window.toggleDireccionReal = function(prefix) {
+    const chk = document.getElementById(prefix + '-direccion_real');
+    const box = document.getElementById(prefix + '-dir-real');
+    if (!chk || !box) return;
+    box.style.display = chk.checked ? 'block' : 'none';
+    if (!chk.checked) {
+      ['calle_real', 'numero_real', 'colonia_real', 'cp_real', 'nota_direccion', 'lat-real', 'lng-real'].forEach(function(suf) {
+        const el = document.getElementById(prefix + '-' + suf);
+        if (el) el.value = '';
+      });
+      const sec = document.getElementById(prefix + '-sec-real-auto');
+      if (sec) { sec.textContent = prefix === 'bf' ? 'Sección real: sin detectar' : ''; sec.style.color = '#666'; }
+      const mp = document.getElementById(prefix === 'bf' ? 'bf-mapa-real' : 'f-mapa-real-container');
+      if (mp) mp.style.display = 'none';
+      return;
+    }
+    // Precargar con la dirección del INE cuando el campo real esté vacío
+    [['calle_real', 'calle'], ['numero_real', 'numero'], ['colonia_real', 'colonia'], ['cp_real', 'cp'], ['lat-real', 'lat'], ['lng-real', 'lng']].forEach(function(pair) {
+      const realEl = document.getElementById(prefix + '-' + pair[0]);
+      const ineEl = document.getElementById(prefix + '-' + pair[1]);
+      if (realEl && ineEl && !realEl.value) realEl.value = ineEl.value;
+    });
+    if (prefix === 'bf' && window.inicializarMapaRealBarrido) {
+      setTimeout(function() { window.inicializarMapaRealBarrido(); }, 60);
     }
   };
 
@@ -6927,6 +7121,8 @@
       // Cleanup draggable map in ciudadano modal
       const contMapa = document.getElementById('f-mapa-container');
       if (contMapa) contMapa.style.display = 'none';
+      const contMapaReal = document.getElementById('f-mapa-real-container');
+      if (contMapaReal) contMapaReal.style.display = 'none';
     }
   };
 
@@ -7410,19 +7606,37 @@
       <input type="number" id="f-edad" placeholder="Edad" value="${data.edad || ''}" min="0" max="150" style="flex:0.5">
       <input type="text" id="f-cp" placeholder="CP" value="${data.cp || ''}" style="flex:0.6"></div>
       <div class="form-row"><select id="f-estado" required style="flex:1"></select><select id="f-municipio" required style="flex:1.4"></select></div>
-      <div class="form-row" style="position:relative"><input type="text" id="f-calle" placeholder="Calle" value="${data.calle || ''}" style="flex:2">
+      <div style="font-size:11px;font-weight:600;color:#666;margin-top:6px">Dirección en el INE (donde vota)</div>
+      <div class="form-row" style="position:relative"><input type="text" id="f-calle" placeholder="Calle (INE)" value="${data.calle || ''}" style="flex:2">
       <input type="text" id="f-numero" placeholder="N°" value="${data.numero || ''}" style="flex:0.5">
-      <input type="text" id="f-colonia" placeholder="Colonia" value="${data.colonia || ''}" style="flex:1.5" autocomplete="off">
+      <input type="text" id="f-colonia" placeholder="Colonia (INE)" value="${data.colonia || ''}" style="flex:1.5" autocomplete="off">
       <div id="f-colonia-sug" style="position:absolute;top:100%;left:0;right:0;z-index:999;background:#fff;border:1px solid #ddd;border-radius:4px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;font-size:13px"></div></div>
       <div class="form-row" style="align-items:flex-end">
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" style="width:100%;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección (INE)</span><select id="f-seccion" style="width:100%;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select></label>
         <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;box-sizing:border-box"><option value="">Auto-detectar</option></select></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat (INE)</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng (INE)</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
         <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
         <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
+      <label class="checkbox-line" style="margin-top:8px;font-weight:600"><input type="checkbox" id="f-direccion_real" ${data.direccion_real ? 'checked' : ''} onchange="toggleDireccionReal('f')"> Vive en una dirección diferente a la del INE</label>
+      <div id="f-dir-real" style="display:${data.direccion_real ? 'block' : 'none'};border:2px dashed var(--color-primary);border-radius:8px;padding:8px;margin-top:6px;background:#fdf7f7">
+        <div style="font-size:12px;font-weight:600;color:var(--color-primary);margin-bottom:6px">Dirección real actual <span style="font-weight:400;color:#777">(se usa para rutas y campañas)</span></div>
+        <div class="form-row" style="position:relative"><input type="text" id="f-calle_real" placeholder="Calle (real)" value="${data.calle_real || ''}" style="flex:2">
+        <input type="text" id="f-numero_real" placeholder="N°" value="${data.numero_real || ''}" style="flex:0.5">
+        <input type="text" id="f-colonia_real" placeholder="Colonia (real)" value="${data.colonia_real || ''}" style="flex:1.5">
+        <input type="text" id="f-cp_real" placeholder="CP" value="${data.cp_real || ''}" style="flex:0.6" maxlength="5"></div>
+        <div class="form-row" style="align-items:flex-end">
+          <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat (real) *</span><input type="number" id="f-lat-real" placeholder="Lat" step="any" value="${data.ubicacion_real?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
+          <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng (real) *</span><input type="number" id="f-lng-real" placeholder="Lng" step="any" value="${data.ubicacion_real?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
+          <button type="button" class="btn-small btn-primary" id="btn-gps-real" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="GPS de la dirección real">📍</button>
+          <button type="button" class="btn-small btn-secondary" id="btn-mapa-real" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar pin real en el mapa">🗺️</button>
+          <span id="f-sec-real-auto" style="font-size:12px;color:#666;min-height:18px"></span>
+        </div>
+        <div id="f-mapa-real-container" style="display:none;height:220px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
+        <input type="text" id="f-nota_direccion" placeholder="Nota (ej. aún no actualiza su INE)" value="${data.nota_direccion || ''}" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+      </div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
         <label style="flex:none;width:110px;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sexo</span><select id="f-sexo" style="width:100%;box-sizing:border-box"><option value=""></option><option value="H" ${data.sexo==='H'?'selected':''}>Hombre</option><option value="M" ${data.sexo==='M'?'selected':''}>Mujer</option></select></label>
         <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Discapacidad</span><select id="f-discapacidad" data-valor="${data.discapacidad_id || ''}" style="width:100%;box-sizing:border-box"><option value=""></option></select></label>
@@ -7465,15 +7679,16 @@
       <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Diputado</span><select id="f-intencion_voto_diputado" style="width:100%;box-sizing:border-box"></select></label></div>
       <div class="form-row"><select id="f-estado" required style="flex:1"></select><select id="f-municipio" required style="flex:1"></select>
       <input type="text" id="f-cp" placeholder="CP" value="${data.cp || ''}" required style="flex:0.5"></div>
-      <div class="form-row" style="position:relative"><input type="text" id="f-calle" placeholder="Calle" value="${data.calle || ''}" required style="flex:2">
+      <div style="font-size:11px;font-weight:600;color:#666;margin-top:6px">Dirección en el INE (donde vota)</div>
+      <div class="form-row" style="position:relative"><input type="text" id="f-calle" placeholder="Calle (INE)" value="${data.calle || ''}" required style="flex:2">
       <input type="text" id="f-numero" placeholder="N°" value="${data.numero || ''}" required style="flex:0.5">
-      <input type="text" id="f-colonia" placeholder="Colonia" value="${data.colonia || ''}" required style="flex:1.5" autocomplete="off">
+      <input type="text" id="f-colonia" placeholder="Colonia (INE)" value="${data.colonia || ''}" required style="flex:1.5" autocomplete="off">
       <div id="f-colonia-sug" style="position:absolute;top:100%;left:0;right:0;z-index:999;background:#fff;border:1px solid #ddd;border-radius:4px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;font-size:13px"></div></div>
       <div class="form-row" style="align-items:flex-end">
-        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección</span><select id="f-seccion" required style="width:100%;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select></label>
+        <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Sección (INE)</span><select id="f-seccion" required style="width:100%;box-sizing:border-box"><option value="">Sección (auto-detectada)</option></select></label>
         <label style="flex:1;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Casilla</span><select id="f-casilla" style="width:100%;box-sizing:border-box"><option value="">Auto-detectar</option></select></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
-        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat (INE)</span><input type="number" id="f-lat" placeholder="Lat" step="any" value="${data.ubicacion?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
+        <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng (INE)</span><input type="number" id="f-lng" placeholder="Lng" step="any" value="${data.ubicacion?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
         <button type="button" class="btn-small btn-primary gps-btn" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Obtener GPS">📍</button>
         <button type="button" class="btn-small btn-secondary" id="btn-mapa-modal" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar en mapa">🗺️</button></div>
       <div class="form-row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
@@ -7483,6 +7698,23 @@
       </div>
       <div id="f-mapa-container" style="display:none;height:250px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
       <div id="f-sec-auto" style="font-size:12px;color:#666;min-height:18px"></div>
+      <label class="checkbox-line" style="margin-top:8px;font-weight:600"><input type="checkbox" id="f-direccion_real" ${data.direccion_real ? 'checked' : ''} onchange="toggleDireccionReal('f')"> Vive en una dirección diferente a la del INE</label>
+      <div id="f-dir-real" style="display:${data.direccion_real ? 'block' : 'none'};border:2px dashed var(--color-primary);border-radius:8px;padding:8px;margin-top:6px;background:#fdf7f7">
+        <div style="font-size:12px;font-weight:600;color:var(--color-primary);margin-bottom:6px">Dirección real actual <span style="font-weight:400;color:#777">(se usa para rutas y campañas)</span></div>
+        <div class="form-row" style="position:relative"><input type="text" id="f-calle_real" placeholder="Calle (real)" value="${data.calle_real || ''}" style="flex:2">
+        <input type="text" id="f-numero_real" placeholder="N°" value="${data.numero_real || ''}" style="flex:0.5">
+        <input type="text" id="f-colonia_real" placeholder="Colonia (real)" value="${data.colonia_real || ''}" style="flex:1.5">
+        <input type="text" id="f-cp_real" placeholder="CP" value="${data.cp_real || ''}" style="flex:0.6" maxlength="5"></div>
+        <div class="form-row" style="align-items:flex-end">
+          <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lat (real) *</span><input type="number" id="f-lat-real" placeholder="Lat" step="any" value="${data.ubicacion_real?.lat || ''}" style="flex:1;box-sizing:border-box"></label>
+          <label style="flex:0.6;display:flex;flex-direction:column;gap:2px;font-size:11px"><span>Lng (real) *</span><input type="number" id="f-lng-real" placeholder="Lng" step="any" value="${data.ubicacion_real?.lng || ''}" style="flex:1;box-sizing:border-box"></label>
+          <button type="button" class="btn-small btn-primary" id="btn-gps-real" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="GPS de la dirección real">📍</button>
+          <button type="button" class="btn-small btn-secondary" id="btn-mapa-real" style="flex:none;height:42px;min-width:42px;width:42px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;font-size:18px;border:none;line-height:1" title="Ajustar pin real en el mapa">🗺️</button>
+          <span id="f-sec-real-auto" style="font-size:12px;color:#666;min-height:18px"></span>
+        </div>
+        <div id="f-mapa-real-container" style="display:none;height:220px;margin-top:6px;border-radius:8px;border:1px solid #ddd"></div>
+        <input type="text" id="f-nota_direccion" placeholder="Nota (ej. aún no actualiza su INE)" value="${data.nota_direccion || ''}" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:2px solid var(--border);border-radius:6px;font-size:13px">
+      </div>
       <input type="hidden" id="f-hogar" value="${data.numero_hogar || ''}">`;
     }
     function toDatetimeLocal(d) {

@@ -1,4 +1,4 @@
-const CACHE = 'colmena-v31';
+const CACHE = 'colmena-v33';
 const PRECACHE = [
   '/css/styles.css',
   '/js/app.js',
