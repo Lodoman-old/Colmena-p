@@ -8,10 +8,14 @@ import android.os.Bundle;
 
 import com.getcapacitor.BridgeActivity;
 
+import androidx.core.splashscreen.SplashScreen;
+
 public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Evita el parpadeo/arranque en blanco: aplica el tema posterior al splash.
+        SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         startSyncService();
     }

@@ -16,8 +16,18 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# Biometric plugin
+# Biometric plugin (clases cargadas por reflexión desde capacitor.plugins.json)
+-keep class com.epicshaggy.biometric.** { *; }
 -keep class androidx.biometric.** { *; }
+
+# App nativa (paquete actual)
+-keep class com.prioridadterritorial.app.** { *; }
+
+# Métodos y anotaciones de plugins Capacitor
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.PluginMethod public *;
+}
 
 # Keep annotations used by Capacitor reflection
 -keepattributes *Annotation*, JavascriptInterface

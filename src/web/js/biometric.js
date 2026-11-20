@@ -3,7 +3,13 @@ const Biometric = (() => {
 
   function getPlugin() {
     if (typeof Capacitor === 'undefined') return null;
-    return Capacitor.Plugins?.NativeBiometric || null;
+    // Capacitor 3+ requiere registerPlugin. El acceso directo a Capacitor.Plugins
+    // ya no resuelve plugins nativos y devolvía undefined (la huella nunca se ofrecía).
+    if (Capacitor.Plugins?.NativeBiometric) return Capacitor.Plugins.NativeBiometric;
+    if (typeof Capacitor.registerPlugin === 'function') {
+      try { return Capacitor.registerPlugin('NativeBiometric'); } catch { return null; }
+    }
+    return null;
   }
 
   async function isAvailable() {
