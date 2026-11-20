@@ -1015,11 +1015,50 @@
     });
     document.getElementById('btn-forgot-password').addEventListener('click', (e) => {
       e.preventDefault();
-      const email = prompt('Ingresa tu correo electronico para solicitar restablecimiento:');
-      if (email && email.includes('@')) {
-        API.request('POST', '/api/auth/solicitar-reseteo', { email }).then(r => notify(r.message, 'success')).catch(e => notify(e.message, 'error'));
-      } else if (email) notify('Correo invalido', 'warning');
+      const modal = document.getElementById('forgot-modal');
+      const msg = document.getElementById('forgot-msg');
+      const input = document.getElementById('forgot-email');
+      if (!modal || !input) return;
+      msg.textContent = '';
+      const loginEmail = document.getElementById('email')?.value?.trim() || '';
+      input.value = loginEmail;
+      modal.classList.remove('hidden');
+      setTimeout(() => { input.focus(); }, 80);
     });
+    window.enviarSolicitudReseteo = async function() {
+      const input = document.getElementById('forgot-email');
+      const msg = document.getElementById('forgot-msg');
+      const btn = document.getElementById('forgot-submit');
+      if (!input || !msg || !btn) return;
+      const email = input.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msg.textContent = 'Escribe un correo válido.';
+        msg.style.color = 'var(--pri-red)';
+        input.focus();
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      msg.textContent = '';
+      try {
+        const r = await API.request('POST', '/api/auth/solicitar-reseteo', { email });
+        msg.textContent = r.message || 'Solicitud enviada. Un administrador restablecerá tu contraseña.';
+        msg.style.color = 'var(--pri-green)';
+        btn.textContent = 'Solicitud enviada ✓';
+        setTimeout(() => {
+          document.getElementById('forgot-modal')?.classList.add('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Enviar solicitud';
+          msg.textContent = '';
+        }, 3200);
+      } catch (e) {
+        msg.textContent = 'No se pudo enviar la solicitud: ' + (e.message || 'intenta de nuevo');
+        msg.style.color = 'var(--pri-red)';
+        btn.disabled = false;
+        btn.textContent = 'Enviar solicitud';
+      }
+    };
+
     document.getElementById('btn-share-app').addEventListener('click', (e) => {
       e.preventDefault();
       mostrarQR();
@@ -2139,15 +2178,49 @@
           <button class="btn-small btn-danger" onclick="eliminarItem('usuario','${u.id}','${u.nombre}')">X</button>
         </td></tr>
       `).join('');
+      loadSolicitudesReseteo();
     } catch (err) { console.error(err); }
   }
+
+  async function loadSolicitudesReseteo() {
+    const wrap = document.getElementById('solicitudes-reseteo-wrap');
+    const list = document.getElementById('solicitudes-reseteo-list');
+    if (!wrap || !list) return;
+    const rol = API.getUser()?.rol;
+    if (rol !== 'admin' && rol !== 'coordinador') { wrap.style.display = 'none'; return; }
+    try {
+      const rows = await API.request('GET', '/api/solicitudes-reseteo');
+      if (!rows || !rows.length) { wrap.style.display = 'none'; list.innerHTML = ''; return; }
+      wrap.style.display = 'block';
+      list.innerHTML = rows.map(s => {
+        const nombre = (s.nombre || '').replace(/'/g, "\\'");
+        const fecha = s.creada_en ? new Date(s.creada_en).toLocaleString('es-MX') : '';
+        return `<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0dfae;font-size:12px;flex-wrap:wrap">
+          <span><b>${s.nombre || '(sin nombre)'}</b> — ${s.email} <span style="color:#999">· ${fecha}</span></span>
+          <span style="white-space:nowrap">
+            <button class="btn-small btn-primary" onclick="resetearPass('${s.usuario_id}','${nombre}')">Resetear</button>
+            <button class="btn-small btn-secondary" onclick="descartarSolicitudReseteo('${s.id}')">Descartar</button>
+          </span>
+        </div>`;
+      }).join('');
+    } catch (e) { wrap.style.display = 'none'; }
+  }
+
+  window.descartarSolicitudReseteo = async function(id) {
+    if (!confirm('¿Descartar esta solicitud de restablecimiento?')) return;
+    try {
+      await API.request('POST', '/api/solicitudes-reseteo/' + id + '/atender');
+      loadSolicitudesReseteo();
+    } catch (e) { notify('Error: ' + e.message, 'error'); }
+  };
 
   window.resetearPass = async function(id, nombre) {
     if (!confirm('Restablecer contrasena de ' + nombre + '? Se le notificara via push y WhatsApp.')) return;
     try {
       const r = await API.request('POST', '/api/usuarios/' + id + '/reset-password');
-      notify('Contrasena restablecida: ' + r.password + '. El usuario recibio una notificacion.', 'success');
+      notify('Contrasena restablecida: ' + r.password + '. Compartela con el usuario.', 'success');
       loadUsuarios();
+      loadSolicitudesReseteo();
     } catch (e) { notify('Error: ' + e.message, 'error'); }
   }
 
@@ -8024,7 +8097,11 @@
         if (API.getUser()?.rol === 'enlace' && document.getElementById('view-rutas').classList.contains('active')) loadRutasEnlace();
       });
       socket.on('solicitud-reseteo', (data) => {
-        if (API.getUser()?.rol === 'admin') notify('Solicitud de reseteo de: ' + data.nombre + ' (' + data.email + '). Ve a Usuarios.', 'info');
+        const rol = API.getUser()?.rol;
+        if (rol === 'admin' || rol === 'coordinador') {
+          notify('Solicitud de reseteo de: ' + data.nombre + ' (' + data.email + '). Ve a Usuarios.', 'info');
+          loadSolicitudesReseteo();
+        }
       });
       socket.on('password-reset', (data) => {
         notify('Tu contrasena fue restablecida. Nueva contrasena: ' + data.password, 'success');

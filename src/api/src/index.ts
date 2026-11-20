@@ -353,19 +353,80 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
 
 app.post('/api/auth/solicitar-reseteo', async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) { res.status(400).json({ error: 'Email requerido' }); return; }
-    const user = await pool.query('SELECT id, nombre, email FROM usuarios WHERE email=$1', [email]);
+    const user = await pool.query('SELECT id, nombre, email FROM usuarios WHERE LOWER(email)=$1', [email]);
     if (user.rows.length) {
       const u = user.rows[0];
-      const sockets = await io.fetchSockets();
-      sockets.forEach(s => { if ((s as any).userId) s.emit('solicitud-reseteo', { email: u.email, nombre: u.nombre }); });
-      const admins = (await pool.query('SELECT id FROM usuarios WHERE rol=$1', ['admin'])).rows.map((r: any) => r.id);
-      await notificacionService.enviarPushAUsuarios(admins, 'Solicitud de reseteo', `${u.nombre} (${u.email}) solicito restablecer su contrasena`);
-      await pool.query('INSERT INTO notificaciones (usuario_id, tipo, mensaje) VALUES ($1,$2,$3)',
-        [u.id, 'solicitud_reseteo', 'Solicitud de restablecimiento de contrasena']);
+      // Solicitud persistente (una pendiente por usuario) para que el staff la vea
+      // aunque no estuviera conectado en el momento.
+      const sol = await pool.query(
+        `INSERT INTO solicitudes_reseteo (usuario_id, email)
+         SELECT $1, $2
+          WHERE NOT EXISTS (
+            SELECT 1 FROM solicitudes_reseteo WHERE usuario_id=$1 AND estado='pendiente'
+          )
+         RETURNING id, creada_en`,
+        [u.id, u.email]
+      );
+      const staff = (await pool.query("SELECT id FROM usuarios WHERE rol IN ('admin','coordinador')")).rows.map((r: any) => r.id);
+      const mensaje = `Solicitud de restablecimiento de contraseña de ${u.nombre} (${u.email})`;
+      if (staff.length) {
+        await pool.query(
+          `INSERT INTO notificaciones (usuario_id, tipo, mensaje)
+           SELECT id, 'solicitud_reseteo', $1 FROM usuarios
+            WHERE id = ANY($2::uuid[])
+              AND NOT EXISTS (
+                SELECT 1 FROM notificaciones n
+                 WHERE n.usuario_id=usuarios.id AND n.tipo='solicitud_reseteo'
+                   AND n.leida=FALSE AND n.mensaje=$1
+              )`,
+          [mensaje, staff]
+        );
+        await notificacionService.enviarPushAUsuarios(staff, 'Solicitud de reseteo', mensaje);
+      }
+      // Notificar por socket solo al staff conectado
+      try {
+        const sockets = await io.fetchSockets();
+        const staffSet = new Set(staff);
+        sockets.forEach(s => {
+          if (staffSet.has((s as any).userId)) {
+            s.emit('solicitud-reseteo', { id: sol.rows[0]?.id || null, email: u.email, nombre: u.nombre });
+          }
+        });
+      } catch (e) { console.warn('socket solicitud-reseteo:', e); }
     }
-    res.json({ message: 'Si el correo existe, tu administrador recibira una notificacion' });
+    res.json({ message: 'Solicitud enviada. Un administrador restablecerá tu contraseña y te la hará llegar.' });
+  } catch (e: any) { console.error('solicitar-reseteo:', e?.message || e); res.status(500).json({ error: 'Error' }); }
+});
+
+// Lista de solicitudes pendientes (solo admin/coordinador)
+app.get('/api/solicitudes-reseteo', authenticateToken, requireAdminOCoordinador, async (_req: Request, res: Response) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT s.id, s.usuario_id, s.email, s.creada_en, u.nombre, u.rol, u.telefono
+         FROM solicitudes_reseteo s
+         JOIN usuarios u ON u.id = s.usuario_id
+        WHERE s.estado='pendiente'
+        ORDER BY s.creada_en ASC`
+    )).rows;
+    res.json(rows);
+  } catch { res.status(500).json({ error: 'Error' }); }
+});
+
+// Marcar una solicitud como atendida/descartada
+app.post('/api/solicitudes-reseteo/:id/atender', authenticateToken, requireAdminOCoordinador, async (req: Request, res: Response) => {
+  try {
+    const u = (req as any).user;
+    const r = await pool.query(
+      `UPDATE solicitudes_reseteo
+          SET estado='atendida', atendida_en=now(), atendida_por=$1
+        WHERE id=$2 AND estado='pendiente'
+        RETURNING id`,
+      [u.userId, req.params.id]
+    );
+    if (!r.rows.length) { res.status(404).json({ error: 'Solicitud no encontrada o ya atendida' }); return; }
+    res.json({ ok: true });
   } catch { res.status(500).json({ error: 'Error' }); }
 });
 
@@ -499,6 +560,18 @@ app.post('/api/usuarios/:id/reset-password', authenticateToken, requireAdminOCoo
     const nueva = Math.random().toString(36).slice(-8);
     const hash = await bcrypt.hash(nueva, 10);
     await pool.query('UPDATE usuarios SET password_hash=$1 WHERE id=$2', [hash, req.params.id]);
+    // Cerrar solicitudes pendientes y notificaciones asociadas a este usuario
+    await pool.query(
+      `UPDATE solicitudes_reseteo SET estado='atendida', atendida_en=now(), atendida_por=$2
+        WHERE usuario_id=$1 AND estado='pendiente'`,
+      [req.params.id, (req as any).user?.userId || null]
+    );
+    await pool.query(
+      `UPDATE notificaciones SET leida=TRUE
+        WHERE tipo='solicitud_reseteo'
+          AND mensaje LIKE '%' || (SELECT email FROM usuarios WHERE id=$1) || '%'`,
+      [req.params.id]
+    );
     await notificacionService.enviarPushAUsuarios([req.params.id], 'Contrasena restablecida', `Tu nueva contrasena es: ${nueva}`);
     if (u.telefono) await notificacionService.enviarWhatsApp(u.telefono, `Hola ${u.nombre}, tu nueva contrasena de Colmena es: ${nueva}`);
     const sockets = await io.fetchSockets();

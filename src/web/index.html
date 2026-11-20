@@ -241,6 +241,11 @@
 
         <div id="view-usuarios" class="view">
           <h2>Usuarios <button class="btn-small btn-primary" onclick="abrirModal('usuario')">+ Agregar</button></h2>
+          <div id="solicitudes-reseteo-wrap" style="display:none;margin-bottom:12px;border:1px solid #e0b84c;background:#fff8e1;border-radius:8px;padding:10px 12px">
+            <div style="font-weight:700;color:#8a5a00;margin-bottom:4px">🔑 Solicitudes de restablecimiento de contraseña</div>
+            <div style="font-size:11px;color:#8a6d3b;margin-bottom:6px">Estos usuarios olvidaron su contraseña. Restablécele una temporal y compártesela.</div>
+            <div id="solicitudes-reseteo-list"></div>
+          </div>
           <div class="table-container">
             <table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Municipio</th><th>Secciones</th><th></th></tr></thead>
               <tbody id="usuarios-body"></tbody>
@@ -1412,6 +1417,24 @@
     </div>
   </div>
 
+  <div id="forgot-modal" class="modal-overlay hidden">
+    <div class="modal" style="max-width:430px" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Recuperar contraseña</h3>
+        <button class="modal-close" onclick="document.getElementById('forgot-modal').classList.add('hidden')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:#666;margin:0 0 12px">Escribe el correo con el que inicias sesión. Un administrador recibirá tu solicitud y restablecerá tu contraseña.</p>
+        <div class="form-group">
+          <label for="forgot-email">Correo electrónico</label>
+          <input type="email" id="forgot-email" placeholder="tucorreo@ejemplo.com" autocomplete="email">
+        </div>
+        <div id="forgot-msg" style="font-size:12px;min-height:18px;margin-bottom:4px"></div>
+        <button class="btn btn-primary" id="forgot-submit" style="width:100%" onclick="enviarSolicitudReseteo()">Enviar solicitud</button>
+      </div>
+    </div>
+  </div>
+
   <script src="vendor/leaflet.js"></script>
   <script src="vendor/leaflet.markercluster.js"></script>
   <script src="vendor/chart.js"></script>
@@ -1447,7 +1470,7 @@
   <div id="sync-status-pill" class="sync-status-pill hidden"><span class="sync-spinner"></span><span id="sync-status-text">Actualizando...</span></div>
   <script src="js/api.js?v=258"></script>
   <script src="js/biometric.js?v=100"></script>
-  <script src="js/app.js?v=273"></script>
+  <script src="js/app.js?v=274"></script>
   <script>
     (function(){
       function lowerInput(e){var i=this.selectionStart,l=this.value.length;this.value=this.value.toLowerCase();this.setSelectionRange(i,i);if(this.value.length!==l)this.setSelectionRange(this.value.length,this.value.length)}

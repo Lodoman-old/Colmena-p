@@ -64,5 +64,6 @@ apply 029_apellido_columnas
 apply 030_confirmaciones_rutas
 apply 031_drop_ciudadano_fk_rutas
 apply 032_direccion_real
+apply 033_solicitudes_reseteo
 
 echo "==> Init completado"
